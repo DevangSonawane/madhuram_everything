@@ -6,6 +6,7 @@ import '../store/app_state.dart';
 import '../store/auth_actions.dart';
 import '../services/api_client.dart';
 import '../services/auth_storage.dart';
+import '../services/access_control_store.dart';
 import '../components/ui/mad_button.dart';
 import '../components/ui/mad_input.dart';
 import '../utils/responsive.dart';
@@ -66,7 +67,10 @@ class _LoginPageState extends State<LoginPage> {
 
       if (result['success'] == true) {
         final user = await AuthStorage.getUser();
-        store.dispatch(LoginSuccess(user ?? {}));
+        final resolvedUser = await AccessControlStore.resolveUserAccessControl(
+          user ?? {},
+        );
+        store.dispatch(LoginSuccess(resolvedUser));
         Navigator.pushReplacementNamed(context, '/projects');
       } else {
         final error = result['error']?.toString() ?? 'Login failed';

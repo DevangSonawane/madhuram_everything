@@ -8,7 +8,6 @@ import 'store/app_state.dart';
 import 'store/auth_reducer.dart';
 import 'store/auth_actions.dart';
 import 'store/project_actions.dart';
-import 'store/notification_actions.dart';
 
 // Models
 import 'models/project.dart';
@@ -17,7 +16,8 @@ import 'models/project.dart';
 import 'services/auth_storage.dart';
 import 'services/http_overrides.dart';
 import 'services/api_client.dart';
-
+import 'services/notification_service.dart';
+import 'services/access_control_store.dart';
 
 // Theme
 import 'theme/app_theme.dart';
@@ -105,21 +105,19 @@ final Map<String, Widget Function(BuildContext)> _appRoutes = {
 void main() async {
   // Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Allow self-signed certs in dev mode
   assert(() {
     HttpOverrides.global = DevHttpOverrides();
     return true;
   }());
-  
+
   // Create the Redux store ONCE at app startup
-  store = Store<AppState>(
-    appReducer,
-    initialState: AppState.initial(),
-  );
-  
+  store = Store<AppState>(appReducer, initialState: AppState.initial());
+
   // Restore auth state from storage before running app
   await _restoreAuthState();
+  await NotificationService.instance.initialize(store);
 
   runApp(MyApp(store: store));
 }
@@ -133,7 +131,10 @@ Future<void> _restoreAuthState() async {
     if (hasUser) {
       final user = await AuthStorage.getUser();
       if (user != null) {
-        store.dispatch(LoginSuccess(user));
+        final resolvedUser = await AccessControlStore.resolveUserAccessControl(
+          user,
+        );
+        store.dispatch(LoginSuccess(resolvedUser));
 
         // Restore selected project from local storage WITHOUT calling API.
         // This ensures instant startup. The API fetch is done later when
@@ -143,10 +144,12 @@ Future<void> _restoreAuthState() async {
           // Create a minimal project map so MainLayout sees a selected project
           // and doesn't redirect to /projects.  The full project data will be
           // loaded when the user visits any page that needs it.
-          store.dispatch(SelectProject({
-            'project_id': savedProjectId,
-            'project_name': 'Loading…',
-          }));
+          store.dispatch(
+            SelectProject({
+              'project_id': savedProjectId,
+              'project_name': 'Loading…',
+            }),
+          );
 
           // Fire-and-forget: try to fetch full project list in background
           _restoreProjectsInBackground(savedProjectId);
@@ -161,33 +164,34 @@ Future<void> _restoreAuthState() async {
 /// Fetch projects in background and update the selected project with full data.
 /// Never blocks – runs after the UI is already visible.
 void _restoreProjectsInBackground(String savedProjectId) {
-  ApiClient.getProjects().then((result) {
-    if (result['success'] == true) {
-      final data = result['data'];
-      final List<dynamic> projectList = data is List ? data : [];
-      final projectMaps = projectList
-          .map((e) => e as Map<String, dynamic>)
-          .toList();
-      store.dispatch(FetchProjectsSuccess(projectMaps));
+  ApiClient.getProjects()
+      .then((result) {
+        if (result['success'] == true) {
+          final data = result['data'];
+          final List<dynamic> projectList = data is List ? data : [];
+          final projectMaps = projectList
+              .map((e) => e as Map<String, dynamic>)
+              .toList();
+          store.dispatch(FetchProjectsSuccess(projectMaps));
 
-      final projects = projectMaps.map((m) => Project.fromJson(m)).toList();
-      final savedProject = projects.firstWhere(
-        (p) => p.id == savedProjectId,
-        orElse: () => Project(id: '', name: ''),
-      );
-      if (savedProject.id.isNotEmpty) {
-        store.dispatch(SelectProject(savedProject.toMap()));
-      }
-    }
-  }).catchError((e) {
-    debugPrint('[Main] Background project restore failed: $e');
-  });
+          final projects = projectMaps.map((m) => Project.fromJson(m)).toList();
+          final savedProject = projects.firstWhere(
+            (p) => p.id == savedProjectId,
+            orElse: () => Project(id: '', name: ''),
+          );
+          if (savedProject.id.isNotEmpty) {
+            store.dispatch(SelectProject(savedProject.toMap()));
+          }
+        }
+      })
+      .catchError((e) {
+        debugPrint('[Main] Background project restore failed: $e');
+      });
 }
-
 
 class MyApp extends StatelessWidget {
   final Store<AppState> store;
-  
+
   const MyApp({super.key, required this.store});
 
   @override
@@ -198,11 +202,14 @@ class MyApp extends StatelessWidget {
         converter: (store) => store.state.theme,
         builder: (context, themeState) {
           // Determine actual theme mode
-          final platformBrightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
+          final platformBrightness =
+              WidgetsBinding.instance.platformDispatcher.platformBrightness;
           final effectiveTheme = themeState.mode == AppThemeMode.system
-              ? (platformBrightness == Brightness.dark ? AppThemeMode.dark : AppThemeMode.light)
+              ? (platformBrightness == Brightness.dark
+                    ? AppThemeMode.dark
+                    : AppThemeMode.light)
               : themeState.mode;
-          
+
           return MaterialApp(
             title: 'Madhuram',
             debugShowCheckedModeBanner: false,
@@ -216,9 +223,7 @@ class MyApp extends StatelessWidget {
               final double current = mq.textScaler.scale(1.0);
               final double clamped = current.clamp(0.85, 1.15);
               return MediaQuery(
-                data: mq.copyWith(
-                  textScaler: TextScaler.linear(clamped),
-                ),
+                data: mq.copyWith(textScaler: TextScaler.linear(clamped)),
                 child: child ?? const SizedBox.shrink(),
               );
             },
@@ -228,10 +233,12 @@ class MyApp extends StatelessWidget {
                 final id = settings.arguments?.toString() ?? '';
                 return PageRouteBuilder<void>(
                   settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) => ChallanDetailPage(challanId: id),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      ChallanDetailPage(challanId: id),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
                   transitionDuration: AppAnimations.normal,
                 );
               }
@@ -239,10 +246,12 @@ class MyApp extends StatelessWidget {
                 final id = settings.arguments?.toString() ?? '';
                 return PageRouteBuilder<void>(
                   settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) => SamplePreviewPage(sampleId: id),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      SamplePreviewPage(sampleId: id),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
                   transitionDuration: AppAnimations.normal,
                 );
               }
@@ -250,10 +259,12 @@ class MyApp extends StatelessWidget {
                 final id = settings.arguments?.toString() ?? '';
                 return PageRouteBuilder<void>(
                   settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) => SampleEditPage(sampleId: id),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      SampleEditPage(sampleId: id),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
                   transitionDuration: AppAnimations.normal,
                 );
               }
@@ -261,10 +272,12 @@ class MyApp extends StatelessWidget {
                 final projectId = settings.arguments?.toString() ?? '';
                 return PageRouteBuilder<void>(
                   settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) => SampleCreatePage(initialProjectId: projectId),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      SampleCreatePage(initialProjectId: projectId),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
                   transitionDuration: AppAnimations.normal,
                 );
               }
@@ -272,10 +285,12 @@ class MyApp extends StatelessWidget {
               if (builder != null) {
                 return PageRouteBuilder<void>(
                   settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) => builder(context),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      builder(context),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
                   transitionDuration: AppAnimations.normal,
                 );
               }
@@ -304,11 +319,11 @@ class AppRouter extends StatelessWidget {
         if (!vm.isAuthenticated) {
           return const LoginPage();
         }
-        
+
         if (!vm.hasSelectedProject) {
           return const ProjectSelectionPage();
         }
-        
+
         return const DashboardPage();
       },
     );
@@ -318,7 +333,7 @@ class AppRouter extends StatelessWidget {
 class _AppRouterViewModel {
   final bool isAuthenticated;
   final bool hasSelectedProject;
-  
+
   _AppRouterViewModel({
     required this.isAuthenticated,
     required this.hasSelectedProject,

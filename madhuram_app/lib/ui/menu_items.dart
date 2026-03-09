@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../utils/access_control.dart';
 
 /// Menu item model matching React's menuItems.js exactly
 class MenuItem {
@@ -7,12 +8,14 @@ class MenuItem {
   final String route;
   final String category;
   final IconData icon;
-  
+  final bool hidden;
+
   const MenuItem({
     required this.title,
     required this.route,
     required this.category,
     required this.icon,
+    this.hidden = false,
   });
 }
 
@@ -20,7 +23,7 @@ class MenuItem {
 class MenuCategory {
   final String name;
   final List<MenuItem> items;
-  
+
   const MenuCategory({required this.name, required this.items});
 }
 
@@ -39,7 +42,7 @@ const menuItems = <MenuItem>[
     category: _main,
     icon: LucideIcons.layoutDashboard,
   ),
-  
+
   // Project Management
   MenuItem(
     title: 'Projects',
@@ -59,7 +62,7 @@ const menuItems = <MenuItem>[
     category: _projectManagement,
     icon: Icons.check_box_outlined,
   ),
-  
+
   // Procurement
   MenuItem(
     title: 'Sample Management',
@@ -79,7 +82,7 @@ const menuItems = <MenuItem>[
     category: _procurement,
     icon: LucideIcons.users,
   ),
-  
+
   // Delivery & Inspection
   MenuItem(
     title: 'Delivery Challans',
@@ -90,9 +93,12 @@ const menuItems = <MenuItem>[
 ];
 
 /// Get menu items grouped by category
-List<MenuCategory> getMenuCategories() {
+List<MenuCategory> getMenuCategories({Map<String, dynamic>? user}) {
   final categories = <String, List<MenuItem>>{};
   for (final item in menuItems) {
+    if (item.hidden || !hasPageAccess(user, item.route)) {
+      continue;
+    }
     categories.putIfAbsent(item.category, () => []).add(item);
   }
   return categories.entries

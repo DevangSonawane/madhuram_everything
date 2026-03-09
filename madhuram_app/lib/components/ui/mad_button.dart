@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
 enum ButtonVariant { primary, secondary, outline, ghost, destructive, link }
+
 enum ButtonSize { sm, md, lg, icon }
 
 /// Button component matching shadcn/ui Button
@@ -48,16 +49,22 @@ class MadButton extends StatelessWidget {
         break;
       case ButtonVariant.secondary:
         backgroundColor = isDark ? AppTheme.darkMuted : AppTheme.lightMuted;
-        foregroundColor = isDark ? AppTheme.darkForeground : AppTheme.lightForeground;
+        foregroundColor = isDark
+            ? AppTheme.darkForeground
+            : AppTheme.lightForeground;
         break;
       case ButtonVariant.outline:
         backgroundColor = Colors.transparent;
-        foregroundColor = isDark ? AppTheme.darkForeground : AppTheme.lightForeground;
+        foregroundColor = isDark
+            ? AppTheme.darkForeground
+            : AppTheme.lightForeground;
         borderColor = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
         break;
       case ButtonVariant.ghost:
         backgroundColor = Colors.transparent;
-        foregroundColor = isDark ? AppTheme.darkForeground : AppTheme.lightForeground;
+        foregroundColor = isDark
+            ? AppTheme.darkForeground
+            : AppTheme.lightForeground;
         break;
       case ButtonVariant.destructive:
         backgroundColor = const Color(0xFFEF4444);
@@ -104,13 +111,15 @@ class MadButton extends StatelessWidget {
 
     final isDisabled = disabled || loading;
 
+    final hasLabel = (text != null && text!.isNotEmpty) || child != null;
+
     Widget buttonContent = Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (loading)
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(right: hasLabel ? 8 : 0),
             child: SizedBox(
               width: iconSize,
               height: iconSize,
@@ -130,10 +139,7 @@ class MadButton extends StatelessWidget {
         else if (text != null)
           Text(
             text!,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w500,
-            ),
+            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w500),
           ),
         if (trailingIcon != null)
           Padding(
@@ -157,17 +163,25 @@ class MadButton extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: borderColor != null
-                  ? Border.all(color: isDisabled ? borderColor.withOpacity(0.5) : borderColor)
+                  ? Border.all(
+                      color: isDisabled
+                          ? borderColor.withOpacity(0.5)
+                          : borderColor,
+                    )
                   : null,
             ),
             child: DefaultTextStyle(
               style: TextStyle(
-                color: isDisabled ? foregroundColor.withOpacity(0.5) : foregroundColor,
+                color: isDisabled
+                    ? foregroundColor.withOpacity(0.5)
+                    : foregroundColor,
                 fontWeight: FontWeight.w500,
               ),
               child: IconTheme(
                 data: IconThemeData(
-                  color: isDisabled ? foregroundColor.withOpacity(0.5) : foregroundColor,
+                  color: isDisabled
+                      ? foregroundColor.withOpacity(0.5)
+                      : foregroundColor,
                 ),
                 child: buttonContent,
               ),

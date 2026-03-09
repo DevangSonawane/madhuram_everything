@@ -1096,6 +1096,7 @@ class ApiClient {
       'quantity': data['quantity'],
       'price': data['price'],
       'stockin': data['stockin'],
+      'billing': data['billing'],
     };
     final res = await _post(
       uri,
@@ -1117,10 +1118,39 @@ class ApiClient {
     if (data['quantity'] != null) payload['quantity'] = data['quantity'];
     if (data['price'] != null) payload['price'] = data['price'];
     if (data['stockin'] != null) payload['stockin'] = data['stockin'];
+    if (data['billing'] != null) payload['billing'] = data['billing'];
     final res = await _put(
       uri,
       headers: _authHeaders(token),
       body: jsonEncode(payload),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> updateInventoryStockIn(
+    String inventoryId,
+    bool stockin,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/inventory/$inventoryId/stockin');
+    final res = await _patch(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({'stockin': stockin}),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> updateInventoryBilling(
+    String inventoryId,
+    bool billing,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/inventory/$inventoryId/billing');
+    final res = await _patch(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({'billing': billing}),
     );
     return _handleResponse(res);
   }
@@ -1282,14 +1312,66 @@ class ApiClient {
   }
 
   // ============================================================================
-  // Dashboard Stats
+  // Dashboard
   // ============================================================================
-  static Future<Map<String, dynamic>> getDashboardStats(
-    String projectId,
+  static Future<Map<String, dynamic>> getDashboardStats({
+    String? projectId,
+    String? userId,
+  }) async {
+    final token = await _getToken();
+    final query = <String, String>{};
+    if (projectId != null && projectId.isNotEmpty) {
+      query['project_id'] = projectId;
+    }
+    if (userId != null && userId.isNotEmpty) {
+      query['user_id'] = userId;
+    }
+    final uri = Uri.parse(
+      '$baseUrl/api/dashboard/stats',
+    ).replace(queryParameters: query.isEmpty ? null : query);
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getDashboardActivity({
+    required String userId,
+    String? projectId,
+    String? entityType,
+    String? action,
+    int? limit,
+    int? offset,
+  }) async {
+    final token = await _getToken();
+    final query = <String, String>{'user_id': userId};
+    if (projectId != null && projectId.isNotEmpty) {
+      query['project_id'] = projectId;
+    }
+    if (entityType != null && entityType.isNotEmpty) {
+      query['entity_type'] = entityType;
+    }
+    if (action != null && action.isNotEmpty) {
+      query['action'] = action;
+    }
+    if (limit != null) {
+      query['limit'] = '$limit';
+    }
+    if (offset != null) {
+      query['offset'] = '$offset';
+    }
+
+    final uri = Uri.parse(
+      '$baseUrl/api/dashboard/activity',
+    ).replace(queryParameters: query);
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> deleteDashboardActivity(
+    String activityId,
   ) async {
     final token = await _getToken();
-    final uri = Uri.parse('$baseUrl/api/dashboard/$projectId');
-    final res = await _get(uri, headers: _authHeaders(token));
+    final uri = Uri.parse('$baseUrl/api/dashboard/activity/$activityId');
+    final res = await _delete(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
 
@@ -1334,39 +1416,155 @@ class ApiClient {
   // ============================================================================
   // Notifications
   // ============================================================================
-  /// Get all notifications for the current user
-  static Future<Map<String, dynamic>> getNotifications() async {
+  static Future<String?> getCurrentUserId() async {
+    final user = await AuthStorage.getUser();
+    return (user?['user_id'] ?? user?['id'] ?? user?['uid'])?.toString();
+  }
+
+  static String? getDashboardSocketUrl({String? userId, String? token}) {
+    const socketEnabled = bool.fromEnvironment(
+      'ENABLE_DASHBOARD_SOCKET',
+      defaultValue: false,
+    );
+    if (!socketEnabled) return null;
+    if (baseUrl.isEmpty) return null;
+
+    final apiUri = Uri.tryParse(baseUrl);
+    if (apiUri == null || apiUri.host.isEmpty) return null;
+
+    final scheme = apiUri.scheme.toLowerCase();
+    String wsScheme;
+    if (scheme == 'https') {
+      wsScheme = 'wss';
+    } else if (scheme == 'http') {
+      wsScheme = 'ws';
+    } else if (scheme == 'wss' || scheme == 'ws') {
+      wsScheme = scheme;
+    } else {
+      return null;
+    }
+
+    if (apiUri.hasPort && apiUri.port == 0) return null;
+
+    final rawPath = apiUri.path;
+    final normalizedBasePath = rawPath.isEmpty
+        ? ''
+        : rawPath.endsWith('/')
+        ? rawPath.substring(0, rawPath.length - 1)
+        : rawPath;
+
+    final uri = Uri(
+      scheme: wsScheme,
+      host: apiUri.host,
+      port: apiUri.hasPort ? apiUri.port : null,
+      path: '$normalizedBasePath/ws/activity',
+    );
+    final params = <String, String>{};
+    if (userId != null && userId.isNotEmpty) {
+      params['user_id'] = userId;
+    }
+    if (token != null && token.isNotEmpty) {
+      params['token'] = token;
+    }
+    return uri
+        .replace(queryParameters: params.isEmpty ? null : params)
+        .toString();
+  }
+
+  /// Get notifications for the current user (Dashboard module API).
+  static Future<Map<String, dynamic>> getNotifications({
+    String? userId,
+    bool? isRead,
+    int? limit,
+    int? offset,
+  }) async {
     final token = await _getToken();
-    final uri = Uri.parse('$baseUrl/api/v1/notifications');
+    final resolvedUserId = (userId != null && userId.isNotEmpty)
+        ? userId
+        : await getCurrentUserId();
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      return {
+        'success': false,
+        'error': 'User id is required to fetch notifications',
+        'status': 400,
+      };
+    }
+    final query = <String, String>{'user_id': resolvedUserId};
+    if (isRead != null) query['is_read'] = '$isRead';
+    if (limit != null) query['limit'] = '$limit';
+    if (offset != null) query['offset'] = '$offset';
+    final uri = Uri.parse(
+      '$baseUrl/api/dashboard/notifications',
+    ).replace(queryParameters: query);
     final res = await _get(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
 
-  /// Mark a notification as read
+  /// Get unread notification count for a user.
+  static Future<Map<String, dynamic>> getUnreadNotificationCount({
+    String? userId,
+  }) async {
+    final token = await _getToken();
+    final resolvedUserId = (userId != null && userId.isNotEmpty)
+        ? userId
+        : await getCurrentUserId();
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      return {
+        'success': false,
+        'error': 'User id is required to fetch unread count',
+        'status': 400,
+      };
+    }
+    final uri = Uri.parse(
+      '$baseUrl/api/dashboard/notifications/unread-count',
+    ).replace(queryParameters: {'user_id': resolvedUserId});
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  /// Mark one notification as read.
   static Future<Map<String, dynamic>> markNotificationRead(
     String notificationId,
   ) async {
     final token = await _getToken();
-    final uri = Uri.parse('$baseUrl/api/v1/notifications/$notificationId/read');
-    final res = await _patch(uri, headers: _authHeaders(token));
+    final uri = Uri.parse(
+      '$baseUrl/api/dashboard/notifications/$notificationId/read',
+    );
+    final res = await _put(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
 
-  /// Delete a notification
+  /// Delete one notification.
   static Future<Map<String, dynamic>> deleteNotification(
     String notificationId,
   ) async {
     final token = await _getToken();
-    final uri = Uri.parse('$baseUrl/api/v1/notifications/$notificationId');
+    final uri = Uri.parse(
+      '$baseUrl/api/dashboard/notifications/$notificationId',
+    );
     final res = await _delete(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
 
-  /// Mark all notifications as read
-  static Future<Map<String, dynamic>> markAllNotificationsRead() async {
+  /// Mark all notifications as read for a user.
+  static Future<Map<String, dynamic>> markAllNotificationsRead({
+    String? userId,
+  }) async {
     final token = await _getToken();
-    final uri = Uri.parse('$baseUrl/api/v1/notifications/read-all');
-    final res = await _patch(uri, headers: _authHeaders(token));
+    final resolvedUserId = (userId != null && userId.isNotEmpty)
+        ? userId
+        : await getCurrentUserId();
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      return {
+        'success': false,
+        'error': 'User id is required to mark all notifications as read',
+        'status': 400,
+      };
+    }
+    final uri = Uri.parse(
+      '$baseUrl/api/dashboard/notifications/read-all',
+    ).replace(queryParameters: {'user_id': resolvedUserId});
+    final res = await _put(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
 }

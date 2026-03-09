@@ -4,9 +4,8 @@ import 'package:flutter_redux/flutter_redux.dart';
 import '../../theme/app_theme.dart';
 import '../../store/app_state.dart';
 import '../../store/auth_actions.dart';
-import '../../store/notification_actions.dart';
 import '../../services/auth_storage.dart';
-import '../../services/api_client.dart';
+import '../../services/notification_service.dart';
 import '../../utils/responsive.dart';
 
 /// Header matching React's Header.jsx - Responsive version
@@ -47,7 +46,8 @@ class AppHeader extends StatelessWidget {
           right: responsive.value(mobile: 12, tablet: 20, desktop: 32),
         ),
         decoration: BoxDecoration(
-          color: (isDark ? AppTheme.darkBackground : AppTheme.lightBackground).withOpacity(0.8),
+          color: (isDark ? AppTheme.darkBackground : AppTheme.lightBackground)
+              .withOpacity(0.8),
         ),
         child: Row(
           children: [
@@ -57,55 +57,69 @@ class AppHeader extends StatelessWidget {
                 onPressed: onLeadingPressed ?? onMenuPressed,
                 padding: EdgeInsets.zero,
                 constraints: BoxConstraints(
-                  minWidth: responsive.value(mobile: 44, tablet: 48, desktop: 52),
-                  minHeight: responsive.value(mobile: 44, tablet: 48, desktop: 52),
+                  minWidth: responsive.value(
+                    mobile: 44,
+                    tablet: 48,
+                    desktop: 52,
+                  ),
+                  minHeight: responsive.value(
+                    mobile: 44,
+                    tablet: 48,
+                    desktop: 52,
+                  ),
                 ),
                 icon: Icon(
                   leadingIcon ?? LucideIcons.menu,
-                  color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
                   size: responsive.isMobile ? 20 : 24,
                 ),
               ),
-          
-          // Breadcrumbs (desktop and tablet only)
-          if (!responsive.isMobile) ...[
-            Expanded(
-              child: _buildBreadcrumbs(context, isDark, responsive),
-            ),
-          ],
-          
-          // Search field
-          if (responsive.isMobile)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+
+            // Breadcrumbs (desktop and tablet only)
+            if (!responsive.isMobile) ...[
+              Expanded(child: _buildBreadcrumbs(context, isDark, responsive)),
+            ],
+
+            // Search field
+            if (responsive.isMobile)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: _buildSearchField(context, isDark, responsive),
+                ),
+              )
+            else
+              SizedBox(
+                width: responsive.value(mobile: 160, tablet: 200, desktop: 240),
                 child: _buildSearchField(context, isDark, responsive),
               ),
-            )
-          else
+
             SizedBox(
-              width: responsive.value(mobile: 160, tablet: 200, desktop: 240),
-              child: _buildSearchField(context, isDark, responsive),
+              width: responsive.value(mobile: 8, tablet: 12, desktop: 16),
             ),
-          
-          SizedBox(width: responsive.value(mobile: 8, tablet: 12, desktop: 16)),
-          
-          // Notifications
-          _buildNotificationButton(context, isDark, responsive),
-          
-          SizedBox(width: responsive.value(mobile: 4, tablet: 6, desktop: 8)),
-          
-          // User avatar
-          _buildUserAvatar(context, isDark, responsive),
+
+            // Notifications
+            _buildNotificationButton(context, isDark, responsive),
+
+            SizedBox(width: responsive.value(mobile: 4, tablet: 6, desktop: 8)),
+
+            // User avatar
+            _buildUserAvatar(context, isDark, responsive),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBreadcrumbs(BuildContext context, bool isDark, Responsive responsive) {
+  Widget _buildBreadcrumbs(
+    BuildContext context,
+    bool isDark,
+    Responsive responsive,
+  ) {
     final items = breadcrumbs ?? [title];
-    
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -118,7 +132,9 @@ class AppHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize: responsive.value(mobile: 12, tablet: 13, desktop: 14),
                 fontWeight: FontWeight.w500,
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
             ),
           ),
@@ -130,16 +146,26 @@ class AppHeader extends StatelessWidget {
               child: Icon(
                 Icons.chevron_right,
                 size: responsive.value(mobile: 14, tablet: 15, desktop: 16),
-                color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withOpacity(0.4),
+                color:
+                    (isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground)
+                        .withOpacity(0.4),
               ),
             ),
             if (i == items.length - 1)
               Text(
                 items[i],
                 style: TextStyle(
-                  fontSize: responsive.value(mobile: 12, tablet: 13, desktop: 14),
+                  fontSize: responsive.value(
+                    mobile: 12,
+                    tablet: 13,
+                    desktop: 14,
+                  ),
                   fontWeight: FontWeight.w600,
-                  color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                  color: isDark
+                      ? AppTheme.darkForeground
+                      : AppTheme.lightForeground,
                 ),
               )
             else
@@ -150,9 +176,15 @@ class AppHeader extends StatelessWidget {
                 child: Text(
                   items[i],
                   style: TextStyle(
-                    fontSize: responsive.value(mobile: 12, tablet: 13, desktop: 14),
+                    fontSize: responsive.value(
+                      mobile: 12,
+                      tablet: 13,
+                      desktop: 14,
+                    ),
                     fontWeight: FontWeight.w500,
-                    color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                    color: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
                   ),
                 ),
               ),
@@ -162,25 +194,37 @@ class AppHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildSearchField(BuildContext context, bool isDark, Responsive responsive) {
+  Widget _buildSearchField(
+    BuildContext context,
+    bool isDark,
+    Responsive responsive,
+  ) {
     return Container(
       height: responsive.value(mobile: 36, tablet: 38, desktop: 40),
       decoration: BoxDecoration(
-        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(0.5),
+        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(
+          0.5,
+        ),
         borderRadius: BorderRadius.circular(20),
       ),
       child: TextField(
-        style: TextStyle(fontSize: responsive.value(mobile: 13, tablet: 13, desktop: 14)),
+        style: TextStyle(
+          fontSize: responsive.value(mobile: 13, tablet: 13, desktop: 14),
+        ),
         decoration: InputDecoration(
           hintText: responsive.isMobile ? 'Search' : 'Search...',
           hintStyle: TextStyle(
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
             fontSize: responsive.value(mobile: 13, tablet: 13, desktop: 14),
           ),
           prefixIcon: Icon(
             LucideIcons.search,
             size: responsive.value(mobile: 14, tablet: 15, desktop: 16),
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
           ),
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(
@@ -191,7 +235,11 @@ class AppHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildNotificationButton(BuildContext context, bool isDark, Responsive responsive) {
+  Widget _buildNotificationButton(
+    BuildContext context,
+    bool isDark,
+    Responsive responsive,
+  ) {
     return StoreConnector<AppState, int>(
       converter: (store) => store.state.notification.unreadCount,
       builder: (context, unreadCount) {
@@ -208,7 +256,9 @@ class AppHeader extends StatelessWidget {
               Icon(
                 LucideIcons.bell,
                 size: responsive.value(mobile: 18, tablet: 19, desktop: 20),
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
               if (unreadCount > 0)
                 Positioned(
@@ -221,7 +271,9 @@ class AppHeader extends StatelessWidget {
                       color: Colors.red,
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(
-                        color: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+                        color: isDark
+                            ? AppTheme.darkBackground
+                            : AppTheme.lightBackground,
                         width: 2,
                       ),
                     ),
@@ -234,36 +286,51 @@ class AppHeader extends StatelessWidget {
     );
   }
 
-  Widget _buildUserAvatar(BuildContext context, bool isDark, Responsive responsive) {
+  Widget _buildUserAvatar(
+    BuildContext context,
+    bool isDark,
+    Responsive responsive,
+  ) {
     return StoreConnector<AppState, AuthState>(
       converter: (store) => store.state.auth,
       builder: (context, auth) {
         final userName = auth.userName ?? 'User';
-        final initials = userName.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
-        
-        final avatarSize = responsive.value(mobile: 28.0, tablet: 30.0, desktop: 32.0);
-        
+        final initials = userName
+            .split(' ')
+            .map((e) => e.isNotEmpty ? e[0] : '')
+            .take(2)
+            .join()
+            .toUpperCase();
+
+        final avatarSize = responsive.value(
+          mobile: 28.0,
+          tablet: 30.0,
+          desktop: 32.0,
+        );
+
         return PopupMenuButton<String>(
-          offset: Offset(0, responsive.value(mobile: 40, tablet: 45, desktop: 50)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+          offset: Offset(
+            0,
+            responsive.value(mobile: 40, tablet: 45, desktop: 50),
           ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           child: Container(
             width: avatarSize,
             height: avatarSize,
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(avatarSize / 2),
-              border: Border.all(
-                color: Colors.transparent,
-                width: 2,
-              ),
+              border: Border.all(color: Colors.transparent, width: 2),
             ),
             child: Center(
               child: Text(
                 initials,
                 style: TextStyle(
-                  fontSize: responsive.value(mobile: 10, tablet: 11, desktop: 12),
+                  fontSize: responsive.value(
+                    mobile: 10,
+                    tablet: 11,
+                    desktop: 12,
+                  ),
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
                 ),
@@ -278,15 +345,15 @@ class AppHeader extends StatelessWidget {
                 children: [
                   Text(
                     userName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   Text(
                     auth.userEmail ?? '',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                   ),
                 ],
@@ -297,7 +364,13 @@ class AppHeader extends StatelessWidget {
               value: 'profile',
               child: Row(
                 children: [
-                  Icon(LucideIcons.user, size: 16, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                  Icon(
+                    LucideIcons.user,
+                    size: 16,
+                    color: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
+                  ),
                   const SizedBox(width: 8),
                   const Text('Profile'),
                 ],
@@ -307,7 +380,13 @@ class AppHeader extends StatelessWidget {
               value: 'settings',
               child: Row(
                 children: [
-                  Icon(LucideIcons.settings, size: 16, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                  Icon(
+                    LucideIcons.settings,
+                    size: 16,
+                    color: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
+                  ),
                   const SizedBox(width: 8),
                   const Text('Settings'),
                 ],
@@ -317,7 +396,13 @@ class AppHeader extends StatelessWidget {
               value: 'support',
               child: Row(
                 children: [
-                  Icon(LucideIcons.info, size: 16, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                  Icon(
+                    LucideIcons.info,
+                    size: 16,
+                    color: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
+                  ),
                   const SizedBox(width: 8),
                   const Text('Support'),
                 ],
@@ -353,12 +438,7 @@ class AppHeader extends StatelessWidget {
 
   void _showNotifications(BuildContext context) {
     final responsive = Responsive(context);
-    final store = StoreProvider.of<AppState>(context);
-
-    // If no notifications in store, load from API
-    if (store.state.notification.notifications.isEmpty) {
-      _loadNotifications(store);
-    }
+    NotificationService.instance.refreshNotifications();
 
     showModalBottomSheet(
       context: context,
@@ -376,7 +456,9 @@ class AppHeader extends StatelessWidget {
 
             return Container(
               height: responsive.isMobile ? responsive.screenHeight * 0.7 : 420,
-              padding: EdgeInsets.all(responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+              padding: EdgeInsets.all(
+                responsive.value(mobile: 16, tablet: 20, desktop: 24),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,13 +469,17 @@ class AppHeader extends StatelessWidget {
                       Text(
                         'Notifications',
                         style: TextStyle(
-                          fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                          fontSize: responsive.value(
+                            mobile: 16,
+                            tablet: 17,
+                            desktop: 18,
+                          ),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       TextButton(
-                        onPressed: () {
-                          store.dispatch(MarkAllNotificationsAsRead());
+                        onPressed: () async {
+                          await NotificationService.instance.markAllAsRead();
                         },
                         child: const Text('Mark all read'),
                       ),
@@ -408,14 +494,24 @@ class AppHeader extends StatelessWidget {
                               children: [
                                 Icon(
                                   LucideIcons.bell,
-                                  size: responsive.value(mobile: 40, tablet: 44, desktop: 48),
-                                  color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withOpacity(0.2),
+                                  size: responsive.value(
+                                    mobile: 40,
+                                    tablet: 44,
+                                    desktop: 48,
+                                  ),
+                                  color:
+                                      (isDark
+                                              ? AppTheme.darkMutedForeground
+                                              : AppTheme.lightMutedForeground)
+                                          .withOpacity(0.2),
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
                                   'No notifications',
                                   style: TextStyle(
-                                    color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                                    color: isDark
+                                        ? AppTheme.darkMutedForeground
+                                        : AppTheme.lightMutedForeground,
                                   ),
                                 ),
                               ],
@@ -425,7 +521,11 @@ class AppHeader extends StatelessWidget {
                             itemCount: notifications.length,
                             separatorBuilder: (_, __) => Divider(
                               height: 1,
-                              color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withOpacity(0.5),
+                              color:
+                                  (isDark
+                                          ? AppTheme.darkBorder
+                                          : AppTheme.lightBorder)
+                                      .withOpacity(0.5),
                             ),
                             itemBuilder: (ctx, index) {
                               final n = notifications[index];
@@ -434,7 +534,9 @@ class AppHeader extends StatelessWidget {
                                   width: 8,
                                   height: 8,
                                   decoration: BoxDecoration(
-                                    color: n.read ? Colors.transparent : AppTheme.primaryColor,
+                                    color: n.read
+                                        ? Colors.transparent
+                                        : AppTheme.primaryColor,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -442,28 +544,46 @@ class AppHeader extends StatelessWidget {
                                   n.title,
                                   style: TextStyle(
                                     fontSize: 14,
-                                    fontWeight: n.read ? FontWeight.normal : FontWeight.w600,
+                                    fontWeight: n.read
+                                        ? FontWeight.normal
+                                        : FontWeight.w600,
                                   ),
                                 ),
                                 subtitle: Text(
                                   n.message,
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                                    color: isDark
+                                        ? AppTheme.darkMutedForeground
+                                        : AppTheme.lightMutedForeground,
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                trailing: Text(
-                                  n.time,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-                                  ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      n.time,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: isDark
+                                            ? AppTheme.darkMutedForeground
+                                            : AppTheme.lightMutedForeground,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close, size: 16),
+                                      onPressed: () => NotificationService
+                                          .instance
+                                          .deleteNotification(n.id),
+                                    ),
+                                  ],
                                 ),
-                                onTap: () {
-                                  store.dispatch(MarkNotificationAsRead(n.id));
-                                },
+                                onTap: () => NotificationService.instance
+                                    .markAsRead(n.id),
+                                onLongPress: () => NotificationService.instance
+                                    .deleteNotification(n.id),
                               );
                             },
                           ),
@@ -475,47 +595,5 @@ class AppHeader extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// Load notifications from API
-  Future<void> _loadNotifications(dynamic store) async {
-    store.dispatch(FetchNotificationsStart());
-    try {
-      final result = await ApiClient.getNotifications();
-      if (result['success'] == true && result['data'] != null) {
-        final data = result['data'] as List;
-        if (data.isNotEmpty) {
-          final items = data.map((e) {
-            final map = e as Map<String, dynamic>;
-            return NotificationItem(
-              id: (map['notification_id'] ?? map['id'] ?? '').toString(),
-              title: map['title'] ?? '',
-              message: map['message'] ?? '',
-              time: _formatNotifTime(map['created_at']),
-              read: map['is_read'] == true,
-            );
-          }).toList();
-          store.dispatch(FetchNotificationsSuccess(items));
-          return;
-        }
-      }
-      store.dispatch(FetchNotificationsSuccess(const []));
-    } catch (e) {
-      debugPrint('[Notifications] API error: $e');
-      store.dispatch(FetchNotificationsSuccess(const []));
-    }
-  }
-
-  static String _formatNotifTime(dynamic createdAt) {
-    if (createdAt == null) return '';
-    try {
-      final dt = DateTime.parse(createdAt.toString());
-      final diff = DateTime.now().difference(dt);
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return '${diff.inDays}d ago';
-    } catch (_) {
-      return createdAt.toString();
-    }
   }
 }

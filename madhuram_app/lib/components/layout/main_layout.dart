@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import '../../theme/app_theme.dart';
 import '../../store/app_state.dart';
+import '../../utils/access_control.dart';
 import '../../utils/responsive.dart';
 import 'sidebar.dart';
 import 'app_header.dart';
@@ -56,6 +57,7 @@ class _MainLayoutState extends State<MainLayout> {
         isAuthenticated: store.state.auth.isAuthenticated,
         hasSelectedProject: store.state.project.selectedProject != null,
         projectName: store.state.project.selectedProjectName,
+        user: store.state.auth.user,
       ),
       builder: (context, vm) {
         // Auth check - redirect if not authenticated
@@ -66,7 +68,9 @@ class _MainLayoutState extends State<MainLayout> {
             }
           });
           return Scaffold(
-            backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+            backgroundColor: isDark
+                ? AppTheme.darkBackground
+                : AppTheme.lightBackground,
             body: const Center(child: CircularProgressIndicator()),
           );
         }
@@ -79,17 +83,55 @@ class _MainLayoutState extends State<MainLayout> {
             }
           });
           return Scaffold(
-            backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+            backgroundColor: isDark
+                ? AppTheme.darkBackground
+                : AppTheme.lightBackground,
             body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final normalizedRoute = normalizeRouteForAccess(widget.currentRoute);
+        if (!hasPageAccess(vm.user, normalizedRoute)) {
+          return Scaffold(
+            backgroundColor: isDark
+                ? AppTheme.darkBackground
+                : AppTheme.lightBackground,
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline, size: 56),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'You do not have permission to access this page.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pushReplacementNamed(context, '/profile');
+                      },
+                      child: const Text('Open Profile'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           );
         }
 
         return Scaffold(
           key: _scaffoldKey,
-          backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+          backgroundColor: isDark
+              ? AppTheme.darkBackground
+              : AppTheme.lightBackground,
           drawer: responsive.isMobile || responsive.isTablet
               ? Drawer(
-                  width: responsive.isMobile ? responsive.screenWidth * 0.85 : 288,
+                  width: responsive.isMobile
+                      ? responsive.screenWidth * 0.85
+                      : 288,
                   child: AppSidebar(
                     isCollapsed: false,
                     currentRoute: widget.currentRoute,
@@ -114,7 +156,7 @@ class _MainLayoutState extends State<MainLayout> {
                     ),
                   ],
                 ),
-              
+
               // Main content – matches React's flex-1 + overflow-y-auto layout.
               // Each page handles its own scrolling; we just provide bounded
               // height so Expanded widgets inside pages work correctly.
@@ -135,7 +177,10 @@ class _MainLayoutState extends State<MainLayout> {
                         child: Align(
                           alignment: Alignment.topCenter,
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1400, minWidth: 0),
+                            constraints: const BoxConstraints(
+                              maxWidth: 1400,
+                              minWidth: 0,
+                            ),
                             child: widget.child,
                           ),
                         ),
@@ -156,11 +201,13 @@ class _MainLayoutViewModel {
   final bool isAuthenticated;
   final bool hasSelectedProject;
   final String? projectName;
+  final Map<String, dynamic>? user;
 
   _MainLayoutViewModel({
     required this.isAuthenticated,
     required this.hasSelectedProject,
     this.projectName,
+    this.user,
   });
 }
 

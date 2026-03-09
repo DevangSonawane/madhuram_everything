@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'dart:convert';
 import '../theme/app_theme.dart';
 import '../store/app_state.dart';
+import '../store/auth_actions.dart';
 import '../store/theme_actions.dart';
 import '../services/api_client.dart';
+import '../services/auth_storage.dart';
+import '../services/access_control_store.dart';
 import '../models/user.dart';
 import '../components/ui/mad_card.dart';
 import '../components/ui/mad_button.dart';
+import '../components/ui/mad_switch.dart';
 import '../components/ui/mad_badge.dart';
 import '../components/ui/mad_input.dart';
 import '../components/ui/mad_select.dart';
 import '../components/layout/main_layout.dart';
+import '../constants/access_control_catalog.dart';
+import '../utils/access_control.dart';
 import '../utils/responsive.dart';
 
 /// Profile page - Responsive version
@@ -22,12 +29,15 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _ProfilePageState extends State<ProfilePage> {
   List<User> _users = [];
   bool _loadingUsers = false;
   String? _usersError;
+  bool _attemptedUsersLoad = false;
   final TextEditingController _userSearchController = TextEditingController();
+  String? _selectedAccessUserId;
+  bool _savingAccessControl = false;
+  Map<String, dynamic> _draftAccessControl = buildDefaultAccessControl();
   static const List<MadSelectOption<String>> _roleOptions = [
     MadSelectOption(value: 'admin', label: 'Administrator'),
     MadSelectOption(value: 'operational_manager', label: 'Operational Manager'),
@@ -38,13 +48,10 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadUsers();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _userSearchController.dispose();
     super.dispose();
   }
@@ -59,11 +66,22 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       if (!mounted) return;
       if (result['success'] == true) {
         final data = result['data'] as List;
-        final loaded = data.map((e) => User.fromJson(e)).toList();
+        final loaded = data.map((e) => User.fromJson(e)).toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+        final firstNonAdmin = loaded.cast<User?>().firstWhere(
+          (u) => u != null && u.role != 'admin',
+          orElse: () => loaded.isNotEmpty ? loaded.first : null,
+        );
         setState(() {
           _users = loaded;
           _loadingUsers = false;
+          _selectedAccessUserId ??= firstNonAdmin?.id;
         });
+        if (_selectedAccessUserId != null) {
+          await _loadAccessControlForSelectedUser();
+        }
       } else {
         setState(() {
           _users = [];
@@ -98,79 +116,115 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
+    return StoreConnector<AppState, bool>(
+      converter: (store) => store.state.auth.isAdmin,
+      builder: (context, isAdmin) {
+        if (isAdmin && !_attemptedUsersLoad) {
+          _attemptedUsersLoad = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _loadUsers();
+          });
+        }
 
-    return ProtectedRoute(
-      title: 'Profile',
-      route: '/profile',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Text(
-            'Profile & Settings',
-            style: TextStyle(
-              fontSize: responsive.value(mobile: 22, tablet: 26, desktop: 28),
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Manage your account settings and preferences',
-            style: TextStyle(
-              fontSize: responsive.value(mobile: 13, tablet: 14, desktop: 14),
-              color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-            ),
-          ),
-          SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+        final tabs = <Tab>[
+          const Tab(text: 'Profile'),
+          const Tab(text: 'Appearance'),
+        ];
+        final tabViews = <Widget>[
+          _buildProfileTab(isDark, responsive),
+          _buildAppearanceTab(isDark, responsive),
+        ];
+        if (isAdmin) {
+          tabs.add(const Tab(text: 'Users'));
+          tabs.add(const Tab(text: 'Access Control'));
+          tabViews.add(_buildUsersTab(isDark, responsive));
+          tabViews.add(_buildAccessControlTab(isDark, responsive));
+        }
 
-          // Tabs
-          Container(
-            decoration: BoxDecoration(
-              color: isDark ? AppTheme.darkMuted : AppTheme.lightMuted,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              isScrollable: responsive.isMobile,
-              indicator: BoxDecoration(
-                color: isDark ? AppTheme.darkCard : Colors.white,
-                borderRadius: BorderRadius.circular(6),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-              indicatorPadding: const EdgeInsets.all(4),
-              labelColor: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-              unselectedLabelColor: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-              dividerColor: Colors.transparent,
-              labelStyle: TextStyle(fontSize: responsive.value(mobile: 13, tablet: 14, desktop: 14)),
-              tabs: const [
-                Tab(text: 'Profile'),
-                Tab(text: 'Appearance'),
-                Tab(text: 'Users'),
-              ],
-            ),
-          ),
-          SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
-
-          // Tab content
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
+        return ProtectedRoute(
+          title: 'Profile',
+          route: '/profile',
+          child: DefaultTabController(
+            length: tabs.length,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildProfileTab(isDark, responsive),
-                _buildAppearanceTab(isDark, responsive),
-                _buildUsersTab(isDark, responsive),
+                Text(
+                  'Profile & Settings',
+                  style: TextStyle(
+                    fontSize: responsive.value(
+                      mobile: 22,
+                      tablet: 26,
+                      desktop: 28,
+                    ),
+                    fontWeight: FontWeight.bold,
+                    color: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Manage your account settings and preferences',
+                  style: TextStyle(
+                    fontSize: responsive.value(
+                      mobile: 13,
+                      tablet: 14,
+                      desktop: 14,
+                    ),
+                    color: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
+                  ),
+                ),
+                SizedBox(
+                  height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.darkMuted : AppTheme.lightMuted,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: TabBar(
+                    isScrollable: responsive.isMobile,
+                    indicator: BoxDecoration(
+                      color: isDark ? AppTheme.darkCard : Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    indicatorPadding: const EdgeInsets.all(4),
+                    labelColor: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
+                    unselectedLabelColor: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
+                    dividerColor: Colors.transparent,
+                    labelStyle: TextStyle(
+                      fontSize: responsive.value(
+                        mobile: 13,
+                        tablet: 14,
+                        desktop: 14,
+                      ),
+                    ),
+                    tabs: tabs,
+                  ),
+                ),
+                SizedBox(
+                  height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
+                ),
+                Expanded(child: TabBarView(children: tabViews)),
               ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -188,7 +242,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
             children: [
               MadCard(
                 child: Padding(
-                  padding: EdgeInsets.all(responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+                  padding: EdgeInsets.all(
+                    responsive.value(mobile: 16, tablet: 20, desktop: 24),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -198,51 +254,101 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                           children: [
                             _buildAvatar(auth, responsive),
                             const SizedBox(height: 16),
-                            _buildProfileInfo(auth, isDark, responsive, centered: true),
+                            _buildProfileInfo(
+                              auth,
+                              isDark,
+                              responsive,
+                              centered: true,
+                            ),
                           ],
                         )
                       else
                         Row(
                           children: [
                             _buildAvatar(auth, responsive),
-                            SizedBox(width: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
-                            Expanded(child: _buildProfileInfo(auth, isDark, responsive)),
+                            SizedBox(
+                              width: responsive.value(
+                                mobile: 16,
+                                tablet: 20,
+                                desktop: 24,
+                              ),
+                            ),
+                            Expanded(
+                              child: _buildProfileInfo(
+                                auth,
+                                isDark,
+                                responsive,
+                              ),
+                            ),
                           ],
                         ),
-                      SizedBox(height: responsive.value(mobile: 24, tablet: 28, desktop: 32)),
+                      SizedBox(
+                        height: responsive.value(
+                          mobile: 24,
+                          tablet: 28,
+                          desktop: 32,
+                        ),
+                      ),
                       const Divider(),
-                      SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+                      SizedBox(
+                        height: responsive.value(
+                          mobile: 16,
+                          tablet: 20,
+                          desktop: 24,
+                        ),
+                      ),
                       Text(
                         'Personal Information',
                         style: TextStyle(
-                          fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                          fontSize: responsive.value(
+                            mobile: 16,
+                            tablet: 17,
+                            desktop: 18,
+                          ),
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
                         ),
                       ),
                       const SizedBox(height: 16),
                       _buildInfoRow('Name', userName, isDark, responsive),
                       _buildInfoRow('Email', userEmail, isDark, responsive),
                       _buildInfoRow('Phone', userPhone, isDark, responsive),
-                      _buildInfoRow('Role', _getRoleName(userRole), isDark, responsive),
+                      _buildInfoRow(
+                        'Role',
+                        _getRoleName(userRole),
+                        isDark,
+                        responsive,
+                      ),
                     ],
                   ),
                 ),
               ),
-              SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+              SizedBox(
+                height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
+              ),
               // App Info section
               MadCard(
                 child: Padding(
-                  padding: EdgeInsets.all(responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+                  padding: EdgeInsets.all(
+                    responsive.value(mobile: 16, tablet: 20, desktop: 24),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'App Information',
                         style: TextStyle(
-                          fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                          fontSize: responsive.value(
+                            mobile: 16,
+                            tablet: 17,
+                            desktop: 18,
+                          ),
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -275,7 +381,13 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       ),
       child: Center(
         child: Text(
-          auth.userName?.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase() ?? 'U',
+          auth.userName
+                  ?.split(' ')
+                  .map((e) => e.isNotEmpty ? e[0] : '')
+                  .take(2)
+                  .join()
+                  .toUpperCase() ??
+              'U',
           style: TextStyle(
             fontSize: responsive.value(mobile: 22, tablet: 26, desktop: 28),
             fontWeight: FontWeight.bold,
@@ -286,9 +398,16 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildProfileInfo(AuthState auth, bool isDark, Responsive responsive, {bool centered = false}) {
+  Widget _buildProfileInfo(
+    AuthState auth,
+    bool isDark,
+    Responsive responsive, {
+    bool centered = false,
+  }) {
     return Column(
-      crossAxisAlignment: centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: centered
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         Text(
           auth.userName ?? 'User',
@@ -303,7 +422,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           auth.userEmail ?? '',
           style: TextStyle(
             fontSize: responsive.value(mobile: 13, tablet: 14, desktop: 14),
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
           ),
           textAlign: centered ? TextAlign.center : TextAlign.start,
         ),
@@ -323,27 +444,47 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         return SingleChildScrollView(
           child: MadCard(
             child: Padding(
-              padding: EdgeInsets.all(responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+              padding: EdgeInsets.all(
+                responsive.value(mobile: 16, tablet: 20, desktop: 24),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Theme',
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                      fontSize: responsive.value(
+                        mobile: 16,
+                        tablet: 17,
+                        desktop: 18,
+                      ),
                       fontWeight: FontWeight.w600,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Select your preferred theme',
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 13, tablet: 14, desktop: 14),
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      fontSize: responsive.value(
+                        mobile: 13,
+                        tablet: 14,
+                        desktop: 14,
+                      ),
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                   ),
-                  SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+                  SizedBox(
+                    height: responsive.value(
+                      mobile: 16,
+                      tablet: 20,
+                      desktop: 24,
+                    ),
+                  ),
                   // Theme options - stack on mobile
                   if (responsive.isMobile)
                     Column(
@@ -436,23 +577,39 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                   Icon(
                     LucideIcons.lock,
                     size: responsive.value(mobile: 48, tablet: 56, desktop: 64),
-                    color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withOpacity(0.3),
+                    color:
+                        (isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground)
+                            .withOpacity(0.3),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'Admin access required',
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                      fontSize: responsive.value(
+                        mobile: 16,
+                        tablet: 17,
+                        desktop: 18,
+                      ),
                       fontWeight: FontWeight.w600,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'You need admin privileges to manage users',
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 13, tablet: 14, desktop: 14),
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      fontSize: responsive.value(
+                        mobile: 13,
+                        tablet: 14,
+                        desktop: 14,
+                      ),
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -481,8 +638,14 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                   Text(
                     _usersError!,
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 14, tablet: 15, desktop: 16),
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      fontSize: responsive.value(
+                        mobile: 14,
+                        tablet: 15,
+                        desktop: 16,
+                      ),
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -507,16 +670,23 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                 Text(
                   'User Management',
                   style: TextStyle(
-                    fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                    fontSize: responsive.value(
+                      mobile: 16,
+                      tablet: 17,
+                      desktop: 18,
+                    ),
                     fontWeight: FontWeight.w600,
-                    color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                    color: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
                   ),
                 ),
                 MadButton(
                   text: responsive.isMobile ? null : 'Add User',
                   icon: LucideIcons.plus,
                   size: ButtonSize.sm,
-                  onPressed: () => _showAddUserDialog(context, isDark, responsive),
+                  onPressed: () =>
+                      _showAddUserDialog(context, isDark, responsive),
                 ),
               ],
             ),
@@ -537,10 +707,14 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                 child: _filteredUsers.isEmpty
                     ? Center(
                         child: Text(
-                          _userSearchController.text.trim().isNotEmpty ? 'No users match your search' : 'No users yet',
+                          _userSearchController.text.trim().isNotEmpty
+                              ? 'No users match your search'
+                              : 'No users yet',
                           style: TextStyle(
                             fontSize: 14,
-                            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
                           ),
                         ),
                       )
@@ -559,6 +733,451 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
+  Future<void> _loadAccessControlForSelectedUser() async {
+    final userId = _selectedAccessUserId;
+    if (userId == null || userId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _draftAccessControl = buildDefaultAccessControl();
+        });
+      }
+      return;
+    }
+
+    final selectedUser = _findUserById(userId);
+    if (selectedUser == null) return;
+
+    final resolvedUser = await AccessControlStore.resolveUserAccessControl(
+      selectedUser.toJson(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _draftAccessControl = normalizeAccessControl(
+        resolvedUser['access_control'],
+      );
+    });
+  }
+
+  Map<String, dynamic> _cloneAccessControl(Map<String, dynamic> value) {
+    return jsonDecode(jsonEncode(value)) as Map<String, dynamic>;
+  }
+
+  void _updatePageAccess(String pagePath, bool enabled) {
+    setState(() {
+      final next = _cloneAccessControl(_draftAccessControl);
+      final pages = Map<String, dynamic>.from(next['pages'] as Map);
+      final functions = Map<String, dynamic>.from(next['functions'] as Map);
+
+      pages[pagePath] = enabled;
+      if (!enabled) {
+        for (final pageDef in accessControlCatalog) {
+          if (pageDef.pagePath != pagePath) continue;
+          for (final fn in pageDef.functions) {
+            functions[fn.key] = false;
+          }
+          break;
+        }
+      }
+
+      _draftAccessControl = {'pages': pages, 'functions': functions};
+    });
+  }
+
+  void _updateFunctionAccess(
+    String functionKey,
+    bool enabled,
+    String pagePath,
+  ) {
+    setState(() {
+      final next = _cloneAccessControl(_draftAccessControl);
+      final pages = Map<String, dynamic>.from(next['pages'] as Map);
+      final functions = Map<String, dynamic>.from(next['functions'] as Map);
+
+      functions[functionKey] = enabled;
+      if (enabled) {
+        pages[pagePath] = true;
+      }
+
+      _draftAccessControl = {'pages': pages, 'functions': functions};
+    });
+  }
+
+  void _setAllAccess(bool enabled) {
+    setState(() {
+      final next = _cloneAccessControl(_draftAccessControl);
+      final pages = Map<String, dynamic>.from(next['pages'] as Map);
+      final functions = Map<String, dynamic>.from(next['functions'] as Map);
+
+      for (final page in accessControlCatalog) {
+        pages[page.pagePath] = enabled;
+        for (final fn in page.functions) {
+          functions[fn.key] = enabled;
+        }
+      }
+
+      _draftAccessControl = {'pages': pages, 'functions': functions};
+    });
+  }
+
+  Future<void> _saveAccessControl() async {
+    final userId = _selectedAccessUserId;
+    if (userId == null || userId.isEmpty) return;
+
+    final selectedUser = _findUserById(userId);
+    if (selectedUser == null) return;
+
+    if (selectedUser.role == 'admin') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Admins always have full access. Select a non-admin user.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _savingAccessControl = true);
+    await AccessControlStore.saveUserAccessControlOverride(
+      selectedUser.id,
+      normalizeAccessControl(_draftAccessControl),
+    );
+
+    if (!mounted) return;
+
+    final store = StoreProvider.of<AppState>(context);
+    final currentUser = store.state.auth.user;
+    final currentUserId = (currentUser?['user_id'] ?? currentUser?['id'] ?? '')
+        .toString();
+    if (currentUserId == selectedUser.id && currentUser != null) {
+      final updatedCurrentUser = Map<String, dynamic>.from(currentUser);
+      updatedCurrentUser['access_control'] = normalizeAccessControl(
+        _draftAccessControl,
+      );
+      store.dispatch(LoginSuccess(updatedCurrentUser));
+      await AuthStorage.setUser(updatedCurrentUser);
+    }
+
+    setState(() => _savingAccessControl = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Access settings saved for ${selectedUser.name}.'),
+      ),
+    );
+  }
+
+  Widget _buildAccessControlTab(bool isDark, Responsive responsive) {
+    final selectedUser = _findUserById(_selectedAccessUserId);
+
+    final pages = (_draftAccessControl['pages'] as Map?) ?? const {};
+    final functions = (_draftAccessControl['functions'] as Map?) ?? const {};
+    final enabledPages = pages.values.where((value) => value == true).length;
+    final enabledFunctions = functions.values
+        .where((value) => value == true)
+        .length;
+    final totalFunctions = accessControlCatalog.fold<int>(
+      0,
+      (sum, page) => sum + page.functions.length,
+    );
+
+    if (_loadingUsers) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_usersError != null) {
+      return Center(
+        child: Text(
+          _usersError!,
+          style: TextStyle(
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
+          ),
+        ),
+      );
+    }
+
+    final widgets = <Widget>[
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Access Control',
+              style: TextStyle(
+                fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
+            ),
+          ),
+          MadButton(
+            text: 'Allow all',
+            size: ButtonSize.sm,
+            variant: ButtonVariant.outline,
+            onPressed: selectedUser == null || selectedUser.role == 'admin'
+                ? null
+                : () => _setAllAccess(true),
+          ),
+          const SizedBox(width: 8),
+          MadButton(
+            text: 'Deny all',
+            size: ButtonSize.sm,
+            variant: ButtonVariant.outline,
+            onPressed: selectedUser == null || selectedUser.role == 'admin'
+                ? null
+                : () => _setAllAccess(false),
+          ),
+          const SizedBox(width: 8),
+          MadButton(
+            text: _savingAccessControl ? 'Saving...' : 'Save',
+            size: ButtonSize.sm,
+            onPressed:
+                _savingAccessControl ||
+                    selectedUser == null ||
+                    selectedUser.role == 'admin'
+                ? null
+                : _saveAccessControl,
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      MadCard(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              MadSelect<String>(
+                labelText: 'Select User',
+                value: _selectedAccessUserId,
+                searchable: true,
+                searchHint: 'Search users...',
+                options: _users
+                    .map(
+                      (user) => MadSelectOption<String>(
+                        value: user.id,
+                        label: '${user.name} (${user.role})',
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) async {
+                  if (value == null) return;
+                  setState(() => _selectedAccessUserId = value);
+                  await _loadAccessControlForSelectedUser();
+                },
+                placeholder: 'Select user',
+              ),
+              const SizedBox(height: 12),
+              if (selectedUser != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                        .withOpacity(0.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedUser.name,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        selectedUser.email,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      MadBadge(
+                        text: _getRoleName(selectedUser.role),
+                        variant: selectedUser.role == 'admin'
+                            ? BadgeVariant.default_
+                            : BadgeVariant.secondary,
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildAccessStatCard(
+                      title: 'Pages Enabled',
+                      value: '$enabledPages / ${accessControlCatalog.length}',
+                      isDark: isDark,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildAccessStatCard(
+                      title: 'Functions Enabled',
+                      value: '$enabledFunctions / $totalFunctions',
+                      isDark: isDark,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+    ];
+
+    if (selectedUser == null) {
+      widgets.add(
+        Text(
+          'Select a user from the dropdown to configure access.',
+          style: TextStyle(
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
+          ),
+        ),
+      );
+    } else if (selectedUser.role == 'admin') {
+      widgets.add(
+        Text(
+          'Admin users always have full access.',
+          style: TextStyle(
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
+          ),
+        ),
+      );
+    } else {
+      for (final page in accessControlCatalog) {
+        final pageEnabled = pages[page.pagePath] == true;
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: MadCard(
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                title: Text(page.pageTitle),
+                subtitle: Text(
+                  '${page.category} • ${page.description}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
+                  ),
+                ),
+                childrenPadding: const EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: 12,
+                ),
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                          .withOpacity(0.4),
+                    ),
+                    child: MadSwitch(
+                      value: pageEnabled,
+                      onChanged: (value) =>
+                          _updatePageAccess(page.pagePath, value),
+                      label: 'Page Access',
+                      description:
+                          'Allow this page in sidebar and direct route.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final fn in page.functions) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color:
+                              (isDark
+                                      ? AppTheme.darkBorder
+                                      : AppTheme.lightBorder)
+                                  .withOpacity(0.5),
+                        ),
+                      ),
+                      child: MadSwitch(
+                        value: functions[fn.key] == true,
+                        onChanged: (value) =>
+                            _updateFunctionAccess(fn.key, value, page.pagePath),
+                        label: fn.label,
+                        description: fn.description,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return ListView(children: widgets);
+  }
+
+  Widget _buildAccessStatCard({
+    required String title,
+    required String value,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+              .withOpacity(0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  User? _findUserById(String? userId) {
+    if (userId == null || userId.isEmpty) return null;
+    for (final user in _users) {
+      if (user.id == userId) return user;
+    }
+    return null;
+  }
+
   Widget _buildUserListTile(User user, bool isDark, Responsive responsive) {
     if (responsive.isMobile) {
       // Card-style on mobile
@@ -567,7 +1186,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withOpacity(0.5),
+              color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+                  .withOpacity(0.5),
             ),
           ),
         ),
@@ -600,7 +1220,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                     user.email,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
@@ -610,7 +1232,11 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                       user.username!,
                       style: TextStyle(
                         fontSize: 11,
-                        color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withOpacity(0.8),
+                        color:
+                            (isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground)
+                                .withOpacity(0.8),
                       ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
@@ -626,8 +1252,10 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, size: 18),
               onSelected: (value) {
-                if (value == 'edit') _showEditUserDialog(context, user, isDark, responsive);
-                else if (value == 'delete') _showDeleteUserDialog(context, user);
+                if (value == 'edit')
+                  _showEditUserDialog(context, user, isDark, responsive);
+                else if (value == 'delete')
+                  _showDeleteUserDialog(context, user);
               },
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'edit', child: Text('Edit')),
@@ -655,7 +1283,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       ),
       title: Text(user.name, overflow: TextOverflow.ellipsis, maxLines: 1),
       subtitle: Text(
-        user.username != null && user.username!.isNotEmpty ? '${user.username} · ${user.email}' : user.email,
+        user.username != null && user.username!.isNotEmpty
+            ? '${user.username} · ${user.email}'
+            : user.email,
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
       ),
@@ -670,8 +1300,10 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 18),
             onSelected: (value) {
-              if (value == 'edit') _showEditUserDialog(context, user, isDark, responsive);
-              else if (value == 'delete') _showDeleteUserDialog(context, user);
+              if (value == 'edit')
+                _showEditUserDialog(context, user, isDark, responsive);
+              else if (value == 'delete')
+                _showDeleteUserDialog(context, user);
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'edit', child: Text('Edit')),
@@ -686,7 +1318,12 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildInfoRow(String label, String value, bool isDark, Responsive responsive) {
+  Widget _buildInfoRow(
+    String label,
+    String value,
+    bool isDark,
+    Responsive responsive,
+  ) {
     if (responsive.isMobile) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
@@ -697,7 +1334,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
               label,
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
             ),
             const SizedBox(height: 4),
@@ -721,7 +1360,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
             child: Text(
               label,
               style: TextStyle(
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
             ),
           ),
@@ -749,7 +1390,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.all(responsive.value(mobile: 12, tablet: 14, desktop: 16)),
+        padding: EdgeInsets.all(
+          responsive.value(mobile: 12, tablet: 14, desktop: 16),
+        ),
         decoration: BoxDecoration(
           color: isSelected
               ? AppTheme.primaryColor.withOpacity(0.1)
@@ -768,16 +1411,22 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                     size: 24,
                     color: isSelected
                         ? AppTheme.primaryColor
-                        : (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        : (isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground),
                   ),
                   const SizedBox(width: 12),
                   Text(
                     label,
                     style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
                       color: isSelected
                           ? AppTheme.primaryColor
-                          : (isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                          : (isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground),
                     ),
                   ),
                   const Spacer(),
@@ -796,16 +1445,22 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                     size: responsive.value(mobile: 24, tablet: 28, desktop: 32),
                     color: isSelected
                         ? AppTheme.primaryColor
-                        : (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        : (isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     label,
                     style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
                       color: isSelected
                           ? AppTheme.primaryColor
-                          : (isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                          : (isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground),
                     ),
                   ),
                 ],
@@ -836,7 +1491,11 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     }
   }
 
-  void _showAddUserDialog(BuildContext context, bool isDark, Responsive responsive) {
+  void _showAddUserDialog(
+    BuildContext context,
+    bool isDark,
+    Responsive responsive,
+  ) {
     if (responsive.isMobile) {
       showModalBottomSheet(
         context: context,
@@ -845,7 +1504,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         builder: (ctx) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
           child: SafeArea(
             child: _AddUserForm(
               roleOptions: _roleOptions,
@@ -879,7 +1540,12 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     }
   }
 
-  void _showEditUserDialog(BuildContext context, User user, bool isDark, Responsive responsive) {
+  void _showEditUserDialog(
+    BuildContext context,
+    User user,
+    bool isDark,
+    Responsive responsive,
+  ) {
     if (responsive.isMobile) {
       showModalBottomSheet(
         context: context,
@@ -888,7 +1554,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
         builder: (ctx) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
           child: SafeArea(
             child: _EditUserForm(
               user: user,
@@ -947,7 +1615,11 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                 _loadUsers();
               } else {
                 messenger.showSnackBar(
-                  SnackBar(content: Text(result['message']?.toString() ?? 'Failed to delete user')),
+                  SnackBar(
+                    content: Text(
+                      result['message']?.toString() ?? 'Failed to delete user',
+                    ),
+                  ),
                 );
               }
             },
@@ -1002,7 +1674,11 @@ class _AddUserFormState extends State<_AddUserForm> {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text;
 
-    if (name.isEmpty || username.isEmpty || email.isEmpty || phone.isEmpty || password.isEmpty) {
+    if (name.isEmpty ||
+        username.isEmpty ||
+        email.isEmpty ||
+        phone.isEmpty ||
+        password.isEmpty) {
       setState(() => _errorText = 'Please fill all required fields');
       return;
     }
@@ -1023,7 +1699,10 @@ class _AddUserFormState extends State<_AddUserForm> {
     if (result['success'] == true) {
       widget.onSuccess();
     } else {
-      setState(() => _errorText = result['message']?.toString() ?? 'Failed to add user');
+      setState(
+        () =>
+            _errorText = result['message']?.toString() ?? 'Failed to add user',
+      );
     }
   }
 
@@ -1137,9 +1816,13 @@ class _EditUserFormState extends State<_EditUserForm> {
   @override
   void initState() {
     super.initState();
-    _usernameController = TextEditingController(text: widget.user.username ?? widget.user.name);
+    _usernameController = TextEditingController(
+      text: widget.user.username ?? widget.user.name,
+    );
     _emailController = TextEditingController(text: widget.user.email);
-    _phoneController = TextEditingController(text: widget.user.phoneNumber ?? '');
+    _phoneController = TextEditingController(
+      text: widget.user.phoneNumber ?? '',
+    );
     _projectListController = TextEditingController(
       text: widget.user.projectList?.join(', ') ?? '',
     );
@@ -1162,7 +1845,11 @@ class _EditUserFormState extends State<_EditUserForm> {
     final projectListStr = _projectListController.text.trim();
     final projectList = projectListStr.isEmpty
         ? <String>[]
-        : projectListStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        : projectListStr
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
 
     if (username.isEmpty || email.isEmpty) {
       setState(() => _errorText = 'Username and email are required');
@@ -1184,7 +1871,10 @@ class _EditUserFormState extends State<_EditUserForm> {
     if (result['success'] == true) {
       widget.onSuccess();
     } else {
-      setState(() => _errorText = result['message']?.toString() ?? 'Failed to update user');
+      setState(
+        () => _errorText =
+            result['message']?.toString() ?? 'Failed to update user',
+      );
     }
   }
 

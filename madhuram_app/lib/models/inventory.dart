@@ -6,6 +6,7 @@ class InventoryItem {
   final double quantity;
   final double price;
   final bool stockIn;
+  final bool billing;
 
   const InventoryItem({
     required this.id,
@@ -15,6 +16,7 @@ class InventoryItem {
     required this.quantity,
     required this.price,
     required this.stockIn,
+    required this.billing,
   });
 
   double get value => quantity * price;
@@ -34,6 +36,7 @@ class InventoryItem {
           ? (json['price'] as num).toDouble()
           : double.tryParse(json['price']?.toString() ?? '') ?? 0.0,
       stockIn: json['stockin'] == true || json['stockin']?.toString() == 'true',
+      billing: json['billing'] == true || json['billing']?.toString() == 'true',
     );
   }
 
@@ -46,6 +49,7 @@ class InventoryItem {
       'quantity': quantity,
       'price': price,
       'stockin': stockIn,
+      'billing': billing,
     };
   }
 }
