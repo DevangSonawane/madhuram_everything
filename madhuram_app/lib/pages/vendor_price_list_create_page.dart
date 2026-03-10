@@ -25,13 +25,11 @@ class VendorPriceListCreatePage extends StatefulWidget {
 }
 
 class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
-  static const List<String> _statusValues = ['active', 'inactive', 'archived'];
+  static const double _mmPerInch = 25.4;
 
-  final TextEditingController _versionNameController = TextEditingController();
   final TextEditingController _filenameController = TextEditingController();
   final TextEditingController _filePathController = TextEditingController();
 
-  String _status = 'active';
   bool _uploading = false;
   bool _creating = false;
   File? _selectedFile;
@@ -46,6 +44,7 @@ class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
     'product_name': '',
     'size_inch': '',
     'size_mm': '',
+    'size_unit': 'inch',
     'price_per_pic': '',
     'discount_price': '',
     'net_price': '',
@@ -53,15 +52,20 @@ class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
 
   @override
   void dispose() {
-    _versionNameController.dispose();
     _filenameController.dispose();
     _filePathController.dispose();
     super.dispose();
   }
 
-  String _toTitle(String value) {
-    if (value.isEmpty) return value;
-    return value[0].toUpperCase() + value.substring(1).toLowerCase();
+  String _buildAutoVersionName() {
+    final now = DateTime.now();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final ss = now.second.toString().padLeft(2, '0');
+    return 'vendor-${widget.vendorId}-$y$m$d-$hh$mm$ss';
   }
 
   String? _resolveFilePath(Map<String, dynamic>? data) {
@@ -152,25 +156,84 @@ class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
     });
   }
 
-  Future<void> _createPriceList() async {
-    final versionName = _versionNameController.text.trim();
-    if (versionName.isEmpty) {
-      showToast(
-        context,
-        'Version Name is required',
-        variant: ToastVariant.error,
-      );
+  String _formatSizeValue(double value) {
+    final fixed = value.toStringAsFixed(4);
+    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  String _inferUnit(Map<String, String> row) {
+    final explicit = (row['size_unit'] ?? '').toLowerCase();
+    if (explicit == 'inch' || explicit == 'mm') return explicit;
+    final sizeMm = (row['size_mm'] ?? '').trim();
+    final sizeInch = (row['size_inch'] ?? '').trim();
+    if (sizeMm.isNotEmpty && sizeInch.isEmpty) return 'mm';
+    return 'inch';
+  }
+
+  String _sizeValueForUnit(Map<String, String> row, String unit) {
+    return unit == 'mm' ? (row['size_mm'] ?? '') : (row['size_inch'] ?? '');
+  }
+
+  void _onSizeValueChanged(int index, String unit, String rawValue) {
+    _updateItem(index, 'size_unit', unit);
+    if (rawValue.isEmpty) {
+      _updateItem(index, 'size_inch', '');
+      _updateItem(index, 'size_mm', '');
       return;
     }
 
+    final parsed = double.tryParse(rawValue);
+    if (parsed == null) {
+      if (unit == 'inch') {
+        _updateItem(index, 'size_inch', rawValue);
+        _updateItem(index, 'size_mm', '');
+      } else {
+        _updateItem(index, 'size_mm', rawValue);
+        _updateItem(index, 'size_inch', '');
+      }
+      return;
+    }
+
+    if (unit == 'inch') {
+      _updateItem(index, 'size_inch', rawValue);
+      _updateItem(index, 'size_mm', _formatSizeValue(parsed * _mmPerInch));
+    } else {
+      _updateItem(index, 'size_mm', rawValue);
+      _updateItem(index, 'size_inch', _formatSizeValue(parsed / _mmPerInch));
+    }
+  }
+
+  void _onSizeUnitChanged(int index, String nextUnit) {
+    final row = _items[index];
+    final currentUnit = _inferUnit(row);
+    final currentValue = _sizeValueForUnit(row, currentUnit);
+    final parsed = double.tryParse(currentValue);
+
+    _updateItem(index, 'size_unit', nextUnit);
+
+    if (currentValue.isEmpty || parsed == null || currentUnit == nextUnit) {
+      return;
+    }
+
+    if (currentUnit == 'inch' && nextUnit == 'mm') {
+      _updateItem(index, 'size_mm', _formatSizeValue(parsed * _mmPerInch));
+      _updateItem(index, 'size_inch', _formatSizeValue(parsed));
+    } else if (currentUnit == 'mm' && nextUnit == 'inch') {
+      _updateItem(index, 'size_inch', _formatSizeValue(parsed / _mmPerInch));
+      _updateItem(index, 'size_mm', _formatSizeValue(parsed));
+    }
+  }
+
+  Future<void> _createPriceList() async {
     setState(() {
       _creating = true;
     });
 
+    final versionName = _buildAutoVersionName();
     final payload = <String, dynamic>{
       'vendor_id': int.tryParse(widget.vendorId) ?? widget.vendorId,
       'version_name': versionName,
-      'status': _status,
+      'status': 'active',
       if (_filenameController.text.trim().isNotEmpty)
         'filename': _filenameController.text.trim(),
       if (_filePathController.text.trim().isNotEmpty)
@@ -236,6 +299,71 @@ class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
       );
     }
 
+    Widget sizeField() {
+      final unit = _inferUnit(row);
+      final value = _sizeValueForUnit(row, unit);
+
+      return SizedBox(
+        width: 300,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Size',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey('item-$index-size-value-$unit'),
+                    initialValue: value,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (next) => _onSizeValueChanged(index, unit, next),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: 'Enter size',
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 96,
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey('item-$index-size-unit-$unit'),
+                    initialValue: unit,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'inch', child: Text('Inch')),
+                      DropdownMenuItem(value: 'mm', child: Text('MM')),
+                    ],
+                    onChanged: (next) {
+                      if (next == null) return;
+                      _onSizeUnitChanged(index, next);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -279,8 +407,7 @@ class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
                 field('category', 'Category'),
                 field('item_code', 'Item Code'),
                 field('hsn_code', 'HSN Code'),
-                field('size_inch', 'Size (Inch)'),
-                field('size_mm', 'Size (MM)'),
+                sizeField(),
                 field(
                   'price_per_pic',
                   'Price Per Piece',
@@ -346,64 +473,6 @@ class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  MadCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 10,
-                        children: [
-                          SizedBox(
-                            width: 240,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Vendor ID',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(widget.vendorId),
-                              ],
-                            ),
-                          ),
-                          SizedBox(
-                            width: 320,
-                            child: MadInput(
-                              labelText: 'Version Name *',
-                              controller: _versionNameController,
-                            ),
-                          ),
-                          SizedBox(
-                            width: 200,
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _status,
-                              decoration: const InputDecoration(
-                                labelText: 'Status',
-                              ),
-                              items: _statusValues
-                                  .map(
-                                    (status) => DropdownMenuItem<String>(
-                                      value: status,
-                                      child: Text(_toTitle(status)),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  _status = value ?? 'active';
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   MadCard(
                     child: Padding(
                       padding: const EdgeInsets.all(14),

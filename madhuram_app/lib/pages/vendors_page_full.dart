@@ -793,14 +793,9 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
     );
   }
 
-  Widget _buildHeaderCell(
-    String text, {
-    double? width,
-    Alignment alignment = Alignment.centerLeft,
-  }) {
+  Widget _buildHeaderCell(String text, {Alignment alignment = Alignment.centerLeft}) {
     return Container(
       alignment: alignment,
-      width: width,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: Text(
         text,
@@ -809,17 +804,16 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
     );
   }
 
-  Widget _buildBodyCell(
-    Widget child, {
-    double? width,
-    Alignment alignment = Alignment.centerLeft,
-  }) {
+  Widget _buildBodyCell(Widget child, {Alignment alignment = Alignment.centerLeft}) {
     return Container(
       alignment: alignment,
-      width: width,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: child,
     );
+  }
+
+  Widget _buildTableCell({required int flex, required Widget child}) {
+    return Expanded(flex: flex, child: child);
   }
 
   Widget _buildVendorRow(Vendor vendor, bool isDark) {
@@ -834,209 +828,219 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildBodyCell(
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        vendor.name.isEmpty ? '-' : vendor.name,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+          _buildTableCell(
+            flex: 32,
+            child: _buildBodyCell(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          vendor.name.isEmpty ? '-' : vendor.name,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          (vendor.companyName == null ||
+                                  vendor.companyName!.isEmpty)
+                              ? '-'
+                              : vendor.companyName!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildStatusBadge(vendor),
+                ],
+              ),
+            ),
+          ),
+          _buildTableCell(
+            flex: 14,
+            child: _buildBodyCell(
+              Text(
+                vendor.projectId?.isNotEmpty == true
+                    ? 'Project ${vendor.projectId}'
+                    : '-',
+              ),
+            ),
+          ),
+          _buildTableCell(
+            flex: 24,
+            child: _buildBodyCell(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        LucideIcons.mail,
+                        size: 12,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        (vendor.companyName == null ||
-                                vendor.companyName!.isEmpty)
-                            ? '-'
-                            : vendor.companyName!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? AppTheme.darkMutedForeground
-                              : AppTheme.lightMutedForeground,
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          vendor.email?.isNotEmpty == true ? vendor.email! : '-',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                _buildStatusBadge(vendor),
-              ],
-            ),
-            width: 300,
-          ),
-          _buildBodyCell(
-            Text(
-              vendor.projectId?.isNotEmpty == true
-                  ? 'Project ${vendor.projectId}'
-                  : '-',
-            ),
-            width: 130,
-          ),
-          _buildBodyCell(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      LucideIcons.mail,
-                      size: 12,
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        vendor.email?.isNotEmpty == true ? vendor.email! : '-',
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? AppTheme.darkMutedForeground
-                              : AppTheme.lightMutedForeground,
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        LucideIcons.phone,
+                        size: 12,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          vendor.phone?.isNotEmpty == true ? vendor.phone! : '-',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(
-                      LucideIcons.phone,
-                      size: 12,
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        vendor.phone?.isNotEmpty == true ? vendor.phone! : '-',
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? AppTheme.darkMutedForeground
-                              : AppTheme.lightMutedForeground,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-            width: 250,
           ),
-          _buildBodyCell(
-            Row(
-              children: [
-                Icon(
-                  LucideIcons.mapPin,
-                  size: 14,
-                  color: isDark
-                      ? AppTheme.darkMutedForeground
-                      : AppTheme.lightMutedForeground,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    vendor.location?.isNotEmpty == true
-                        ? vendor.location!
-                        : '-',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
+          _buildTableCell(
+            flex: 18,
+            child: _buildBodyCell(
+              Row(
+                children: [
+                  Icon(
+                    LucideIcons.mapPin,
+                    size: 14,
+                    color: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      vendor.location?.isNotEmpty == true
+                          ? vendor.location!
+                          : '-',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            width: 180,
           ),
-          _buildBodyCell(
-            LayoutBuilder(
-              builder: (context, constraints) {
-                // Four icon buttons need ~160px. Fallback to menu if tighter.
-                if (constraints.maxWidth < 160) {
-                  return Align(
-                    alignment: Alignment.centerRight,
-                    child: MadDropdownMenuButton(
-                      items: [
-                        MadMenuItem(
-                          label: 'Price Lists',
-                          icon: LucideIcons.fileText,
-                          onTap: () => _openVendorPriceLists(vendor),
-                        ),
-                        MadMenuItem(
-                          label: 'View Latest',
-                          icon: LucideIcons.eye,
-                          onTap: () =>
-                              _openVendorPriceLists(vendor, openLatest: true),
-                        ),
-                        MadMenuItem(
-                          label: 'Edit',
-                          icon: LucideIcons.pencil,
-                          onTap: () => _openVendorDialog(vendor: vendor),
-                        ),
-                        MadMenuItem(
-                          label: 'Delete',
-                          icon: LucideIcons.trash2,
-                          destructive: true,
-                          onTap: () => _openDeleteDialog(vendor),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+          _buildTableCell(
+            flex: 18,
+            child: _buildBodyCell(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Four icon buttons need ~160px. Fallback to menu if tighter.
+                  if (constraints.maxWidth < 160) {
+                    return Align(
+                      alignment: Alignment.centerRight,
+                      child: MadDropdownMenuButton(
+                        items: [
+                          MadMenuItem(
+                            label: 'Price Lists',
+                            icon: LucideIcons.fileText,
+                            onTap: () => _openVendorPriceLists(vendor),
+                          ),
+                          MadMenuItem(
+                            label: 'View Latest',
+                            icon: LucideIcons.eye,
+                            onTap: () =>
+                                _openVendorPriceLists(vendor, openLatest: true),
+                          ),
+                          MadMenuItem(
+                            label: 'Edit',
+                            icon: LucideIcons.pencil,
+                            onTap: () => _openVendorDialog(vendor: vendor),
+                          ),
+                          MadMenuItem(
+                            label: 'Delete',
+                            icon: LucideIcons.trash2,
+                            destructive: true,
+                            onTap: () => _openDeleteDialog(vendor),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
 
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    MadButton(
-                      variant: ButtonVariant.ghost,
-                      size: ButtonSize.icon,
-                      icon: LucideIcons.fileText,
-                      onPressed: () => _openVendorPriceLists(vendor),
-                    ),
-                    MadButton(
-                      variant: ButtonVariant.ghost,
-                      size: ButtonSize.icon,
-                      icon: LucideIcons.eye,
-                      onPressed: () =>
-                          _openVendorPriceLists(vendor, openLatest: true),
-                    ),
-                    MadButton(
-                      variant: ButtonVariant.ghost,
-                      size: ButtonSize.icon,
-                      icon: LucideIcons.pencil,
-                      onPressed: () => _openVendorDialog(vendor: vendor),
-                    ),
-                    const SizedBox(width: 4),
-                    MadButton(
-                      variant: ButtonVariant.ghost,
-                      size: ButtonSize.icon,
-                      icon: LucideIcons.trash2,
-                      onPressed: () => _openDeleteDialog(vendor),
-                    ),
-                  ],
-                );
-              },
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      MadButton(
+                        variant: ButtonVariant.ghost,
+                        size: ButtonSize.icon,
+                        icon: LucideIcons.fileText,
+                        onPressed: () => _openVendorPriceLists(vendor),
+                      ),
+                      MadButton(
+                        variant: ButtonVariant.ghost,
+                        size: ButtonSize.icon,
+                        icon: LucideIcons.eye,
+                        onPressed: () =>
+                            _openVendorPriceLists(vendor, openLatest: true),
+                      ),
+                      MadButton(
+                        variant: ButtonVariant.ghost,
+                        size: ButtonSize.icon,
+                        icon: LucideIcons.pencil,
+                        onPressed: () => _openVendorDialog(vendor: vendor),
+                      ),
+                      const SizedBox(width: 4),
+                      MadButton(
+                        variant: ButtonVariant.ghost,
+                        size: ButtonSize.icon,
+                        icon: LucideIcons.trash2,
+                        onPressed: () => _openDeleteDialog(vendor),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              alignment: Alignment.centerRight,
             ),
-            width: 180,
-            alignment: Alignment.centerRight,
           ),
         ],
       ),
@@ -1065,14 +1069,28 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
             ),
             child: Row(
               children: [
-                _buildHeaderCell('Vendor', width: 300),
-                _buildHeaderCell('Project', width: 130),
-                _buildHeaderCell('Contact', width: 250),
-                _buildHeaderCell('Location', width: 180),
-                _buildHeaderCell(
-                  'Action',
-                  width: 180,
-                  alignment: Alignment.centerRight,
+                _buildTableCell(
+                  flex: 32,
+                  child: _buildHeaderCell('Vendor'),
+                ),
+                _buildTableCell(
+                  flex: 14,
+                  child: _buildHeaderCell('Project'),
+                ),
+                _buildTableCell(
+                  flex: 24,
+                  child: _buildHeaderCell('Contact'),
+                ),
+                _buildTableCell(
+                  flex: 18,
+                  child: _buildHeaderCell('Location'),
+                ),
+                _buildTableCell(
+                  flex: 18,
+                  child: _buildHeaderCell(
+                    'Action',
+                    alignment: Alignment.centerRight,
+                  ),
                 ),
               ],
             ),
@@ -1124,6 +1142,192 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCompactVendorCard(Vendor vendor, bool isDark) {
+    final mutedColor = isDark
+        ? AppTheme.darkMutedForeground
+        : AppTheme.lightMutedForeground;
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vendor.name.isEmpty ? '-' : vendor.name,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      (vendor.companyName == null || vendor.companyName!.isEmpty)
+                          ? '-'
+                          : vendor.companyName!,
+                      style: TextStyle(fontSize: 12, color: mutedColor),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              _buildStatusBadge(vendor),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            vendor.projectId?.isNotEmpty == true
+                ? 'Project ${vendor.projectId}'
+                : 'No project linked',
+            style: TextStyle(fontSize: 12, color: mutedColor),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(LucideIcons.mail, size: 14, color: mutedColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  vendor.email?.isNotEmpty == true ? vendor.email! : '-',
+                  style: TextStyle(fontSize: 13, color: mutedColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(LucideIcons.phone, size: 14, color: mutedColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  vendor.phone?.isNotEmpty == true ? vendor.phone! : '-',
+                  style: TextStyle(fontSize: 13, color: mutedColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(LucideIcons.mapPin, size: 14, color: mutedColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  vendor.location?.isNotEmpty == true ? vendor.location! : '-',
+                  style: TextStyle(fontSize: 13, color: mutedColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              MadButton(
+                text: 'Price Lists',
+                size: ButtonSize.sm,
+                variant: ButtonVariant.outline,
+                icon: LucideIcons.fileText,
+                onPressed: () => _openVendorPriceLists(vendor),
+              ),
+              MadButton(
+                text: 'View Latest',
+                size: ButtonSize.sm,
+                variant: ButtonVariant.outline,
+                icon: LucideIcons.eye,
+                onPressed: () => _openVendorPriceLists(vendor, openLatest: true),
+              ),
+              MadDropdownMenuButton(
+                items: [
+                  MadMenuItem(
+                    label: 'Edit',
+                    icon: LucideIcons.pencil,
+                    onTap: () => _openVendorDialog(vendor: vendor),
+                  ),
+                  MadMenuItem(
+                    label: 'Delete',
+                    icon: LucideIcons.trash2,
+                    destructive: true,
+                    onTap: () => _openDeleteDialog(vendor),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactDirectory(bool isDark) {
+    final filtered = _filteredVendors;
+
+    if (_isLoading) {
+      return Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Loading vendors...',
+              style: TextStyle(
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Text(
+          _error ?? 'No vendors found for current filters.',
+          style: TextStyle(
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return ListView.separated(
+      itemCount: filtered.length,
+      itemBuilder: (context, index) =>
+          _buildCompactVendorCard(filtered[index], isDark),
+      separatorBuilder: (_, index) => const SizedBox(height: 10),
     );
   }
 
@@ -1227,20 +1431,17 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
               ],
             ),
             const SizedBox(height: 14),
-            if (fillHeight)
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(width: 1080, child: _buildTable(isDark)),
-                ),
+            if (responsive.isMobile || responsive.isTablet)
+              SizedBox(
+                height: responsive.isMobile ? 520 : 560,
+                child: _buildCompactDirectory(isDark),
               )
+            else if (fillHeight)
+              Expanded(child: _buildTable(isDark))
             else
               SizedBox(
-                height: responsive.isMobile ? 420 : 500,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(width: 1080, child: _buildTable(isDark)),
-                ),
+                height: 500,
+                child: _buildTable(isDark),
               ),
           ],
         ),

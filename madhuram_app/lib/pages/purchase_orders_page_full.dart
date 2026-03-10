@@ -2239,18 +2239,30 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   final _deliveryTerms = TextEditingController();
   final _paymentTerms = TextEditingController();
   final _notes = TextEditingController();
+  final _subtotalAmount = TextEditingController();
   final _discountPercent = TextEditingController();
+  final _discountAmount = TextEditingController();
+  final _afterDiscountAmount = TextEditingController();
   final _cgstPercent = TextEditingController();
+  final _cgstAmount = TextEditingController();
   final _sgstPercent = TextEditingController();
+  final _sgstAmount = TextEditingController();
+  final _totalAmount = TextEditingController();
 
   List<Map<String, dynamic>> _items = [];
   static int _itemId = 0;
   bool _isSubmitting = false;
   bool _isHydratingEditData = false;
+  bool _isRecalculating = false;
 
   @override
   void initState() {
     super.initState();
+    _discountPercent.addListener(_onDiscountPercentChanged);
+    _cgstPercent.addListener(_onCgstPercentChanged);
+    _cgstAmount.addListener(_onCgstAmountChanged);
+    _sgstPercent.addListener(_onSgstPercentChanged);
+    _sgstAmount.addListener(_onSgstAmountChanged);
     if (widget.initialPoData != null) {
       _applyFormData(widget.initialPoData!);
     } else {
@@ -2275,6 +2287,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   }
 
   void _applyFormData(Map<String, dynamic> data) {
+    _isRecalculating = true;
     _companyName.text = data['companyName']?.toString() ?? '';
     _companySubtitle.text = data['companySubtitle']?.toString() ?? '';
     _companyEmail.text = data['companyEmail']?.toString() ?? '';
@@ -2318,12 +2331,18 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     final disc = data['discount'] as Map<String, dynamic>?;
     if (disc != null) {
       _discountPercent.text = disc['percent']?.toString() ?? '';
+      _discountAmount.text = disc['amount']?.toString() ?? '';
     }
+    _afterDiscountAmount.text = data['afterDiscountAmount']?.toString() ?? '';
     final tax = data['taxes'] as Map<String, dynamic>?;
     if (tax != null) {
       _cgstPercent.text = (tax['cgst'] as Map?)?['percent']?.toString() ?? '';
+      _cgstAmount.text = (tax['cgst'] as Map?)?['amount']?.toString() ?? '';
       _sgstPercent.text = (tax['sgst'] as Map?)?['percent']?.toString() ?? '';
+      _sgstAmount.text = (tax['sgst'] as Map?)?['amount']?.toString() ?? '';
     }
+    _totalAmount.text =
+        (data['totalAmount'] ?? data['total_amount'])?.toString() ?? '';
     final list = data['items'] as List<dynamic>?;
     setState(() {
       _items = (list ?? const []).map((e) {
@@ -2342,6 +2361,8 @@ class _ManualPOFormState extends State<_ManualPOForm> {
         };
       }).toList();
     });
+    _isRecalculating = false;
+    _recalculateTotals();
   }
 
   Future<void> _hydrateEditData() async {
@@ -2417,9 +2438,15 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     _deliveryTerms.dispose();
     _paymentTerms.dispose();
     _notes.dispose();
+    _subtotalAmount.dispose();
     _discountPercent.dispose();
+    _discountAmount.dispose();
+    _afterDiscountAmount.dispose();
     _cgstPercent.dispose();
+    _cgstAmount.dispose();
     _sgstPercent.dispose();
+    _sgstAmount.dispose();
+    _totalAmount.dispose();
     super.dispose();
   }
 
@@ -2431,6 +2458,165 @@ class _ManualPOFormState extends State<_ManualPOForm> {
       lastDate: DateTime(2030),
     );
     if (date != null) c.text = DateFormat('yyyy-MM-dd').format(date);
+  }
+
+  double? _parseValue(String raw) {
+    final normalized = raw.replaceAll(',', '').trim();
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
+
+  String _formatCalc(num value) {
+    final rounded = (value * 100).roundToDouble() / 100;
+    return rounded
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'\.00$'), '')
+        .replaceFirst(RegExp(r'(\.\d)0$'), r'$1');
+  }
+
+  void _setControllerText(TextEditingController c, String value) {
+    if (c.text == value) return;
+    c.text = value;
+  }
+
+  void _onDiscountPercentChanged() {
+    if (_isRecalculating) return;
+    _recalculateTotals(discountMode: 'percent');
+  }
+
+  void _onCgstPercentChanged() {
+    if (_isRecalculating) return;
+    _recalculateTotals(cgstMode: 'percent');
+  }
+
+  void _onCgstAmountChanged() {
+    if (_isRecalculating) return;
+    _recalculateTotals(cgstMode: 'amount');
+  }
+
+  void _onSgstPercentChanged() {
+    if (_isRecalculating) return;
+    _recalculateTotals(sgstMode: 'percent');
+  }
+
+  void _onSgstAmountChanged() {
+    if (_isRecalculating) return;
+    _recalculateTotals(sgstMode: 'amount');
+  }
+
+  void _recalculateTotals({
+    String discountMode = 'auto',
+    String cgstMode = 'auto',
+    String sgstMode = 'auto',
+  }) {
+    if (_isRecalculating) return;
+    _isRecalculating = true;
+
+    final subtotal = _items.fold<double>(0, (sum, item) {
+      final qty = _parseValue(item['qty']?.toString() ?? '') ?? 0;
+      final rate = _parseValue(item['rate']?.toString() ?? '') ?? 0;
+      final amount = qty * rate;
+      item['amount'] = amount > 0 ? _formatCalc(amount) : '';
+      return sum + amount;
+    });
+
+    final discountPercentInput = _parseValue(_discountPercent.text);
+    final discountAmountInput = _parseValue(_discountAmount.text);
+    double? discountPercent = discountPercentInput;
+    double discountAmount = 0;
+
+    if (discountMode == 'amount') {
+      discountAmount = discountAmountInput ?? 0;
+      discountPercent = subtotal > 0 ? (discountAmount * 100) / subtotal : null;
+    } else if (discountMode == 'percent') {
+      discountAmount =
+          discountPercentInput != null ? (subtotal * discountPercentInput) / 100 : 0;
+    } else if (discountPercentInput != null) {
+      discountAmount = (subtotal * discountPercentInput) / 100;
+    } else if (discountAmountInput != null) {
+      discountAmount = discountAmountInput;
+      discountPercent = subtotal > 0 ? (discountAmount * 100) / subtotal : null;
+    }
+
+    final afterDiscount = subtotal - discountAmount;
+
+    Map<String, double?> calcTax(
+      double? percentInput,
+      double? amountInput,
+      String mode,
+    ) {
+      if (mode == 'amount') {
+        final double amount = amountInput ?? 0.0;
+        final percent =
+            afterDiscount != 0 ? (amount * 100) / afterDiscount : null;
+        return {'percent': percent, 'amount': amount};
+      }
+      if (mode == 'percent') {
+        final double amount =
+            percentInput != null ? (afterDiscount * percentInput) / 100 : 0.0;
+        return {'percent': percentInput, 'amount': amount};
+      }
+      if (percentInput != null) {
+        return {'percent': percentInput, 'amount': (afterDiscount * percentInput) / 100};
+      }
+      if (amountInput != null) {
+        return {
+          'percent': afterDiscount != 0 ? (amountInput * 100) / afterDiscount : null,
+          'amount': amountInput,
+        };
+      }
+      return {'percent': null, 'amount': 0.0};
+    }
+
+    final cgst = calcTax(
+      _parseValue(_cgstPercent.text),
+      _parseValue(_cgstAmount.text),
+      cgstMode,
+    );
+    final sgst = calcTax(
+      _parseValue(_sgstPercent.text),
+      _parseValue(_sgstAmount.text),
+      sgstMode,
+    );
+    final cgstAmount = cgst['amount'] ?? 0;
+    final sgstAmount = sgst['amount'] ?? 0;
+    final total = afterDiscount + cgstAmount + sgstAmount;
+
+    _setControllerText(
+      _subtotalAmount,
+      subtotal > 0 ? _formatCalc(subtotal) : '',
+    );
+    _setControllerText(
+      _discountPercent,
+      discountPercent != null ? _formatCalc(discountPercent) : '',
+    );
+    _setControllerText(
+      _discountAmount,
+      discountAmount > 0 ? _formatCalc(discountAmount) : '',
+    );
+    _setControllerText(
+      _afterDiscountAmount,
+      subtotal > 0 ? _formatCalc(afterDiscount) : '',
+    );
+    _setControllerText(
+      _cgstPercent,
+      cgst['percent'] != null ? _formatCalc(cgst['percent']!) : '',
+    );
+    _setControllerText(
+      _cgstAmount,
+      cgstAmount > 0 ? _formatCalc(cgstAmount) : '',
+    );
+    _setControllerText(
+      _sgstPercent,
+      sgst['percent'] != null ? _formatCalc(sgst['percent']!) : '',
+    );
+    _setControllerText(
+      _sgstAmount,
+      sgstAmount > 0 ? _formatCalc(sgstAmount) : '',
+    );
+    _setControllerText(_totalAmount, total > 0 ? _formatCalc(total) : '');
+
+    _isRecalculating = false;
   }
 
   Map<String, dynamic> _buildPOData() {
@@ -2452,14 +2638,14 @@ class _ManualPOFormState extends State<_ManualPOForm> {
         'remark': item['remark']?.toString(),
       });
     }
-    final discountPct = double.tryParse(_discountPercent.text) ?? 0;
-    final discountAmt = itemsTotal * (discountPct / 100);
-    final afterDiscount = itemsTotal - discountAmt;
-    final cgstPct = double.tryParse(_cgstPercent.text) ?? 0;
-    final sgstPct = double.tryParse(_sgstPercent.text) ?? 0;
-    final cgstAmt = afterDiscount * (cgstPct / 100);
-    final sgstAmt = afterDiscount * (sgstPct / 100);
-    final total = afterDiscount + cgstAmt + sgstAmt;
+    final discountPct = _parseValue(_discountPercent.text);
+    final discountAmt = _parseValue(_discountAmount.text) ?? 0;
+    final afterDiscount = _parseValue(_afterDiscountAmount.text) ?? itemsTotal;
+    final cgstPct = _parseValue(_cgstPercent.text);
+    final sgstPct = _parseValue(_sgstPercent.text);
+    final cgstAmt = _parseValue(_cgstAmount.text) ?? 0;
+    final sgstAmt = _parseValue(_sgstAmount.text) ?? 0;
+    final total = _parseValue(_totalAmount.text) ?? (afterDiscount + cgstAmt + sgstAmt);
 
     final notesText = _notes.text.trim();
     return {
@@ -2506,27 +2692,23 @@ class _ManualPOFormState extends State<_ManualPOForm> {
       },
       'items': itemsPayload,
       'discount': {
-        'percent': _discountPercent.text.trim().isEmpty
-            ? null
-            : _discountPercent.text.trim(),
-        'amount': discountAmt.toStringAsFixed(2),
+        'percent': discountPct != null ? _formatCalc(discountPct) : null,
+        'amount': discountAmt > 0 ? _formatCalc(discountAmt) : null,
       },
-      'afterDiscountAmount': afterDiscount.toStringAsFixed(2),
+      'subtotalAmount': itemsTotal > 0 ? _formatCalc(itemsTotal) : null,
+      'afterDiscountAmount': afterDiscount > 0 ? _formatCalc(afterDiscount) : null,
       'taxes': {
         'cgst': {
-          'percent': _cgstPercent.text.trim().isEmpty
-              ? null
-              : _cgstPercent.text.trim(),
-          'amount': cgstAmt.toStringAsFixed(2),
+          'percent': cgstPct != null ? _formatCalc(cgstPct) : null,
+          'amount': cgstAmt > 0 ? _formatCalc(cgstAmt) : null,
         },
         'sgst': {
-          'percent': _sgstPercent.text.trim().isEmpty
-              ? null
-              : _sgstPercent.text.trim(),
-          'amount': sgstAmt.toStringAsFixed(2),
+          'percent': sgstPct != null ? _formatCalc(sgstPct) : null,
+          'amount': sgstAmt > 0 ? _formatCalc(sgstAmt) : null,
         },
       },
-      'total_amount': total.toStringAsFixed(2),
+      'totalAmount': total > 0 ? _formatCalc(total) : null,
+      'total_amount': total > 0 ? _formatCalc(total) : null,
       'summary': {
         'delivery': _deliveryTerms.text.trim().isEmpty
             ? null
@@ -2541,6 +2723,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   }
 
   Future<void> _saveDraft() async {
+    _recalculateTotals();
     final data = _buildPOData();
     final prefs = await SharedPreferences.getInstance();
     final key = widget.projectId.isEmpty
@@ -2888,6 +3071,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                           'amount': '',
                           'remark': '',
                         });
+                        _recalculateTotals();
                       });
                     },
                   ),
@@ -2899,8 +3083,14 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                   key: ValueKey(_items[i]['_id']),
                   isDark: isDark,
                   initialValues: _items[i],
-                  onChanged: (m) => setState(() => _items[i] = m),
-                  onRemove: () => setState(() => _items.removeAt(i)),
+                  onChanged: (m) => setState(() {
+                    _items[i] = m;
+                    _recalculateTotals();
+                  }),
+                  onRemove: () => setState(() {
+                    _items.removeAt(i);
+                    _recalculateTotals();
+                  }),
                 );
               }),
               const SizedBox(height: 24),
@@ -2919,6 +3109,13 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                 Column(
                   children: [
                     MadInput(
+                      labelText: 'Subtotal Amount',
+                      hintText: '0',
+                      controller: _subtotalAmount,
+                      enabled: false,
+                    ),
+                    const SizedBox(height: 12),
+                    MadInput(
                       labelText: 'Discount %',
                       hintText: '0',
                       controller: _discountPercent,
@@ -2928,9 +3125,32 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     ),
                     const SizedBox(height: 12),
                     MadInput(
+                      labelText: 'Discount Amount',
+                      hintText: '0',
+                      controller: _discountAmount,
+                      enabled: false,
+                    ),
+                    const SizedBox(height: 12),
+                    MadInput(
+                      labelText: 'After Discount Amount',
+                      hintText: '0',
+                      controller: _afterDiscountAmount,
+                      enabled: false,
+                    ),
+                    const SizedBox(height: 12),
+                    MadInput(
                       labelText: 'CGST %',
                       hintText: '0',
                       controller: _cgstPercent,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    MadInput(
+                      labelText: 'CGST Amount',
+                      hintText: '0',
+                      controller: _cgstAmount,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -2944,11 +3164,36 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                         decimal: true,
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    MadInput(
+                      labelText: 'SGST Amount',
+                      hintText: '0',
+                      controller: _sgstAmount,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    MadInput(
+                      labelText: 'Total Amount',
+                      hintText: '0',
+                      controller: _totalAmount,
+                      enabled: false,
+                    ),
                   ],
                 )
               else
                 Row(
                   children: [
+                    Expanded(
+                      child: MadInput(
+                        labelText: 'Subtotal Amount',
+                        hintText: '0',
+                        controller: _subtotalAmount,
+                        enabled: false,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: MadInput(
                         labelText: 'Discount %',
@@ -2962,9 +3207,43 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: MadInput(
+                        labelText: 'Discount Amount',
+                        hintText: '0',
+                        controller: _discountAmount,
+                        enabled: false,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: MadInput(
+                        labelText: 'After Discount Amount',
+                        hintText: '0',
+                        controller: _afterDiscountAmount,
+                        enabled: false,
+                      ),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 12),
+              if (!isMobile)
+                Row(
+                  children: [
+                    Expanded(
+                      child: MadInput(
                         labelText: 'CGST %',
                         hintText: '0',
                         controller: _cgstPercent,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: MadInput(
+                        labelText: 'CGST Amount',
+                        hintText: '0',
+                        controller: _cgstAmount,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -2979,6 +3258,26 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: MadInput(
+                        labelText: 'SGST Amount',
+                        hintText: '0',
+                        controller: _sgstAmount,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: MadInput(
+                        labelText: 'Total Amount',
+                        hintText: '0',
+                        controller: _totalAmount,
+                        enabled: false,
                       ),
                     ),
                   ],
@@ -3164,9 +3463,118 @@ class _POItemRowState extends State<_POItemRow> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = Responsive(context).isMobile;
     final qty = double.tryParse(_qty.text) ?? 0;
     final rate = double.tryParse(_rate.text) ?? 0;
     final amount = qty * rate;
+
+    if (isMobile) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: widget.isDark
+                ? AppTheme.darkMuted.withOpacity(0.25)
+                : AppTheme.lightMuted.withOpacity(0.35),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: widget.isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Item ${_srNo.text.isEmpty ? '-' : _srNo.text}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: widget.isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: widget.onRemove,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ],
+              ),
+              MadInput(
+                labelText: 'Sr No',
+                controller: _srNo,
+                hintText: 'Sr',
+                onChanged: (_) => _updateMap(),
+              ),
+              const SizedBox(height: 10),
+              MadInput(
+                labelText: 'HSN',
+                controller: _hsn,
+                hintText: 'HSN',
+                onChanged: (_) => _updateMap(),
+              ),
+              const SizedBox(height: 10),
+              MadInput(
+                labelText: 'Description',
+                controller: _desc,
+                hintText: 'Description',
+                onChanged: (_) => _updateMap(),
+              ),
+              const SizedBox(height: 10),
+              MadInput(
+                labelText: 'Qty',
+                controller: _qty,
+                hintText: 'Qty',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                onChanged: (_) => _updateMap(),
+              ),
+              const SizedBox(height: 10),
+              MadInput(
+                labelText: 'UOM',
+                controller: _uom,
+                hintText: 'UOM',
+                onChanged: (_) => _updateMap(),
+              ),
+              const SizedBox(height: 10),
+              MadInput(
+                labelText: 'Rate',
+                controller: _rate,
+                hintText: 'Rate',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                onChanged: (_) => _updateMap(),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Amount: ${amount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: widget.isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
+                ),
+              ),
+              const SizedBox(height: 10),
+              MadInput(
+                labelText: 'Remark',
+                controller: _remark,
+                hintText: 'Remark',
+                onChanged: (_) => _updateMap(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: SingleChildScrollView(

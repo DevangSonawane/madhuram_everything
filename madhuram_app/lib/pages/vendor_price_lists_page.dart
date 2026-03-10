@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
@@ -100,18 +99,6 @@ class _VendorPriceListsPageState extends State<VendorPriceListsPage> {
 
   int get _totalItems {
     return _priceLists.fold<int>(0, (acc, row) => acc + row.itemsCount);
-  }
-
-  Future<void> _openFile(String filePath) async {
-    final uri = Uri.parse(
-      filePath.startsWith('http')
-          ? filePath
-          : ApiClient.getApiFileUrl(filePath),
-    );
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
-        mounted) {
-      showToast(context, 'Could not open file', variant: ToastVariant.error);
-    }
   }
 
   Future<void> _openCreatePage() async {
@@ -299,14 +286,6 @@ class _VendorPriceListsPageState extends State<VendorPriceListsPage> {
                       size: ButtonSize.icon,
                       icon: LucideIcons.eye,
                       onPressed: () => _openViewPage(row.id),
-                    ),
-                    MadButton(
-                      variant: ButtonVariant.ghost,
-                      size: ButtonSize.icon,
-                      icon: LucideIcons.externalLink,
-                      onPressed: row.filePath?.isNotEmpty == true
-                          ? () => _openFile(row.filePath!)
-                          : null,
                     ),
                     MadButton(
                       variant: ButtonVariant.ghost,

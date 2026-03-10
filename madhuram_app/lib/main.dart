@@ -48,6 +48,7 @@ import 'pages/vendor_create_page.dart';
 import 'pages/vendor_price_lists_page.dart';
 import 'pages/vendor_price_list_create_page.dart';
 import 'pages/vendor_price_list_view_page.dart';
+import 'pages/vendor_view_price_page.dart';
 import 'pages/samples_page.dart';
 import 'pages/sample_create_page.dart';
 import 'pages/sample_preview_page.dart';
@@ -56,6 +57,7 @@ import 'pages/sample_edit_page.dart';
 // Delivery & Inspection Module
 import 'pages/challans_page.dart';
 import 'pages/new_challan_page.dart';
+import 'pages/challan_items_detail_page.dart';
 import 'pages/challan_detail_page.dart';
 import 'pages/mer_page.dart';
 import 'pages/mir_page_full.dart';
@@ -251,6 +253,43 @@ class MyApp extends StatelessWidget {
                   transitionDuration: AppAnimations.normal,
                 );
               }
+              if (settings.name == '/challans/new/details') {
+                final args = settings.arguments as Map<String, dynamic>? ?? {};
+                final poRaw = args['poItems'];
+                final deliveryRaw = args['deliveryItems'];
+
+                List<Map<String, String>> mapItems(dynamic raw) {
+                  if (raw is! List) return const [];
+                  return raw
+                      .whereType<Map>()
+                      .map((item) => Map<String, dynamic>.from(item))
+                      .map(
+                        (item) => {
+                          'name': item['name']?.toString() ?? '',
+                          'description': item['description']?.toString() ?? '',
+                          'width': item['width']?.toString() ?? '',
+                          'length': item['length']?.toString() ?? '',
+                          'quantity': item['quantity']?.toString() ?? '',
+                          'price': item['price']?.toString() ?? '',
+                        },
+                      )
+                      .toList();
+                }
+
+                return PageRouteBuilder<void>(
+                  settings: settings,
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      ChallanItemsDetailPage(
+                        poItems: mapItems(poRaw),
+                        deliveryItems: mapItems(deliveryRaw),
+                      ),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                  transitionDuration: AppAnimations.normal,
+                );
+              }
               if (settings.name == '/samples/preview') {
                 final id = settings.arguments?.toString() ?? '';
                 return PageRouteBuilder<void>(
@@ -355,10 +394,9 @@ class MyApp extends StatelessWidget {
                 return PageRouteBuilder<void>(
                   settings: settings,
                   pageBuilder: (context, animation, secondaryAnimation) =>
-                      VendorPriceListsPage(
+                      VendorViewPricePage(
                         vendorId: vendorId,
                         projectId: projectId,
-                        openLatestOnLoad: true,
                       ),
                   transitionsBuilder:
                       (context, animation, secondaryAnimation, child) {

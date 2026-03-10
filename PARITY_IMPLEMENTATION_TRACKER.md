@@ -5,10 +5,10 @@
 - Flutter app: `madhuram_app`
 - Audit date: March 10, 2026
 
-## Current Route Parity (after Phase 1)
+## Current Route Parity (after Phase 4)
 - `done`: `/dashboard`, `/projects`, `/boq`, `/mas`, `/samples`, `/purchase-orders`, `/vendors`, `/challans`, `/mer`, `/mir`, `/itr`, `/billing`, `/documents`, `/reports`, `/audit-logs`, `/profile`, `/inventory/add`
 - `done via alias`: `/users` -> `ProfilePage`, `/settings` -> `ProfilePage`, `/inventory` -> `AddInventoryPage`, `/purchase-orders/preview` -> `PurchaseOrdersPageFull`, `/mir/preview` -> `MIRPageFull`, `/itr/preview` -> `ITRPageFull`
-- `done (new)`: `/vendors/price-lists` and `/vendors/view-price` (argument-driven)
+- `done (new)`: `/vendors/price-lists`, `/vendors/price-lists/create`, `/vendors/price-lists/view`, `/vendors/view-price` (argument-driven)
 - `architecture difference (intentional for now)`: React uses `/:projectId/...`; Flutter uses global selected project state.
 
 ## API Parity Status
@@ -18,12 +18,9 @@
 
 ## Page-by-Page Gap Matrix
 - `complete`: Login, Project Selection, Dashboard, Projects, BOQ, Materials, Stock Areas, Add Inventory, Stock Transfers, Consumption, Returns, Purchase Orders, Vendors, Challans, New Challan, Challan Detail, MIR, ITR, Samples, Sample Create/Edit/Preview, Reports, Audit Logs, Billing, Documents, Profile.
-- `partial`: Vendor Price Lists (now functional list/status/delete/create/upload + details dialog; still missing React-equivalent dedicated create/view pages with item-grid editing UI).
-- `partial`: Vendor Comparison (Flutter still shows placeholder message and does not call backend comparison flow).
-- `pending`: Full UI parity for React-only vendor pages:
-  - `VendorPriceListCreate.jsx` detailed manual item matrix/form UX
-  - `VendorPriceListView.jsx` detailed editable version view
-  - `VendorViewPrice.jsx` latest-price focused summary page
+- `complete`: Vendor Price Lists + Create + View + View Latest Price pages (functional parity with React for list/create/view/latest flow).
+- `partial`: Vendor Comparison (UI is usable with seeded matrix and actions, but no backend comparison endpoint integration yet).
+- `pending`: Vendor Comparison backend-connected flow with persisted comparison records and export actions.
 
 ## Implementation Phases
 
@@ -48,21 +45,21 @@
   - create payload with `vendor_id`, `version_name`, `status`, `file_path`, `items`
   - success return to list page and reload
 
-### Phase 3 (Next)
-- Build dedicated Flutter page for `Vendor Price List View` parity:
+### Phase 3 (Completed)
+- Built dedicated Flutter page for `Vendor Price List View` parity:
   - full detail fetch
   - status updates
   - editable fields and save flow
 
-### Phase 4
-- Build dedicated Flutter page for `Vendor View Price` parity:
+### Phase 4 (Completed)
+- Built dedicated Flutter page for `Vendor View Price` parity:
   - fetch vendor + latest list
   - summary cards and key pricing display
 
-### Phase 5
-- Vendor Comparison backend integration and UI parity.
+### Phase 5 (Next)
+- Vendor Comparison backend integration and full UI parity.
 - End-to-end QA for project-scoped behavior and role access.
 
 ## Validation run in this phase
-- Command: `flutter analyze lib/pages/vendor_price_lists_page.dart lib/pages/vendors_page_full.dart lib/main.dart lib/services/api_client.dart lib/models/vendor_price_list.dart`
+- Command: `flutter analyze lib/main.dart lib/pages/vendor_view_price_page.dart lib/pages/vendor_comparison_page.dart`
 - Result: no issues in changed files.

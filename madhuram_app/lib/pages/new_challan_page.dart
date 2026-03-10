@@ -157,6 +157,92 @@ class _NewChallanPageState extends State<NewChallanPage> {
     Navigator.pushReplacementNamed(context, '/challans');
   }
 
+  bool _hasItemValue(Map<String, String> item) {
+    const keys = ['name', 'description', 'width', 'length', 'quantity', 'price'];
+    return keys.any((key) => (item[key] ?? '').trim().isNotEmpty);
+  }
+
+  List<Map<String, String>> _currentDeliveryItems() {
+    return _items.map((item) {
+      return {
+        'name': item.name.text,
+        'description': item.description.text,
+        'width': item.width.text,
+        'length': item.length.text,
+        'quantity': item.quantity.text,
+        'price': item.price.text,
+      };
+    }).toList();
+  }
+
+  List<Map<String, String>> _poItemsForDetail() {
+    return _selectedPoItems.map((item) => item.toJson()).toList();
+  }
+
+  void _applyDeliveryItemsFromDetail(dynamic rawItems) {
+    if (rawItems is! List) return;
+    final parsed = rawItems.whereType<Map>().map((item) {
+      final map = Map<String, dynamic>.from(item);
+      return {
+        'name': map['name']?.toString() ?? '',
+        'description': map['description']?.toString() ?? '',
+        'width': map['width']?.toString() ?? '',
+        'length': map['length']?.toString() ?? '',
+        'quantity': map['quantity']?.toString() ?? '',
+        'price': map['price']?.toString() ?? '',
+      };
+    }).toList();
+
+    if (parsed.isEmpty) return;
+
+    final meaningful = parsed.where(_hasItemValue).toList();
+    final target = meaningful.isNotEmpty
+        ? parsed
+        : [
+            {
+              'name': '',
+              'description': '',
+              'width': '',
+              'length': '',
+              'quantity': '',
+              'price': '',
+            },
+          ];
+
+    setState(() {
+      for (final item in _items) {
+        item.dispose();
+      }
+      _items
+        ..clear()
+        ..addAll(
+          target.map(
+            (item) => _DCItemControllers(
+              name: item['name'] ?? '',
+              description: item['description'] ?? '',
+              width: item['width'] ?? '',
+              length: item['length'] ?? '',
+              quantity: item['quantity'] ?? '',
+              price: item['price'] ?? '',
+            ),
+          ),
+        );
+    });
+  }
+
+  Future<void> _openItemDetail() async {
+    if (_selectedPoItems.isEmpty) return;
+    final result = await Navigator.pushNamed(
+      context,
+      '/challans/new/details',
+      arguments: {
+        'poItems': _poItemsForDetail(),
+        'deliveryItems': _currentDeliveryItems(),
+      },
+    );
+    _applyDeliveryItemsFromDetail(result);
+  }
+
   Future<void> _save() async {
     if (_projectId.isEmpty) {
       showToast(context, 'Select a project first', variant: ToastVariant.error);
@@ -321,29 +407,7 @@ class _NewChallanPageState extends State<NewChallanPage> {
                               ),
                             ),
                             SizedBox(
-                              width: isMobile ? double.infinity : 220,
-                              child: MadSelect<String>(
-                                labelText: 'PO ID',
-                                value: _selectedPo?.id,
-                                placeholder:
-                                    _loadingPos ? 'Loading PO...' : 'Select PO ID',
-                                clearable: true,
-                                options: _projectPos
-                                    .map((po) =>
-                                        MadSelectOption(value: po.id, label: po.id))
-                                    .toList(),
-                                onChanged: (value) {
-                                  final po = _projectPos.firstWhere(
-                                    (p) => p.id == value,
-                                    orElse: () =>
-                                        const PurchaseOrder(id: '', orderNo: ''),
-                                  );
-                                  _selectPo(po.id.isEmpty ? null : po);
-                                },
-                              ),
-                            ),
-                            SizedBox(
-                              width: isMobile ? double.infinity : 240,
+                              width: isMobile ? double.infinity : 300,
                               child: MadSelect<String>(
                                 labelText: 'PO Number',
                                 value: _selectedPo == null
@@ -417,6 +481,18 @@ class _NewChallanPageState extends State<NewChallanPage> {
                         ),
                       ],
                     ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: MadButton(
+                    text: 'View in Detail',
+                    variant: ButtonVariant.secondary,
+                    disabled: _selectedPoItems.isEmpty,
+                    onPressed: _selectedPoItems.isEmpty ? null : _openItemDetail,
                   ),
                 ),
 
@@ -786,6 +862,15 @@ class _PoPreviewItem {
     required this.quantity,
     required this.price,
   });
+
+  Map<String, String> toJson() => {
+        'name': name,
+        'description': description,
+        'width': width,
+        'length': length,
+        'quantity': quantity,
+        'price': price,
+      };
 }
 
 class _DCItemControllers {

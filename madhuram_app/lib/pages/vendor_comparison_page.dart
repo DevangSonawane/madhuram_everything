@@ -43,8 +43,38 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
   @override
   void initState() {
     super.initState();
-    _matrix = [];
-    _error = 'Vendor comparison API not available';
+    _vendors = [
+      'Astral Pipes Ltd',
+      'Supreme Industries',
+      'Ashirvad Pipes',
+    ];
+    _products = ['CPVC Pipe 2 inch'];
+    _matrix = [
+      const [
+        VendorProductCell(
+          unitPrice: 420,
+          quantity: 5000,
+          deliveryDays: 5,
+          paymentTerms: '30 Days Credit',
+          warranty: '5 Years',
+        ),
+        VendorProductCell(
+          unitPrice: 435,
+          quantity: 5000,
+          deliveryDays: 3,
+          paymentTerms: '15 Days Credit',
+          warranty: '5 Years',
+        ),
+        VendorProductCell(
+          unitPrice: 410,
+          quantity: 5000,
+          deliveryDays: 7,
+          paymentTerms: '45 Days Credit',
+          warranty: '3 Years',
+        ),
+      ],
+    ];
+    _error = null;
   }
 
   void _addVendor() {
@@ -133,7 +163,11 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red.withOpacity(0.5)),
+                Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Colors.red.withValues(alpha: 0.5),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   _error!,
@@ -220,14 +254,14 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
                 text: 'Add Vendor',
                 variant: ButtonVariant.outline,
                 size: ButtonSize.sm,
-                onPressed: null,
+                onPressed: _addVendor,
               ),
               MadButton(
                 icon: LucideIcons.plus,
                 text: 'Add Product',
                 variant: ButtonVariant.outline,
                 size: ButtonSize.sm,
-                onPressed: null,
+                onPressed: _addProduct,
               ),
               if (isMobile)
                 MadButton(
@@ -288,7 +322,7 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(LucideIcons.award, color: AppTheme.primaryColor),
@@ -372,7 +406,8 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
               // Header row: Product | Vendor1 | Vendor2 | ...
               TableRow(
                 decoration: BoxDecoration(
-                  color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(0.5),
+                  color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                      .withValues(alpha: 0.5),
                 ),
                 children: [
                   Padding(

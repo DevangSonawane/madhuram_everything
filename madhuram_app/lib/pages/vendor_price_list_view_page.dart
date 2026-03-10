@@ -25,16 +25,12 @@ class VendorPriceListViewPage extends StatefulWidget {
 }
 
 class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
-  static const List<String> _statusValues = ['active', 'inactive', 'archived'];
+  static const double _mmPerInch = 25.4;
 
   Vendor? _vendor;
   bool _isLoading = false;
   bool _saving = false;
-  bool _patching = false;
 
-  final TextEditingController _versionController = TextEditingController();
-  String _status = 'active';
-  String _filePath = '-';
   List<Map<String, String>> _items = [_emptyItem()];
 
   static Map<String, String> _emptyItem() => {
@@ -45,6 +41,7 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
     'product_name': '',
     'size_inch': '',
     'size_mm': '',
+    'size_unit': 'inch',
     'price_per_pic': '',
     'discount_price': '',
     'net_price': '',
@@ -54,17 +51,6 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
-  }
-
-  @override
-  void dispose() {
-    _versionController.dispose();
-    super.dispose();
-  }
-
-  String _toTitle(String value) {
-    if (value.isEmpty) return value;
-    return value[0].toUpperCase() + value.substring(1).toLowerCase();
   }
 
   Future<void> _loadData() async {
@@ -89,9 +75,6 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
     if (detailResult['success'] == true) {
       final raw = detailResult['data'];
       final map = raw is Map<String, dynamic> ? raw : <String, dynamic>{};
-      _versionController.text = (map['version_name'] ?? '').toString();
-      _status = (map['status'] ?? 'active').toString().toLowerCase();
-      _filePath = (map['file_path'] ?? map['path'] ?? '-').toString();
 
       final rawItems = map['items'];
       if (rawItems is List && rawItems.isNotEmpty) {
@@ -107,6 +90,7 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
             'product_name': (source['product_name'] ?? '').toString(),
             'size_inch': (source['size_inch'] ?? '').toString(),
             'size_mm': (source['size_mm'] ?? '').toString(),
+            'size_unit': (source['size_unit'] ?? '').toString(),
             'price_per_pic': (source['price_per_pic'] ?? '').toString(),
             'discount_price': (source['discount_price'] ?? '').toString(),
             'net_price': (source['net_price'] ?? '').toString(),
@@ -154,27 +138,71 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
     });
   }
 
-  Future<void> _patchStatus() async {
-    setState(() {
-      _patching = true;
-    });
-    final result = await ApiClient.updateVendorPriceListStatus(
-      widget.priceListId,
-      _status,
-    );
-    if (!mounted) return;
-    setState(() {
-      _patching = false;
-    });
-    if (result['success'] == true) {
-      showToast(context, 'Status updated');
-      await _loadData();
+  String _formatSizeValue(double value) {
+    final fixed = value.toStringAsFixed(4);
+    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  String _inferUnit(Map<String, String> row) {
+    final explicit = (row['size_unit'] ?? '').toLowerCase();
+    if (explicit == 'inch' || explicit == 'mm') return explicit;
+    final sizeMm = (row['size_mm'] ?? '').trim();
+    final sizeInch = (row['size_inch'] ?? '').trim();
+    if (sizeMm.isNotEmpty && sizeInch.isEmpty) return 'mm';
+    return 'inch';
+  }
+
+  String _sizeValueForUnit(Map<String, String> row, String unit) {
+    return unit == 'mm' ? (row['size_mm'] ?? '') : (row['size_inch'] ?? '');
+  }
+
+  void _onSizeValueChanged(int index, String unit, String rawValue) {
+    _updateItem(index, 'size_unit', unit);
+    if (rawValue.isEmpty) {
+      _updateItem(index, 'size_inch', '');
+      _updateItem(index, 'size_mm', '');
+      return;
+    }
+
+    final parsed = double.tryParse(rawValue);
+    if (parsed == null) {
+      if (unit == 'inch') {
+        _updateItem(index, 'size_inch', rawValue);
+        _updateItem(index, 'size_mm', '');
+      } else {
+        _updateItem(index, 'size_mm', rawValue);
+        _updateItem(index, 'size_inch', '');
+      }
+      return;
+    }
+
+    if (unit == 'inch') {
+      _updateItem(index, 'size_inch', rawValue);
+      _updateItem(index, 'size_mm', _formatSizeValue(parsed * _mmPerInch));
     } else {
-      showToast(
-        context,
-        result['error']?.toString() ?? 'Status update failed',
-        variant: ToastVariant.error,
-      );
+      _updateItem(index, 'size_mm', rawValue);
+      _updateItem(index, 'size_inch', _formatSizeValue(parsed / _mmPerInch));
+    }
+  }
+
+  void _onSizeUnitChanged(int index, String nextUnit) {
+    final row = _items[index];
+    final currentUnit = _inferUnit(row);
+    final currentValue = _sizeValueForUnit(row, currentUnit);
+    final parsed = double.tryParse(currentValue);
+
+    _updateItem(index, 'size_unit', nextUnit);
+
+    if (currentValue.isEmpty || parsed == null || currentUnit == nextUnit) {
+      return;
+    }
+
+    if (currentUnit == 'inch' && nextUnit == 'mm') {
+      _updateItem(index, 'size_mm', _formatSizeValue(parsed * _mmPerInch));
+      _updateItem(index, 'size_inch', _formatSizeValue(parsed));
+    } else if (currentUnit == 'mm' && nextUnit == 'inch') {
+      _updateItem(index, 'size_inch', _formatSizeValue(parsed / _mmPerInch));
+      _updateItem(index, 'size_mm', _formatSizeValue(parsed));
     }
   }
 
@@ -182,11 +210,7 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
     setState(() {
       _saving = true;
     });
-    final payload = {
-      'version_name': _versionController.text.trim(),
-      'status': _status,
-      'items': _items,
-    };
+    final payload = {'items': _items};
     final result = await ApiClient.updateVendorPriceList(
       widget.priceListId,
       payload,
@@ -239,6 +263,73 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
   }
 
   Widget _buildItemCard(int index, bool isDark) {
+    final row = _items[index];
+
+    Widget sizeField() {
+      final unit = _inferUnit(row);
+      final value = _sizeValueForUnit(row, unit);
+
+      return SizedBox(
+        width: 300,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Size',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey('view-item-$index-size-value-$unit'),
+                    initialValue: value,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (next) => _onSizeValueChanged(index, unit, next),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: 'Enter size',
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 9,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 96,
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey('view-item-$index-size-unit-$unit'),
+                    initialValue: unit,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'inch', child: Text('Inch')),
+                      DropdownMenuItem(value: 'mm', child: Text('MM')),
+                    ],
+                    onChanged: (next) {
+                      if (next == null) return;
+                      _onSizeUnitChanged(index, next);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -281,8 +372,7 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
               _itemField(index, 'category', 'Category'),
               _itemField(index, 'item_code', 'Item Code'),
               _itemField(index, 'hsn_code', 'HSN Code'),
-              _itemField(index, 'size_inch', 'Size (Inch)'),
-              _itemField(index, 'size_mm', 'Size (MM)'),
+              sizeField(),
               _itemField(
                 index,
                 'price_per_pic',
@@ -311,7 +401,7 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final vendorName = _vendor?.name ?? 'Vendor ID ${widget.vendorId}';
+    final vendorName = _vendor?.name ?? 'Vendor';
 
     return ProtectedRoute(
       title: 'Price List Detail',
@@ -338,98 +428,27 @@ class _VendorPriceListViewPageState extends State<VendorPriceListViewPage> {
                         variant: ButtonVariant.outline,
                         onPressed: _loadData,
                       ),
+                      MadButton(
+                        text: _saving ? 'Saving...' : 'Save Changes',
+                        icon: LucideIcons.save,
+                        loading: _saving,
+                        onPressed: _saving ? null : _saveChanges,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   MadCard(
                     child: Padding(
                       padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Price List Detail',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$vendorName • Price List ${widget.priceListId}',
-                            style: TextStyle(
-                              color: isDark
-                                  ? AppTheme.darkMutedForeground
-                                  : AppTheme.lightMutedForeground,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              SizedBox(
-                                width: 320,
-                                child: MadInput(
-                                  labelText: 'Version Name',
-                                  controller: _versionController,
-                                ),
-                              ),
-                              SizedBox(
-                                width: 210,
-                                child: DropdownButtonFormField<String>(
-                                  initialValue: _status,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Status',
-                                  ),
-                                  items: _statusValues
-                                      .map(
-                                        (status) => DropdownMenuItem<String>(
-                                          value: status,
-                                          child: Text(_toTitle(status)),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _status = value ?? 'active';
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'File Path: $_filePath',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark
-                                  ? AppTheme.darkMutedForeground
-                                  : AppTheme.lightMutedForeground,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              MadButton(
-                                text: _patching
-                                    ? 'Updating...'
-                                    : 'Update Status',
-                                variant: ButtonVariant.outline,
-                                onPressed: _patching ? null : _patchStatus,
-                              ),
-                              MadButton(
-                                text: _saving ? 'Saving...' : 'Save Changes',
-                                icon: LucideIcons.save,
-                                loading: _saving,
-                                onPressed: _saving ? null : _saveChanges,
-                              ),
-                            ],
-                          ),
-                        ],
+                      child: Text(
+                        '$vendorName • Price List Detail',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                       ),
                     ),
                   ),
