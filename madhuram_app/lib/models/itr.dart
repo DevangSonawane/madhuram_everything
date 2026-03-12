@@ -51,32 +51,111 @@ class ITR {
   });
 
   factory ITR.fromJson(Map<String, dynamic> json) {
+    String readString(List<dynamic> candidates) {
+      for (final value in candidates) {
+        final text = value?.toString().trim() ?? '';
+        if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+      }
+      return '';
+    }
+
+    final projectInfo = json['project_info'] is Map
+        ? Map<String, dynamic>.from(json['project_info'] as Map)
+        : <String, dynamic>{};
+    final itrHeader = json['itr_header'] is Map
+        ? Map<String, dynamic>.from(json['itr_header'] as Map)
+        : <String, dynamic>{};
+    final contractorPartData = json['contractor_part'] is Map
+        ? Map<String, dynamic>.from(json['contractor_part'] as Map)
+        : <String, dynamic>{};
+    final lodhaPmcData = json['lodha_pmc'] is Map
+        ? Map<String, dynamic>.from(json['lodha_pmc'] as Map)
+        : <String, dynamic>{};
+
+    final resolvedItrId = readString([
+      json['itr_id'],
+      json['id'],
+    ]);
+    final resolvedItrRefNo = readString([
+      json['itr_ref_no'],
+      json['itrRefNo'],
+      json['itr_ref'],
+      itrHeader['itr_ref_no'],
+      itrHeader['itrRefNo'],
+    ]);
+    final resolvedProjectName = readString([
+      json['project_name'],
+      json['projectName'],
+      projectInfo['project_name'],
+      projectInfo['projectName'],
+    ]);
+
     return ITR(
-      id: (json['itr_id'] ?? json['id'] ?? '').toString(),
-      projectId: json['project_id']?.toString(),
-      itrRefNo: json['itr_ref_no'] ?? '',
-      projectName: json['project_name'],
-      clientEmployer: json['client_employer'],
+      id: resolvedItrId,
+      projectId: readString([json['project_id'], json['projectId']]),
+      itrRefNo: resolvedItrRefNo,
+      projectName: resolvedProjectName,
+      clientEmployer: readString([
+        json['client_employer'],
+        json['clientEmployer'],
+        projectInfo['client_employer'],
+        projectInfo['clientEmployer'],
+      ]),
       contractorPart: json['contractor_part'] is String ? json['contractor_part'] : null,
       lodhaPmc: json['lodha_pmc'] is String ? json['lodha_pmc'] : null,
-      discipline: json['discipline'],
+      discipline: readString([json['discipline'], contractorPartData['discipline']]),
       dynamicField: json['dynamic_field'] as Map<String, dynamic>?,
       status: json['status'],
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'])
           : null,
-      pmcEngineer: json['pmc_engineer'],
-      contractor: json['contractor'],
-      vendorCode: json['vendor_code'],
-      materialCode: json['material_code'],
-      wirItrSubmissionDateTime: json['wir_itr_submission_date_time'],
-      inspectionDateTime: json['inspection_date_time'],
-      submittedTo: json['submitted_to'],
-      submittedBy: json['submitted_by'],
-      source: json['source'],
-      sourceFileName: json['source_file_name'],
-      contractorPartData: json['contractor_part'] is Map ? json['contractor_part'] as Map<String, dynamic> : null,
-      lodhaPmcData: json['lodha_pmc'] is Map ? json['lodha_pmc'] as Map<String, dynamic> : null,
+      pmcEngineer: readString([
+        json['pmc_engineer'],
+        json['pmcEngineer'],
+        projectInfo['pmc_engineer'],
+        projectInfo['pmcEngineer'],
+      ]),
+      contractor: readString([json['contractor'], projectInfo['contractor']]),
+      vendorCode: readString([
+        json['vendor_code'],
+        json['vendorCode'],
+        projectInfo['vendor_code'],
+        projectInfo['vendorCode'],
+      ]),
+      materialCode: readString([
+        json['material_code'],
+        json['materialCode'],
+        projectInfo['material_code'],
+        projectInfo['materialCode'],
+      ]),
+      wirItrSubmissionDateTime: readString([
+        json['wir_itr_submission_date_time'],
+        json['wirItrSubmissionDateTime'],
+        itrHeader['submission_datetime'],
+        itrHeader['submissionDatetime'],
+      ]),
+      inspectionDateTime: readString([
+        json['inspection_date_time'],
+        json['inspectionDateTime'],
+        itrHeader['inspection_datetime'],
+        itrHeader['inspectionDatetime'],
+      ]),
+      submittedTo: readString([
+        json['submitted_to'],
+        json['submittedTo'],
+        itrHeader['submitted_to'],
+        itrHeader['submittedTo'],
+      ]),
+      submittedBy: readString([
+        json['submitted_by'],
+        json['submittedBy'],
+        itrHeader['submitted_by'],
+        itrHeader['submittedBy'],
+      ]),
+      source: readString([json['source']]),
+      sourceFileName: readString([json['source_file_name'], json['sourceFileName']]),
+      contractorPartData: contractorPartData.isEmpty ? null : contractorPartData,
+      lodhaPmcData: lodhaPmcData.isEmpty ? null : lodhaPmcData,
     );
   }
 

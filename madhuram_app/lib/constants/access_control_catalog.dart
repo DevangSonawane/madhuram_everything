@@ -79,6 +79,34 @@ const accessControlCatalog = <AccessControlPage>[
     ],
   ),
   AccessControlPage(
+    pagePath: '/purchase-requests',
+    pageTitle: 'Purchase Requests',
+    category: 'Procurement',
+    description: 'Create, edit, and track purchase requisitions.',
+    functions: [
+      AccessControlFunction(
+        key: 'purchase_requests.view',
+        label: 'View PRs',
+        description: 'Open purchase request list and details.',
+      ),
+      AccessControlFunction(
+        key: 'purchase_requests.create',
+        label: 'Create PR',
+        description: 'Create new purchase requests.',
+      ),
+      AccessControlFunction(
+        key: 'purchase_requests.edit',
+        label: 'Edit PR',
+        description: 'Update existing purchase requests.',
+      ),
+      AccessControlFunction(
+        key: 'purchase_requests.delete',
+        label: 'Delete PR',
+        description: 'Delete purchase requests.',
+      ),
+    ],
+  ),
+  AccessControlPage(
     pagePath: '/boq',
     pageTitle: 'BOQ Management',
     category: 'Project Management',
@@ -261,6 +289,379 @@ const accessControlCatalog = <AccessControlPage>[
         key: 'challans.verify',
         label: 'Verify Challan',
         description: 'Verify received challans.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/mer',
+    pageTitle: 'MER',
+    category: 'Delivery & Inspection',
+    description: 'Manage material entry records and review captured entries.',
+    functions: [
+      AccessControlFunction(
+        key: 'mer.view',
+        label: 'View MER',
+        description: 'Open MER page and review records.',
+      ),
+      AccessControlFunction(
+        key: 'mer.create',
+        label: 'Create MER',
+        description: 'Create new MER records.',
+      ),
+      AccessControlFunction(
+        key: 'mer.edit',
+        label: 'Edit MER',
+        description: 'Edit existing MER records.',
+      ),
+      AccessControlFunction(
+        key: 'mer.delete',
+        label: 'Delete MER',
+        description: 'Delete MER records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/mir',
+    pageTitle: 'MIR',
+    category: 'Delivery & Inspection',
+    description: 'Create and manage material inspection request records.',
+    functions: [
+      AccessControlFunction(
+        key: 'mir.view',
+        label: 'View MIR',
+        description: 'Open MIR list and view MIR records.',
+      ),
+      AccessControlFunction(
+        key: 'mir.create',
+        label: 'Create MIR',
+        description: 'Create new MIR entries.',
+      ),
+      AccessControlFunction(
+        key: 'mir.edit',
+        label: 'Edit MIR',
+        description: 'Edit existing MIR records.',
+      ),
+      AccessControlFunction(
+        key: 'mir.delete',
+        label: 'Delete MIR',
+        description: 'Delete MIR records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/itr',
+    pageTitle: 'ITR',
+    category: 'Delivery & Inspection',
+    description: 'Create, review, and manage installation test reports.',
+    functions: [
+      AccessControlFunction(
+        key: 'itr.view',
+        label: 'View ITR',
+        description: 'Open ITR page and view existing reports.',
+      ),
+      AccessControlFunction(
+        key: 'itr.create',
+        label: 'Create ITR',
+        description: 'Create or submit a new installation test report.',
+      ),
+      AccessControlFunction(
+        key: 'itr.edit',
+        label: 'Edit ITR',
+        description: 'Edit an existing installation test report.',
+      ),
+      AccessControlFunction(
+        key: 'itr.delete',
+        label: 'Delete ITR',
+        description: 'Delete an installation test report.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/billing',
+    pageTitle: 'Billing & Invoices',
+    category: 'Billing',
+    description: 'Manage billing records, invoice tracking, and workflows.',
+    functions: [
+      AccessControlFunction(
+        key: 'billing.view',
+        label: 'View Billing',
+        description: 'Open billing page and view invoice data.',
+      ),
+      AccessControlFunction(
+        key: 'billing.create',
+        label: 'Create Invoice',
+        description: 'Create new invoices and billing records.',
+      ),
+      AccessControlFunction(
+        key: 'billing.edit',
+        label: 'Edit Billing',
+        description: 'Edit billing or invoice details.',
+      ),
+      AccessControlFunction(
+        key: 'billing.delete',
+        label: 'Delete Billing Record',
+        description: 'Delete billing or invoice records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/inventory',
+    pageTitle: 'Inventory',
+    category: 'Inventory',
+    description: 'Access project inventory module and stock summaries.',
+    functions: [
+      AccessControlFunction(
+        key: 'inventory.view',
+        label: 'View Inventory',
+        description: 'Open inventory dashboard and stock information.',
+      ),
+      AccessControlFunction(
+        key: 'inventory.add',
+        label: 'Add Inventory',
+        description: 'Add new inventory entries.',
+      ),
+      AccessControlFunction(
+        key: 'inventory.edit',
+        label: 'Edit Inventory',
+        description: 'Update existing inventory records.',
+      ),
+      AccessControlFunction(
+        key: 'inventory.delete',
+        label: 'Delete Inventory',
+        description: 'Delete inventory records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/stock-areas',
+    pageTitle: 'Stock Overview',
+    category: 'Inventory',
+    description: 'Review stock by area and monitor stock distribution.',
+    functions: [
+      AccessControlFunction(
+        key: 'stock_areas.view',
+        label: 'View Stock Areas',
+        description: 'Open stock overview by area.',
+      ),
+      AccessControlFunction(
+        key: 'stock_areas.create',
+        label: 'Create Stock Area',
+        description: 'Create new stock area records.',
+      ),
+      AccessControlFunction(
+        key: 'stock_areas.edit',
+        label: 'Edit Stock Area',
+        description: 'Edit stock area details.',
+      ),
+      AccessControlFunction(
+        key: 'stock_areas.delete',
+        label: 'Delete Stock Area',
+        description: 'Delete stock area records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/materials',
+    pageTitle: 'Product Master',
+    category: 'Inventory',
+    description: 'Manage product master records and material definitions.',
+    functions: [
+      AccessControlFunction(
+        key: 'materials.view',
+        label: 'View Materials',
+        description: 'View product master and materials.',
+      ),
+      AccessControlFunction(
+        key: 'materials.create',
+        label: 'Create Material',
+        description: 'Create material or product entries.',
+      ),
+      AccessControlFunction(
+        key: 'materials.edit',
+        label: 'Edit Material',
+        description: 'Edit material or product details.',
+      ),
+      AccessControlFunction(
+        key: 'materials.delete',
+        label: 'Delete Material',
+        description: 'Delete material or product entries.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/stock-transfers',
+    pageTitle: 'Stock Transfers',
+    category: 'Inventory',
+    description: 'Track inter-location stock movement and transfer history.',
+    functions: [
+      AccessControlFunction(
+        key: 'stock_transfers.view',
+        label: 'View Transfers',
+        description: 'Open stock transfer list and details.',
+      ),
+      AccessControlFunction(
+        key: 'stock_transfers.create',
+        label: 'Create Transfer',
+        description: 'Create a stock transfer entry.',
+      ),
+      AccessControlFunction(
+        key: 'stock_transfers.edit',
+        label: 'Edit Transfer',
+        description: 'Edit an existing stock transfer.',
+      ),
+      AccessControlFunction(
+        key: 'stock_transfers.cancel',
+        label: 'Cancel Transfer',
+        description: 'Cancel or void stock transfer records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/consumption',
+    pageTitle: 'Consumption',
+    category: 'Inventory',
+    description: 'Track material consumption and usage records.',
+    functions: [
+      AccessControlFunction(
+        key: 'consumption.view',
+        label: 'View Consumption',
+        description: 'Open and review consumption records.',
+      ),
+      AccessControlFunction(
+        key: 'consumption.create',
+        label: 'Create Consumption Entry',
+        description: 'Create new consumption entries.',
+      ),
+      AccessControlFunction(
+        key: 'consumption.edit',
+        label: 'Edit Consumption Entry',
+        description: 'Update consumption records.',
+      ),
+      AccessControlFunction(
+        key: 'consumption.delete',
+        label: 'Delete Consumption Entry',
+        description: 'Delete consumption records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/returns',
+    pageTitle: 'Returns',
+    category: 'Inventory',
+    description: 'Manage returned material records and return lifecycle.',
+    functions: [
+      AccessControlFunction(
+        key: 'returns.view',
+        label: 'View Returns',
+        description: 'Open returns page and view records.',
+      ),
+      AccessControlFunction(
+        key: 'returns.create',
+        label: 'Create Return',
+        description: 'Create a new return entry.',
+      ),
+      AccessControlFunction(
+        key: 'returns.edit',
+        label: 'Edit Return',
+        description: 'Edit return records.',
+      ),
+      AccessControlFunction(
+        key: 'returns.delete',
+        label: 'Delete Return',
+        description: 'Delete return records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/documents',
+    pageTitle: 'Repository',
+    category: 'Documents',
+    description: 'Access project document repository and actions.',
+    functions: [
+      AccessControlFunction(
+        key: 'documents.view',
+        label: 'View Documents',
+        description: 'Open repository and view documents.',
+      ),
+      AccessControlFunction(
+        key: 'documents.upload',
+        label: 'Upload Document',
+        description: 'Upload documents to repository.',
+      ),
+      AccessControlFunction(
+        key: 'documents.edit',
+        label: 'Edit Document',
+        description: 'Edit document metadata or properties.',
+      ),
+      AccessControlFunction(
+        key: 'documents.delete',
+        label: 'Delete Document',
+        description: 'Delete documents from repository.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/reports',
+    pageTitle: 'Reports',
+    category: 'Analytics',
+    description: 'Review project and operational reports.',
+    functions: [
+      AccessControlFunction(
+        key: 'reports.view',
+        label: 'View Reports',
+        description: 'Open reports dashboard and read reports.',
+      ),
+      AccessControlFunction(
+        key: 'reports.generate',
+        label: 'Generate Reports',
+        description: 'Generate reports from current data.',
+      ),
+      AccessControlFunction(
+        key: 'reports.export',
+        label: 'Export Reports',
+        description: 'Export reports for external use.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/audit-logs',
+    pageTitle: 'Audit Logs',
+    category: 'Analytics',
+    description: 'Review audit trails and system activity logs.',
+    functions: [
+      AccessControlFunction(
+        key: 'audit_logs.view',
+        label: 'View Audit Logs',
+        description: 'Open and read audit logs.',
+      ),
+      AccessControlFunction(
+        key: 'audit_logs.filter',
+        label: 'Filter Audit Logs',
+        description: 'Filter logs by user, date, or action.',
+      ),
+      AccessControlFunction(
+        key: 'audit_logs.export',
+        label: 'Export Audit Logs',
+        description: 'Export audit logs for compliance checks.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/settings',
+    pageTitle: 'Settings',
+    category: 'Administration',
+    description:
+        'Manage settings tabs such as user management and access control.',
+    functions: [
+      AccessControlFunction(
+        key: 'settings.user_management',
+        label: 'User Management Tab',
+        description: 'View and use the User Management tab in settings.',
+      ),
+      AccessControlFunction(
+        key: 'settings.access_control',
+        label: 'Access Control Tab',
+        description: 'View and use the Access Control tab in settings.',
       ),
     ],
   ),

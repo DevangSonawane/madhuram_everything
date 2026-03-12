@@ -2272,24 +2272,53 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     _recalculateTotals(discountMode: 'percent');
   }
 
-  void _onCgstPercentChanged() {
+  void _syncLinkedTaxAndRecalculate({
+    required TextEditingController sourceController,
+    required TextEditingController linkedController,
+    required String cgstMode,
+    required String sgstMode,
+  }) {
     if (_isRecalculating) return;
-    _recalculateTotals(cgstMode: 'percent');
+    _isRecalculating = true;
+    _setControllerText(linkedController, sourceController.text);
+    _isRecalculating = false;
+    _recalculateTotals(cgstMode: cgstMode, sgstMode: sgstMode);
+  }
+
+  void _onCgstPercentChanged() {
+    _syncLinkedTaxAndRecalculate(
+      sourceController: _cgstPercent,
+      linkedController: _sgstPercent,
+      cgstMode: 'percent',
+      sgstMode: 'percent',
+    );
   }
 
   void _onCgstAmountChanged() {
-    if (_isRecalculating) return;
-    _recalculateTotals(cgstMode: 'amount');
+    _syncLinkedTaxAndRecalculate(
+      sourceController: _cgstAmount,
+      linkedController: _sgstAmount,
+      cgstMode: 'amount',
+      sgstMode: 'amount',
+    );
   }
 
   void _onSgstPercentChanged() {
-    if (_isRecalculating) return;
-    _recalculateTotals(sgstMode: 'percent');
+    _syncLinkedTaxAndRecalculate(
+      sourceController: _sgstPercent,
+      linkedController: _cgstPercent,
+      cgstMode: 'percent',
+      sgstMode: 'percent',
+    );
   }
 
   void _onSgstAmountChanged() {
-    if (_isRecalculating) return;
-    _recalculateTotals(sgstMode: 'amount');
+    _syncLinkedTaxAndRecalculate(
+      sourceController: _sgstAmount,
+      linkedController: _cgstAmount,
+      cgstMode: 'amount',
+      sgstMode: 'amount',
+    );
   }
 
   void _recalculateTotals({

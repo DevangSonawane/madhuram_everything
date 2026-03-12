@@ -91,7 +91,7 @@ class _MainLayoutState extends State<MainLayout> {
         }
 
         final normalizedRoute = normalizeRouteForAccess(widget.currentRoute);
-        if (!hasPageAccess(vm.user, normalizedRoute)) {
+        if (!hasRouteAccess(vm.user, normalizedRoute)) {
           return Scaffold(
             backgroundColor: isDark
                 ? AppTheme.darkBackground

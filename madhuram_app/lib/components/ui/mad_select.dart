@@ -73,19 +73,21 @@ class _MadSelectState<T> extends State<MadSelect<T>> {
 
   void _toggleDropdown() {
     if (widget.disabled) return;
+    if (!mounted) return;
 
     if (_isOpen) {
       _removeOverlay();
-      setState(() {});
+      if (mounted) setState(() {});
     } else {
       _showOverlay();
     }
   }
 
   void _showOverlay() {
+    if (!mounted) return;
     _overlayEntry = _createOverlayEntry();
     Overlay.of(context).insert(_overlayEntry!);
-    setState(() => _isOpen = true);
+    if (mounted) setState(() => _isOpen = true);
   }
 
   OverlayEntry _createOverlayEntry() {
@@ -100,7 +102,7 @@ class _MadSelectState<T> extends State<MadSelect<T>> {
             child: GestureDetector(
               onTap: () {
                 _removeOverlay();
-                setState(() {});
+                if (mounted) setState(() {});
               },
               behavior: HitTestBehavior.opaque,
               child: Container(color: Colors.transparent),
@@ -123,13 +125,14 @@ class _MadSelectState<T> extends State<MadSelect<T>> {
                   searchController: _searchController,
                   searchQuery: _searchQuery,
                   onSearchChanged: (query) {
+                    if (!mounted) return;
                     setState(() => _searchQuery = query);
                     _overlayEntry?.markNeedsBuild();
                   },
                   onSelect: (value) {
                     widget.onChanged?.call(value);
                     _removeOverlay();
-                    setState(() {});
+                    if (mounted) setState(() {});
                   },
                 ),
               ),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -45,21 +46,21 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
 
   Future<void> _checkAuthAndLoadProjects() async {
     if (!mounted) return;
-    
+
     final store = StoreProvider.of<AppState>(context);
-    
+
     // Check if authenticated
     if (!store.state.auth.isAuthenticated) {
       Navigator.pushReplacementNamed(context, '/login');
       return;
     }
-    
+
     await _loadProjects();
   }
 
   Future<void> _loadProjects() async {
     if (!mounted) return;
-    
+
     final store = StoreProvider.of<AppState>(context);
     store.dispatch(FetchProjectsStart());
     setState(() {
@@ -79,10 +80,8 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
         final projectMaps = projectList
             .map((e) => e as Map<String, dynamic>)
             .toList();
-        final projects = projectMaps
-            .map((e) => Project.fromJson(e))
-            .toList();
-        
+        final projects = projectMaps.map((e) => Project.fromJson(e)).toList();
+
         store.dispatch(FetchProjectsSuccess(projectMaps));
         setState(() {
           _projects = projects;
@@ -119,27 +118,47 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
       );
       return;
     }
-    
+
     final store = StoreProvider.of<AppState>(context);
     // Convert Project to Map for Redux state storage
     store.dispatch(SelectProject(project.toMap()));
-    
+
     // Save selected project ID to storage for persistence (like React app)
     AuthStorage.setSelectedProjectId(project.id);
-    
+
     // Navigate to dashboard
     Navigator.pushReplacementNamed(context, '/dashboard');
   }
 
   List<Project> get _filteredProjects {
     var list = _projects;
-    if (_currentUserRole == 'project_manager' && _currentUserId != null) {
-      list = list.where((p) {
-        final raw = p.rawData ?? const {};
-        final managerId = raw['manager_id']?.toString() ?? raw['managerId']?.toString();
-        if (managerId == null || managerId.isEmpty) return true;
-        return managerId == _currentUserId;
-      }).toList();
+    final normalizedRole = (_currentUserRole ?? '').toLowerCase();
+    final canViewAllProjects =
+        normalizedRole == 'admin' || normalizedRole == 'operational_manager';
+    final assignedProjectIds = _resolveAssignedProjectIds(
+      _currentUserProjectList,
+    );
+
+    if (!canViewAllProjects) {
+      if (assignedProjectIds.isEmpty) {
+        list = <Project>[];
+      } else {
+        list = list.where((project) {
+          final projectKeys = <String>{
+            project.id.toString().trim().toLowerCase(),
+            (project.rawData?['project_id'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase(),
+            project.name.toString().trim().toLowerCase(),
+            (project.rawData?['project_name'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase(),
+          }..removeWhere((value) => value.isEmpty);
+          return projectKeys.any(assignedProjectIds.contains);
+        }).toList();
+      }
     }
     if (_searchQuery.isEmpty) return list;
     final query = _searchQuery.toLowerCase();
@@ -157,8 +176,8 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
         isAuthenticated: store.state.auth.isAuthenticated,
         userName: store.state.auth.userName ?? 'User',
         isAdmin: store.state.auth.isAdmin,
-        userId: store.state.auth.user?['id']?.toString() ?? store.state.auth.user?['user_id']?.toString(),
         userRole: store.state.auth.userRole,
+        user: store.state.auth.user,
       ),
       builder: (context, vm) {
         // Check auth
@@ -181,24 +200,36 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     final isDark = theme.brightness == Brightness.dark;
     final responsive = Responsive(context);
     _currentUserRole = vm.userRole;
-    _currentUserId = vm.userId;
+    _currentUserProjectList = vm.user?['project_list'];
 
     return Scaffold(
-      backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+      backgroundColor: isDark
+          ? AppTheme.darkBackground
+          : AppTheme.lightBackground,
       body: SafeArea(
         child: Column(
           children: [
             // Header
             Container(
-              padding: EdgeInsets.all(responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+              padding: EdgeInsets.all(
+                responsive.value(mobile: 16, tablet: 20, desktop: 24),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Container(
-                        width: responsive.value(mobile: 36, tablet: 38, desktop: 40),
-                        height: responsive.value(mobile: 36, tablet: 38, desktop: 40),
+                        width: responsive.value(
+                          mobile: 36,
+                          tablet: 38,
+                          desktop: 40,
+                        ),
+                        height: responsive.value(
+                          mobile: 36,
+                          tablet: 38,
+                          desktop: 40,
+                        ),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor,
                           borderRadius: BorderRadius.circular(10),
@@ -206,16 +237,26 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                         child: Icon(
                           LucideIcons.package2,
                           color: Colors.white,
-                          size: responsive.value(mobile: 20, tablet: 22, desktop: 24),
+                          size: responsive.value(
+                            mobile: 20,
+                            tablet: 22,
+                            desktop: 24,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Text(
                         'Madhuram',
                         style: TextStyle(
-                          fontSize: responsive.value(mobile: 20, tablet: 22, desktop: 24),
+                          fontSize: responsive.value(
+                            mobile: 20,
+                            tablet: 22,
+                            desktop: 24,
+                          ),
                           fontWeight: FontWeight.bold,
-                          color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
                         ),
                       ),
                       const Spacer(),
@@ -224,49 +265,83 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                           MadButton(
                             icon: LucideIcons.boxes,
                             text: responsive.isMobile ? null : 'Add Inventory',
-                            onPressed: () => Navigator.pushNamed(context, '/inventory/add'),
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/inventory/add'),
                             variant: ButtonVariant.outline,
-                            size: responsive.isMobile ? ButtonSize.icon : ButtonSize.md,
+                            size: responsive.isMobile
+                                ? ButtonSize.icon
+                                : ButtonSize.md,
                           ),
                           const SizedBox(width: 8),
-                          if (vm.isAdmin)
-                        MadButton(
-                          icon: LucideIcons.plus,
-                          text: responsive.isMobile ? null : 'New Project',
-                          onPressed: () => _showCreateProjectDialog(),
-                          size: responsive.isMobile ? ButtonSize.icon : ButtonSize.md,
-                        ),
+                          MadButton(
+                            icon: LucideIcons.plus,
+                            text: responsive.isMobile ? null : 'New Project',
+                            onPressed: () => _showCreateProjectDialog(),
+                            size: responsive.isMobile
+                                ? ButtonSize.icon
+                                : ButtonSize.md,
+                          ),
                         ],
                       ),
                     ],
                   ),
-                  SizedBox(height: responsive.value(mobile: 24, tablet: 28, desktop: 32)),
+                  SizedBox(
+                    height: responsive.value(
+                      mobile: 24,
+                      tablet: 28,
+                      desktop: 32,
+                    ),
+                  ),
                   Text(
                     'Welcome, ${vm.userName}',
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 24, tablet: 28, desktop: 32),
+                      fontSize: responsive.value(
+                        mobile: 24,
+                        tablet: 28,
+                        desktop: 32,
+                      ),
                       fontWeight: FontWeight.bold,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Select a project to continue to the dashboard.',
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 14, tablet: 15, desktop: 16),
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      fontSize: responsive.value(
+                        mobile: 14,
+                        tablet: 15,
+                        desktop: 16,
+                      ),
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Upload a work order PDF to auto-fill project details.',
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 12, tablet: 13, desktop: 13),
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      fontSize: responsive.value(
+                        mobile: 12,
+                        tablet: 13,
+                        desktop: 13,
+                      ),
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
-                  SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+                  SizedBox(
+                    height: responsive.value(
+                      mobile: 16,
+                      tablet: 20,
+                      desktop: 24,
+                    ),
+                  ),
                   // Search
                   MadSearchInput(
                     controller: _searchController,
@@ -283,9 +358,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
             ),
 
             // Projects grid or loading/error state
-            Expanded(
-              child: _buildContent(isDark, responsive, vm.isAdmin),
-            ),
+            Expanded(child: _buildContent(isDark, responsive, vm.isAdmin)),
           ],
         ),
       ),
@@ -322,17 +395,29 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
               Text(
                 'Failed to load projects',
                 style: TextStyle(
-                  fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                  fontSize: responsive.value(
+                    mobile: 16,
+                    tablet: 17,
+                    desktop: 18,
+                  ),
                   fontWeight: FontWeight.w600,
-                  color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                  color: isDark
+                      ? AppTheme.darkForeground
+                      : AppTheme.lightForeground,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 _error!,
                 style: TextStyle(
-                  fontSize: responsive.value(mobile: 13, tablet: 13, desktop: 14),
-                  color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                  fontSize: responsive.value(
+                    mobile: 13,
+                    tablet: 13,
+                    desktop: 14,
+                  ),
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -349,18 +434,28 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     }
 
     if (_filteredProjects.isEmpty) {
-      return _buildEmptyState(isDark, responsive);
+      return _buildEmptyState(isDark, responsive, isAdmin);
     }
 
-    final crossAxisCount = responsive.value(mobile: 1, tablet: 2, desktop: responsive.screenWidth > 1200 ? 3 : 2);
+    final crossAxisCount = responsive.value(
+      mobile: 1,
+      tablet: 2,
+      desktop: responsive.screenWidth > 1200 ? 3 : 2,
+    );
     final spacing = responsive.value(mobile: 16.0, tablet: 20.0, desktop: 24.0);
     // Slightly taller mobile cards to avoid vertical overflow with long metadata + action row.
-    final aspectRatio = responsive.value(mobile: 1.28, tablet: 1.35, desktop: 1.3);
+    final aspectRatio = responsive.value(
+      mobile: 1.28,
+      tablet: 1.35,
+      desktop: 1.3,
+    );
 
     return RefreshIndicator(
       onRefresh: _loadProjects,
       child: GridView.builder(
-        padding: EdgeInsets.all(responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+        padding: EdgeInsets.all(
+          responsive.value(mobile: 16, tablet: 20, desktop: 24),
+        ),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: spacing,
@@ -369,21 +464,34 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
         ),
         itemCount: _filteredProjects.length,
         itemBuilder: (context, index) {
-          return _buildProjectCard(_filteredProjects[index], isDark, responsive, isAdmin);
+          return _buildProjectCard(
+            _filteredProjects[index],
+            isDark,
+            responsive,
+            isAdmin,
+          );
         },
       ),
     );
   }
 
-  Widget _buildProjectCard(Project project, bool isDark, Responsive responsive, bool isAdmin) {
-    final workOrderFile = project.rawData?['work_order_file'] ??
+  Widget _buildProjectCard(
+    Project project,
+    bool isDark,
+    Responsive responsive,
+    bool isAdmin,
+  ) {
+    final workOrderFile =
+        project.rawData?['work_order_file'] ??
         project.rawData?['work_order_file_url'] ??
         project.rawData?['workOrderFile'];
     return MadCard(
       hoverable: true,
       onTap: () => _selectProject(project),
       child: Padding(
-        padding: EdgeInsets.all(responsive.value(mobile: 14, tablet: 20, desktop: 24)),
+        padding: EdgeInsets.all(
+          responsive.value(mobile: 14, tablet: 20, desktop: 24),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -395,7 +503,11 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                   child: Text(
                     project.name,
                     style: TextStyle(
-                      fontSize: responsive.value(mobile: 16, tablet: 18, desktop: 20),
+                      fontSize: responsive.value(
+                        mobile: 16,
+                        tablet: 18,
+                        desktop: 20,
+                      ),
                       fontWeight: FontWeight.bold,
                     ),
                     maxLines: 2,
@@ -411,11 +523,16 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                         icon: Icon(
                           LucideIcons.trash2,
                           size: 18,
-                          color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
                         ),
                         onPressed: () => _showDeleteProjectConfirm(project),
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
                       ),
                     const SizedBox(width: 4),
                     StatusBadge(status: project.status ?? 'Planning'),
@@ -423,17 +540,23 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                 ),
               ],
             ),
-            SizedBox(height: responsive.value(mobile: 4, tablet: 6, desktop: 8)),
+            SizedBox(
+              height: responsive.value(mobile: 4, tablet: 6, desktop: 8),
+            ),
             Text(
               project.client ?? '',
               style: TextStyle(
                 fontSize: responsive.value(mobile: 12, tablet: 13, desktop: 14),
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            SizedBox(height: responsive.value(mobile: 8, tablet: 10, desktop: 12)),
+            SizedBox(
+              height: responsive.value(mobile: 8, tablet: 10, desktop: 12),
+            ),
             const Spacer(),
             // Project info
             _buildInfoRow(
@@ -442,7 +565,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
               isDark: isDark,
               responsive: responsive,
             ),
-            SizedBox(height: responsive.value(mobile: 6, tablet: 7, desktop: 8)),
+            SizedBox(
+              height: responsive.value(mobile: 6, tablet: 7, desktop: 8),
+            ),
             _buildInfoRow(
               icon: LucideIcons.calendar,
               value: 'Started: ${project.startDate ?? 'N/A'}',
@@ -450,7 +575,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
               responsive: responsive,
             ),
             if ((workOrderFile ?? '').toString().isNotEmpty) ...[
-              SizedBox(height: responsive.value(mobile: 6, tablet: 7, desktop: 8)),
+              SizedBox(
+                height: responsive.value(mobile: 6, tablet: 7, desktop: 8),
+              ),
               _buildInfoRow(
                 icon: LucideIcons.fileText,
                 value: 'Work order attached',
@@ -459,13 +586,21 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
               ),
             ],
             if (project.estimateValue != null) ...[
-              SizedBox(height: responsive.value(mobile: 8, tablet: 10, desktop: 12)),
+              SizedBox(
+                height: responsive.value(mobile: 8, tablet: 10, desktop: 12),
+              ),
               Text(
                 project.estimateValue!,
                 style: TextStyle(
-                  fontSize: responsive.value(mobile: 15, tablet: 16, desktop: 18),
+                  fontSize: responsive.value(
+                    mobile: 15,
+                    tablet: 16,
+                    desktop: 18,
+                  ),
                   fontWeight: FontWeight.bold,
-                  color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                  color: isDark
+                      ? AppTheme.darkForeground
+                      : AppTheme.lightForeground,
                 ),
               ),
             ],
@@ -496,7 +631,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
         Icon(
           icon,
           size: responsive.value(mobile: 14, tablet: 15, desktop: 16),
-          color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+          color: isDark
+              ? AppTheme.darkMutedForeground
+              : AppTheme.lightMutedForeground,
         ),
         SizedBox(width: responsive.value(mobile: 6, tablet: 7, desktop: 8)),
         Expanded(
@@ -504,7 +641,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
             value,
             style: TextStyle(
               fontSize: responsive.value(mobile: 12, tablet: 13, desktop: 14),
-              color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -513,7 +652,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     );
   }
 
-  Widget _buildEmptyState(bool isDark, Responsive responsive) {
+  Widget _buildEmptyState(bool isDark, Responsive responsive, bool isAdmin) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -523,36 +662,40 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
             Icon(
               LucideIcons.folderOpen,
               size: responsive.value(mobile: 48, tablet: 56, desktop: 64),
-              color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withOpacity(0.3),
+              color:
+                  (isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground)
+                      .withOpacity(0.3),
             ),
-            SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+            SizedBox(
+              height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
+            ),
             Text(
               _searchQuery.isEmpty ? 'No projects yet' : 'No projects found',
               style: TextStyle(
                 fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               _searchQuery.isEmpty
-                  ? 'Create your first project to get started'
+                  ? (isAdmin
+                        ? 'Create one to get started.'
+                        : 'Please contact an administrator.')
                   : 'Try a different search term',
               style: TextStyle(
                 fontSize: responsive.value(mobile: 13, tablet: 13, desktop: 14),
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
               textAlign: TextAlign.center,
             ),
-            if (_searchQuery.isEmpty) ...[
-              SizedBox(height: responsive.value(mobile: 16, tablet: 20, desktop: 24)),
-              MadButton(
-                icon: LucideIcons.plus,
-                text: 'New Project',
-                onPressed: () => _showCreateProjectDialog(),
-              ),
-            ],
           ],
         ),
       ),
@@ -563,7 +706,8 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     MadDialog.confirm(
       context: context,
       title: 'Delete Project',
-      description: 'Are you sure you want to delete "${project.name}"? This action cannot be undone.',
+      description:
+          'Are you sure you want to delete "${project.name}"? This action cannot be undone.',
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,
@@ -677,35 +821,50 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                         );
                         if (file != null) {
                           workOrderFile = file;
-                          workOrderFileName = file.path.split(RegExp(r'[/\\]')).last;
+                          workOrderFileName = file.path
+                              .split(RegExp(r'[/\\]'))
+                              .last;
                           extractError = null;
-                          if (workOrderFileName!.toLowerCase().endsWith('.pdf')) {
+                          if (workOrderFileName!.toLowerCase().endsWith(
+                            '.pdf',
+                          )) {
                             extracting = true;
                             setDialogState(() {});
-                            final res = await WorkOrderExtractor.extractFromFile(workOrderFile!);
+                            final res =
+                                await WorkOrderExtractor.extractFromFile(
+                                  workOrderFile!,
+                                );
                             extracting = false;
                             if (res.success) {
                               extracted = res;
-                              if (nameController.text.trim().isEmpty && res.projectName.isNotEmpty) {
+                              if (nameController.text.trim().isEmpty &&
+                                  res.projectName.isNotEmpty) {
                                 nameController.text = res.projectName;
                               }
-                              if (clientController.text.trim().isEmpty && res.clientName.isNotEmpty) {
+                              if (clientController.text.trim().isEmpty &&
+                                  res.clientName.isNotEmpty) {
                                 clientController.text = res.clientName;
                               }
-                              if (locationController.text.trim().isEmpty && res.location.isNotEmpty) {
+                              if (locationController.text.trim().isEmpty &&
+                                  res.location.isNotEmpty) {
                                 locationController.text = res.location;
                               }
-                              if (startDateController.text.trim().isEmpty && res.startDate.isNotEmpty) {
+                              if (startDateController.text.trim().isEmpty &&
+                                  res.startDate.isNotEmpty) {
                                 startDateController.text = res.startDate;
                               }
-                              if (estimateValueController.text.trim().isEmpty && res.estimateValue.isNotEmpty) {
-                                estimateValueController.text = res.estimateValue;
+                              if (estimateValueController.text.trim().isEmpty &&
+                                  res.estimateValue.isNotEmpty) {
+                                estimateValueController.text =
+                                    res.estimateValue;
                               }
-                              if (woNumberController.text.trim().isEmpty && res.woNumber.isNotEmpty) {
+                              if (woNumberController.text.trim().isEmpty &&
+                                  res.woNumber.isNotEmpty) {
                                 woNumberController.text = res.woNumber;
                               }
                             } else {
-                              extractError = res.error ?? 'Failed to extract work order';
+                              extractError =
+                                  res.error ?? 'Failed to extract work order';
                             }
                           }
                           setDialogState(() {});
@@ -723,7 +882,8 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                           workOrderFileName!,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Theme.of(context).brightness == Brightness.dark
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
                                 ? AppTheme.darkMutedForeground
                                 : AppTheme.lightMutedForeground,
                           ),
@@ -753,12 +913,18 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                     size: ButtonSize.sm,
                     onPressed: () {
                       final res = extracted!;
-                      if (res.projectName.isNotEmpty) nameController.text = res.projectName;
-                      if (res.clientName.isNotEmpty) clientController.text = res.clientName;
-                      if (res.location.isNotEmpty) locationController.text = res.location;
-                      if (res.startDate.isNotEmpty) startDateController.text = res.startDate;
-                      if (res.estimateValue.isNotEmpty) estimateValueController.text = res.estimateValue;
-                      if (res.woNumber.isNotEmpty) woNumberController.text = res.woNumber;
+                      if (res.projectName.isNotEmpty)
+                        nameController.text = res.projectName;
+                      if (res.clientName.isNotEmpty)
+                        clientController.text = res.clientName;
+                      if (res.location.isNotEmpty)
+                        locationController.text = res.location;
+                      if (res.startDate.isNotEmpty)
+                        startDateController.text = res.startDate;
+                      if (res.estimateValue.isNotEmpty)
+                        estimateValueController.text = res.estimateValue;
+                      if (res.woNumber.isNotEmpty)
+                        woNumberController.text = res.woNumber;
                       setDialogState(() {});
                     },
                   ),
@@ -777,7 +943,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                       variant: ButtonVariant.outline,
                       size: ButtonSize.sm,
                       onPressed: () async {
-                        final file = await FileService.pickFileWithSource(context: context);
+                        final file = await FileService.pickFileWithSource(
+                          context: context,
+                        );
                         if (file != null) {
                           masFile = file;
                           masFileName = file.path.split(RegExp(r'[/\\]')).last;
@@ -796,7 +964,8 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                           masFileName!,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Theme.of(context).brightness == Brightness.dark
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
                                 ? AppTheme.darkMutedForeground
                                 : AppTheme.lightMutedForeground,
                           ),
@@ -857,7 +1026,10 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                     final data = result['data'] as Map;
                     final url = data['url']?.toString();
                     if (url != null && url.isNotEmpty) {
-                      final file = await _downloadCompressedFile(url, workOrderFile!.path.split('/').last);
+                      final file = await _downloadCompressedFile(
+                        url,
+                        workOrderFile!.path.split('/').last,
+                      );
                       if (file != null) workOrderFile = file;
                     }
                   }
@@ -891,7 +1063,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text((result['error'] ?? 'Failed to create project').toString()),
+                  content: Text(
+                    (result['error'] ?? 'Failed to create project').toString(),
+                  ),
                   backgroundColor: Colors.red,
                 ),
               );
@@ -903,7 +1077,42 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
   }
 
   String? _currentUserRole;
-  String? _currentUserId;
+  dynamic _currentUserProjectList;
+
+  Set<String> _resolveAssignedProjectIds(dynamic rawProjectList) {
+    List<dynamic> values = const [];
+    if (rawProjectList is List) {
+      values = rawProjectList;
+    } else if (rawProjectList is String && rawProjectList.trim().isNotEmpty) {
+      try {
+        final parsed = jsonDecode(rawProjectList);
+        if (parsed is List) values = parsed;
+      } catch (_) {
+        values = const [];
+      }
+    }
+
+    final normalized = <String>{};
+    for (final entry in values) {
+      if (entry == null) continue;
+      if (entry is Map) {
+        final candidates = [
+          entry['id'],
+          entry['project_id'],
+          entry['name'],
+          entry['project_name'],
+        ];
+        for (final candidate in candidates) {
+          final key = (candidate ?? '').toString().trim().toLowerCase();
+          if (key.isNotEmpty) normalized.add(key);
+        }
+      } else {
+        final key = entry.toString().trim().toLowerCase();
+        if (key.isNotEmpty) normalized.add(key);
+      }
+    }
+    return normalized;
+  }
 
   Future<File?> _downloadCompressedFile(String url, String filename) async {
     try {
@@ -912,7 +1121,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
       if (token != null && token.isNotEmpty) {
         headers['Authorization'] = 'Bearer $token';
       }
-      final uri = Uri.parse(url.startsWith('http') ? url : ApiClient.getApiFileUrl(url));
+      final uri = Uri.parse(
+        url.startsWith('http') ? url : ApiClient.getApiFileUrl(url),
+      );
       final response = await http.get(uri, headers: headers);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final dir = await FileService.getTempDirectory();
@@ -929,14 +1140,14 @@ class _ProjectSelectionViewModel {
   final bool isAuthenticated;
   final String userName;
   final bool isAdmin;
-  final String? userId;
   final String? userRole;
+  final Map<String, dynamic>? user;
 
   _ProjectSelectionViewModel({
     required this.isAuthenticated,
     required this.userName,
     required this.isAdmin,
-    required this.userId,
     required this.userRole,
+    required this.user,
   });
 }

@@ -61,6 +61,7 @@ import 'pages/challan_items_detail_page.dart';
 import 'pages/challan_detail_page.dart';
 import 'pages/mer_page.dart';
 import 'pages/mir_page_full.dart';
+import 'pages/mir_create_page.dart';
 import 'pages/itr_page_full.dart';
 
 // Project Management Module
@@ -84,6 +85,7 @@ final Map<String, Widget Function(BuildContext)> _appRoutes = {
   // '/mas': (context) => const MASPageFull(),
   '/samples': (context) => const SamplesPageFull(),
   '/purchase-requests': (context) => const PurchaseRequestsPageFull(),
+  '/purchase-requests/create': (context) => const PurchaseRequestCreatePage(),
   '/vendor-comparison': (context) => const VendorComparisonPageFull(),
   '/purchase-orders': (context) => const PurchaseOrdersPageFull(),
   '/vendors': (context) => const VendorsPageFull(),
@@ -92,6 +94,7 @@ final Map<String, Widget Function(BuildContext)> _appRoutes = {
   '/challans/new': (context) => const NewChallanPage(),
   '/mer': (context) => const MERPageFull(),
   '/mir': (context) => const MIRPageFull(),
+  '/mir/create': (context) => const MIRCreatePage(),
   '/itr': (context) => const ITRPageFull(),
   '/billing': (context) => const BillingPageFull(),
   '/stock-areas': (context) => const StockAreasPage(),

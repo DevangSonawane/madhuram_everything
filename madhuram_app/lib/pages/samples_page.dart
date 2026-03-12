@@ -741,313 +741,437 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
 
   Widget _buildServerSamplesSection(bool isDark, bool isMobile) {
     final visibleSamples = _filteredServerSamples;
+    final totalSamples = _serverSamples.length;
+    final hiddenCount = (totalSamples - visibleSamples.length).clamp(0, totalSamples);
     final availableUploadedFiles = <String>{
       ..._uploadFilePaths,
       ..._serverSamples
           .map((sample) => (sample['sample_file'] ?? '').toString().trim())
           .where((path) => path.isNotEmpty),
     }.toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (isMobile) ...[
-          Text(
-            'Project Samples',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+    final surfaceColor = isDark ? AppTheme.darkCard : AppTheme.lightCard;
+    final mutedSurface = (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.35);
+    final borderColor = (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.65);
+
+    Widget buildStateBody() {
+      if (_loadingServer) {
+        return const Padding(
+          padding: EdgeInsets.all(24),
+          child: MadTableSkeleton(rows: 6, columns: 6),
+        );
+      }
+      if (_projectId.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Select a project to view samples.',
+            style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              MadButton(
-                text: 'Create Sample',
-                icon: LucideIcons.plus,
-                variant: ButtonVariant.outline,
-                size: ButtonSize.sm,
-                onPressed: () async {
-                  final created = await Navigator.pushNamed(context, '/samples/create', arguments: _projectId);
-                  if (created == true && mounted) {
-                    _loadServerSamples();
-                  }
-                },
-              ),
-            ],
+        );
+      }
+      if (visibleSamples.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No samples match the current filters.',
+            style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: MadSelect<String>(
-                  value: _selectedUploadedFile.isEmpty ? null : _selectedUploadedFile,
-                  placeholder: 'Select uploaded file',
-                  options: availableUploadedFiles
-                      .map((path) => MadSelectOption(value: path, label: _fileNameFromPath(path)))
-                      .toList(),
-                  onChanged: (value) => setState(() => _selectedUploadedFile = value ?? ''),
-                ),
+        );
+      }
+
+      if (isMobile) {
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(12),
+          itemCount: visibleSamples.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final sample = visibleSamples[index];
+            final items = sample['item_description'] as List? ?? [];
+            final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-').toString();
+            return Container(
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: borderColor),
               ),
-              const SizedBox(width: 8),
-              MadButton(
-                text: 'Preview',
-                icon: LucideIcons.eye,
-                variant: ButtonVariant.outline,
-                size: ButtonSize.sm,
-                onPressed: _selectedUploadedFile.isEmpty ? null : () => _openUploadedFile(_selectedUploadedFile),
-              ),
-            ],
-          ),
-        ] else
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Project Samples',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
-                ),
-              ),
-              MadButton(
-                text: 'Create Sample',
-                icon: LucideIcons.plus,
-                variant: ButtonVariant.outline,
-                size: ButtonSize.sm,
-                onPressed: () async {
-                  final created = await Navigator.pushNamed(context, '/samples/create', arguments: _projectId);
-                  if (created == true && mounted) {
-                    _loadServerSamples();
-                  }
-                },
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 280,
-                child: MadSelect<String>(
-                  value: _selectedUploadedFile.isEmpty ? null : _selectedUploadedFile,
-                  placeholder: 'Select uploaded file',
-                  options: availableUploadedFiles
-                      .map((path) => MadSelectOption(value: path, label: _fileNameFromPath(path)))
-                      .toList(),
-                  onChanged: (value) => setState(() => _selectedUploadedFile = value ?? ''),
-                ),
-              ),
-              const SizedBox(width: 8),
-              MadButton(
-                text: 'Preview',
-                icon: LucideIcons.eye,
-                variant: ButtonVariant.outline,
-                size: ButtonSize.sm,
-                onPressed: _selectedUploadedFile.isEmpty ? null : () => _openUploadedFile(_selectedUploadedFile),
-              ),
-            ],
-          ),
-        const SizedBox(height: 12),
-        if (_projectId.isNotEmpty)
-          MadCard(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  if (isMobile) ...[
-                    MadInput(
-                      labelText: 'Search samples',
-                      hintText: 'Building, site, work...',
-                      onChanged: (v) => setState(() => _searchQuery = v),
-                    ),
-                  ] else
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(
                       children: [
                         Expanded(
-                          child: MadInput(
-                            labelText: 'Search samples',
-                            hintText: 'Building, site, work...',
-                            onChanged: (v) => setState(() => _searchQuery = v),
+                          child: Text(
+                            (sample['building_name'] ?? '-').toString(),
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: mutedSurface,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '#$sampleId',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
                           ),
                         ),
                       ],
                     ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '${visibleSamples.length} of ${_serverSamples.length} sample(s)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-                      ),
+                    const SizedBox(height: 10),
+                    _buildSampleInfoLine('Site', (sample['site_name'] ?? '-').toString(), isDark, icon: LucideIcons.mapPin),
+                    const SizedBox(height: 6),
+                    _buildSampleInfoLine('Work', (sample['work_done'] ?? '-').toString(), isDark, icon: LucideIcons.briefcaseBusiness),
+                    const SizedBox(height: 6),
+                    _buildSampleInfoLine('Items', '${items.length}', isDark, icon: LucideIcons.boxes),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: MadButton(
+                            text: 'Preview',
+                            icon: LucideIcons.fileText,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.outline,
+                            onPressed: () => _navigateToPreview(sample),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: MadButton(
+                            text: 'Delete',
+                            icon: LucideIcons.trash2,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.destructive,
+                            onPressed: () => _confirmDeleteSample(sample),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+            );
+          },
+        );
+      }
+
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: mutedSurface,
+              border: Border(bottom: BorderSide(color: borderColor)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                _buildHeaderCell('ID', flex: 1, isDark: isDark),
+                _buildHeaderCell('Building', flex: 2, isDark: isDark),
+                _buildHeaderCell('Site', flex: 2, isDark: isDark),
+                _buildHeaderCell('Work', flex: 2, isDark: isDark),
+                const SizedBox(width: 56),
+              ],
             ),
           ),
-        const SizedBox(height: 12),
-        MadCard(
-          child: _loadingServer
-              ? Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: MadTableSkeleton(rows: 6, columns: 6),
-                )
-              : _projectId.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(24),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: visibleSamples.length,
+            separatorBuilder: (context, index) => Divider(
+              height: 1,
+              color: borderColor,
+            ),
+            itemBuilder: (context, index) {
+              final sample = visibleSamples[index];
+              final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-').toString();
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                color: index.isEven ? surfaceColor : mutedSurface.withValues(alpha: 0.45),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 1,
                       child: Text(
-                        'Select a project to view samples.',
-                        style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        sampleId,
+                        style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    )
-                      : visibleSamples.isEmpty
-                          ? Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Text(
-                                'No samples match the current filters.',
-                                style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
-                              ),
-                            )
-                      : isMobile
-                          ? ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: visibleSamples.length,
-                              separatorBuilder: (context, index) => Divider(
-                                height: 1,
-                                color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.5),
-                              ),
-                              itemBuilder: (context, index) {
-                                final sample = visibleSamples[index];
-                                final items = sample['item_description'] as List? ?? [];
-                                final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-').toString();
-                                return Container(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                (sample['building_name'] ?? '-').toString(),
-                                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Text('ID: $sampleId', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
-                                        Text('Site: ${(sample['site_name'] ?? '-').toString()}', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
-                                        Text('Work: ${(sample['work_done'] ?? '-').toString()}', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
-                                        Text('Items: ${items.length}', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
-                                        const SizedBox(height: 12),
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children: [
-                                            MadButton(text: 'Preview', icon: LucideIcons.fileText, size: ButtonSize.sm, variant: ButtonVariant.outline, onPressed: () => _navigateToPreview(sample)),
-                                            MadButton(
-                                              text: 'Delete',
-                                              icon: LucideIcons.trash2,
-                                              size: ButtonSize.sm,
-                                              variant: ButtonVariant.destructive,
-                                              onPressed: () => _confirmDeleteSample(sample),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            )
-                          : Column(
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        (sample['building_name'] ?? '-').toString(),
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        (sample['site_name'] ?? '-').toString(),
+                        style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        (sample['work_done'] ?? '-').toString(),
+                        style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    MadDropdownMenuButton(
+                      items: [
+                        MadMenuItem(
+                          label: 'Preview',
+                          icon: LucideIcons.fileText,
+                          onTap: () => _navigateToPreview(sample),
+                        ),
+                        MadMenuItem(
+                          label: 'Delete',
+                          icon: LucideIcons.trash2,
+                          destructive: true,
+                          onTap: () => _confirmDeleteSample(sample),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(isMobile ? 12 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isMobile) ...[
+                  Text(
+                    'Server Samples',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Manage project-linked sample records and previews.',
+                    style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: MadButton(
+                      text: 'Create Sample',
+                      icon: LucideIcons.plus,
+                      variant: ButtonVariant.outline,
+                      size: ButtonSize.sm,
+                      onPressed: () async {
+                        final created = await Navigator.pushNamed(context, '/samples/create', arguments: _projectId);
+                        if (created == true && mounted) {
+                          _loadServerSamples();
+                        }
+                      },
+                    ),
+                  ),
+                ] else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.3),
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                              ),
-                              child: Row(
-                                children: [
-                                  _buildHeaderCell('ID', flex: 1, isDark: isDark),
-                                  _buildHeaderCell('Building', flex: 2, isDark: isDark),
-                                  _buildHeaderCell('Site', flex: 2, isDark: isDark),
-                                  _buildHeaderCell('Work', flex: 2, isDark: isDark),
-                                  const SizedBox(width: 56),
-                                ],
-                              ),
+                            Text(
+                              'Server Samples',
+                              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
                             ),
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: visibleSamples.length,
-                              separatorBuilder: (context, index) => Divider(
-                                height: 1,
-                                color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.5),
-                              ),
-                              itemBuilder: (context, index) {
-                                final sample = visibleSamples[index];
-                                final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-').toString();
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        flex: 1,
-                                        child: Text(
-                                          sampleId,
-                                          style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          (sample['building_name'] ?? '-').toString(),
-                                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      if (!isMobile)
-                                        Expanded(
-                                          flex: 2,
-                                          child: Text(
-                                            (sample['site_name'] ?? '-').toString(),
-                                            style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          (sample['work_done'] ?? '-').toString(),
-                                          style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      MadDropdownMenuButton(
-                                        items: [
-                                          MadMenuItem(
-                                            label: 'Preview',
-                                            icon: LucideIcons.fileText,
-                                            onTap: () => _navigateToPreview(sample),
-                                          ),
-                                          MadMenuItem(
-                                            label: 'Delete',
-                                            icon: LucideIcons.trash2,
-                                            destructive: true,
-                                            onTap: () => _confirmDeleteSample(sample),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                            const SizedBox(height: 4),
+                            Text(
+                              'Manage project-linked sample records and previews.',
+                              style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
                             ),
                           ],
                         ),
+                      ),
+                      MadButton(
+                        text: 'Create Sample',
+                        icon: LucideIcons.plus,
+                        variant: ButtonVariant.outline,
+                        size: ButtonSize.sm,
+                        onPressed: () async {
+                          final created = await Navigator.pushNamed(context, '/samples/create', arguments: _projectId);
+                          if (created == true && mounted) {
+                            _loadServerSamples();
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _buildSamplesQuickStat('Total', '$totalSamples', LucideIcons.database, isDark),
+                    _buildSamplesQuickStat('Visible', '${visibleSamples.length}', LucideIcons.search, isDark),
+                    _buildSamplesQuickStat('Hidden', '$hiddenCount', LucideIcons.eyeOff, isDark),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (isMobile) ...[
+                  MadSelect<String>(
+                    value: _selectedUploadedFile.isEmpty ? null : _selectedUploadedFile,
+                    placeholder: 'Select uploaded file',
+                    options: availableUploadedFiles
+                        .map((path) => MadSelectOption(value: path, label: _fileNameFromPath(path)))
+                        .toList(),
+                    onChanged: (value) => setState(() => _selectedUploadedFile = value ?? ''),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: MadButton(
+                      text: 'Preview Uploaded File',
+                      icon: LucideIcons.eye,
+                      variant: ButtonVariant.outline,
+                      size: ButtonSize.sm,
+                      onPressed: _selectedUploadedFile.isEmpty ? null : () => _openUploadedFile(_selectedUploadedFile),
+                    ),
+                  ),
+                ] else
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 320,
+                        child: MadSelect<String>(
+                          value: _selectedUploadedFile.isEmpty ? null : _selectedUploadedFile,
+                          placeholder: 'Select uploaded file',
+                          options: availableUploadedFiles
+                              .map((path) => MadSelectOption(value: path, label: _fileNameFromPath(path)))
+                              .toList(),
+                          onChanged: (value) => setState(() => _selectedUploadedFile = value ?? ''),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      MadButton(
+                        text: 'Preview Uploaded File',
+                        icon: LucideIcons.eye,
+                        variant: ButtonVariant.outline,
+                        size: ButtonSize.sm,
+                        onPressed: _selectedUploadedFile.isEmpty ? null : () => _openUploadedFile(_selectedUploadedFile),
+                      ),
+                    ],
+                  ),
+                if (_projectId.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  MadInput(
+                    labelText: 'Search samples',
+                    hintText: 'Building, site, work...',
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${visibleSamples.length} of $totalSamples sample(s)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: mutedSurface.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: buildStateBody(),
+                ),
+              ],
+            ),
+          ),
         ),
         const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildSamplesQuickStat(String label, String value, IconData icon, bool isDark) {
+    final mutedColor = isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 108),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.6),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppTheme.primaryColor),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: TextStyle(fontSize: 11, color: mutedColor)),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSampleInfoLine(String label, String value, bool isDark, {required IconData icon}) {
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }

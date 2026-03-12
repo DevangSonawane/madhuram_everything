@@ -32,6 +32,10 @@ const _main = 'Main';
 const _projectManagement = 'Project Management';
 const _procurement = 'Procurement';
 const _deliveryInspection = 'Delivery & Inspection';
+const _billing = 'Billing';
+const _inventory = 'Inventory';
+const _documents = 'Documents';
+const _analytics = 'Analytics';
 
 /// Menu items matching React's menuItems.js exactly with same icons
 const menuItems = <MenuItem>[
@@ -71,16 +75,23 @@ const menuItems = <MenuItem>[
     icon: LucideIcons.layers,
   ),
   MenuItem(
-    title: 'Purchase Orders',
-    route: '/purchase-orders',
+    title: 'Purchase Requests',
+    route: '/purchase-requests',
     category: _procurement,
-    icon: LucideIcons.fileText,
+    icon: LucideIcons.shoppingCart,
+    hidden: false,
   ),
   MenuItem(
     title: 'Vendor Comparison',
     route: '/vendor-comparison',
     category: _procurement,
     icon: LucideIcons.arrowRightLeft,
+  ),
+  MenuItem(
+    title: 'Purchase Orders',
+    route: '/purchase-orders',
+    category: _procurement,
+    icon: LucideIcons.fileText,
   ),
   MenuItem(
     title: 'Vendors',
@@ -96,13 +107,112 @@ const menuItems = <MenuItem>[
     category: _deliveryInspection,
     icon: LucideIcons.truck,
   ),
+  MenuItem(
+    title: 'MER',
+    route: '/mer',
+    category: _deliveryInspection,
+    icon: LucideIcons.fileCheck,
+    hidden: true,
+  ),
+  MenuItem(
+    title: 'MIR',
+    route: '/mir',
+    category: _deliveryInspection,
+    icon: LucideIcons.eye,
+    hidden: false,
+  ),
+  MenuItem(
+    title: 'ITR',
+    route: '/itr',
+    category: _deliveryInspection,
+    icon: LucideIcons.hammer,
+    hidden: false,
+  ),
+
+  // Billing
+  MenuItem(
+    title: 'Billing & Invoices',
+    route: '/billing',
+    category: _billing,
+    icon: LucideIcons.receipt,
+    hidden: true,
+  ),
+
+  // Inventory
+  MenuItem(
+    title: 'Inventory',
+    route: '/inventory',
+    category: _inventory,
+    icon: LucideIcons.warehouse,
+    hidden: true,
+  ),
+  MenuItem(
+    title: 'Stock Overview',
+    route: '/stock-areas',
+    category: _inventory,
+    icon: LucideIcons.warehouse,
+    hidden: true,
+  ),
+  MenuItem(
+    title: 'Product Master',
+    route: '/materials',
+    category: _inventory,
+    icon: LucideIcons.package,
+    hidden: true,
+  ),
+  MenuItem(
+    title: 'Stock Transfers',
+    route: '/stock-transfers',
+    category: _inventory,
+    icon: LucideIcons.arrowRightLeft,
+    hidden: true,
+  ),
+  MenuItem(
+    title: 'Consumption',
+    route: '/consumption',
+    category: _inventory,
+    icon: LucideIcons.trendingDown,
+    hidden: true,
+  ),
+  MenuItem(
+    title: 'Returns',
+    route: '/returns',
+    category: _inventory,
+    icon: LucideIcons.undo2,
+    hidden: true,
+  ),
+
+  // Documents
+  MenuItem(
+    title: 'Repository',
+    route: '/documents',
+    category: _documents,
+    icon: LucideIcons.folderOpen,
+    hidden: true,
+  ),
+
+  // Analytics
+  MenuItem(
+    title: 'Reports',
+    route: '/reports',
+    category: _analytics,
+    icon: Icons.bar_chart,
+    hidden: true,
+  ),
+  MenuItem(
+    title: 'Audit Logs',
+    route: '/audit-logs',
+    category: _analytics,
+    icon: LucideIcons.history,
+    hidden: true,
+  ),
 ];
 
 /// Get menu items grouped by category
 List<MenuCategory> getMenuCategories({Map<String, dynamic>? user}) {
   final categories = <String, List<MenuItem>>{};
   for (final item in menuItems) {
-    if (item.hidden || !hasPageAccess(user, item.route)) {
+    if (item.hidden || !hasRouteAccess(user, item.route)) {
       continue;
     }
     categories.putIfAbsent(item.category, () => []).add(item);

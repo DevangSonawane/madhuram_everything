@@ -225,6 +225,19 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static Future<Map<String, dynamic>> createUser(
+    Map<String, dynamic> userData,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/auth/users');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode(userData),
+    );
+    return _handleResponse(res);
+  }
+
   static Future<Map<String, dynamic>> logout() async {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/auth/logout');
@@ -777,6 +790,84 @@ class ApiClient {
         {'success': false, 'error': 'Delete path not found', 'status': 404};
   }
 
+  static Future<Map<String, dynamic>> uploadPRFile(File file) async {
+    return _multipartRequest(
+      'POST',
+      '/api/pr/upload',
+      {},
+      files: {'file': file},
+    );
+  }
+
+  static Future<Map<String, dynamic>> uploadPRSignature(File file) async {
+    return _multipartRequest(
+      'POST',
+      '/api/pr/upload-signature',
+      {},
+      files: {'file': file},
+    );
+  }
+
+  static Future<Map<String, dynamic>> createPR(Map<String, dynamic> data) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode(data),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getPRs() async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getPRById(String prId) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr/$prId');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getPRsByProject(String projectId) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr/project/$projectId');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getPRsBySample(String sampleId) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr/sample/$sampleId');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> updatePR(
+    String prId,
+    Map<String, dynamic> data,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr/$prId');
+    final res = await _put(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode(data),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> deletePR(String prId) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr/$prId');
+    final res = await _delete(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
   // ============================================================================
   // Purchase Orders
   // ============================================================================
@@ -976,6 +1067,52 @@ class ApiClient {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/itr');
     final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  /// Upload ITR reference file (PDF/XLS/XLSX/CSV)
+  static Future<Map<String, dynamic>> uploadITRReference(
+    File file, {
+    String? userId,
+    String? userName,
+  }) {
+    final fields = <String, String>{};
+    if (userId != null && userId.trim().isNotEmpty) {
+      fields['user_id'] = userId.trim();
+    }
+    if (userName != null && userName.trim().isNotEmpty) {
+      fields['user_name'] = userName.trim();
+    }
+    return _multipartRequest(
+      'POST',
+      '/api/itr/upload',
+      fields,
+      files: {'file': file},
+    );
+  }
+
+  /// Update ITR approval/status workflow
+  static Future<Map<String, dynamic>> updateITRStatus(
+    String itrId, {
+    required String status,
+    String inspectionCode = '',
+    String lodhaPmcComments = '',
+    String? userId,
+    String? userName,
+  }) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/itr/$itrId/status');
+    final res = await _patch(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'status': status,
+        'inspection_code': inspectionCode,
+        'lodha_pmc_comments': lodhaPmcComments,
+        'user_id': userId,
+        'user_name': userName,
+      }),
+    );
     return _handleResponse(res);
   }
 
@@ -1779,4 +1916,30 @@ class ApiClient {
 
   static Future<Map<String, dynamic>> uploadDcFile(File file) =>
       uploadChallanFile(file);
+
+  static Future<Map<String, dynamic>> uploadPrFile(File file) =>
+      uploadPRFile(file);
+
+  static Future<Map<String, dynamic>> uploadPrSignature(File file) =>
+      uploadPRSignature(file);
+
+  static Future<Map<String, dynamic>> createPr(Map<String, dynamic> data) =>
+      createPR(data);
+
+  static Future<Map<String, dynamic>> getPrs() => getPRs();
+
+  static Future<Map<String, dynamic>> getPrById(String id) => getPRById(id);
+
+  static Future<Map<String, dynamic>> getPrsByProject(String projectId) =>
+      getPRsByProject(projectId);
+
+  static Future<Map<String, dynamic>> getPrsBySample(String sampleId) =>
+      getPRsBySample(sampleId);
+
+  static Future<Map<String, dynamic>> updatePr(
+    String id,
+    Map<String, dynamic> data,
+  ) => updatePR(id, data);
+
+  static Future<Map<String, dynamic>> deletePr(String id) => deletePR(id);
 }

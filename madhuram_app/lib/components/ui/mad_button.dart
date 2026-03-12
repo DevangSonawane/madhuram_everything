@@ -183,7 +183,7 @@ class MadButton extends StatelessWidget {
                       ? foregroundColor.withOpacity(0.5)
                       : foregroundColor,
                 ),
-                child: buttonContent,
+                child: FittedBox(fit: BoxFit.scaleDown, child: buttonContent),
               ),
             ),
           ),

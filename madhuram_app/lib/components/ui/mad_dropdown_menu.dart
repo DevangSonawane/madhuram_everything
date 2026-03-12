@@ -59,7 +59,7 @@ class MadDropdownMenu extends StatelessWidget {
             PopupMenuItem<int>(
               value: i,
               enabled: !item.disabled,
-              onTap: item.onTap,
+              onTap: item.onTap == null ? null : () => Future.microtask(item.onTap!),
               child: _MenuItemContent(item: item),
             ),
           );

@@ -116,10 +116,29 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
-    return StoreConnector<AppState, bool>(
-      converter: (store) => store.state.auth.isAdmin,
-      builder: (context, isAdmin) {
-        if (isAdmin && !_attemptedUsersLoad) {
+    return StoreConnector<AppState, _ProfilePermissionsViewModel>(
+      converter: (store) {
+        final user = store.state.auth.user;
+        final role = (user?['role'] ?? '').toString();
+        final canManageUsersByRole =
+            role == 'admin' || role == 'operational_manager';
+        final canViewUserManagementTab =
+            canManageUsersByRole &&
+            hasFunctionAccess(user, 'settings.user_management');
+        final canViewAccessControlTab =
+            canManageUsersByRole &&
+            hasFunctionAccess(user, 'settings.access_control');
+        return _ProfilePermissionsViewModel(
+          isAdmin: role == 'admin',
+          isOperationalManager: role == 'operational_manager',
+          canViewUserManagementTab: canViewUserManagementTab,
+          canViewAccessControlTab: canViewAccessControlTab,
+        );
+      },
+      builder: (context, vm) {
+        final shouldLoadUsers =
+            vm.canViewUserManagementTab || vm.canViewAccessControlTab;
+        if (shouldLoadUsers && !_attemptedUsersLoad) {
           _attemptedUsersLoad = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _loadUsers();
@@ -128,16 +147,18 @@ class _ProfilePageState extends State<ProfilePage> {
 
         final tabs = <Tab>[
           const Tab(text: 'Profile'),
-          const Tab(text: 'Appearance'),
+          const Tab(text: 'Settings'),
         ];
         final tabViews = <Widget>[
           _buildProfileTab(isDark, responsive),
-          _buildAppearanceTab(isDark, responsive),
+          _buildSettingsTab(isDark, responsive, vm.isOperationalManager),
         ];
-        if (isAdmin) {
-          tabs.add(const Tab(text: 'Users'));
+        if (vm.canViewUserManagementTab) {
+          tabs.add(const Tab(text: 'User Management'));
+          tabViews.add(_buildUsersTab(isDark, responsive, vm.isAdmin));
+        }
+        if (vm.canViewAccessControlTab) {
           tabs.add(const Tab(text: 'Access Control'));
-          tabViews.add(_buildUsersTab(isDark, responsive));
           tabViews.add(_buildAccessControlTab(isDark, responsive));
         }
 
@@ -165,7 +186,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Manage your account settings and preferences',
+                  'Manage your account and preferences.',
                   style: TextStyle(
                     fontSize: responsive.value(
                       mobile: 13,
@@ -437,299 +458,315 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildAppearanceTab(bool isDark, Responsive responsive) {
+  Widget _buildSettingsTab(
+    bool isDark,
+    Responsive responsive,
+    bool isOperationalManager,
+  ) {
     return StoreConnector<AppState, ThemeState>(
       converter: (store) => store.state.theme,
       builder: (context, themeState) {
         return SingleChildScrollView(
-          child: MadCard(
-            child: Padding(
-              padding: EdgeInsets.all(
-                responsive.value(mobile: 16, tablet: 20, desktop: 24),
+          child: Column(
+            children: [
+              MadCard(
+                child: Padding(
+                  padding: EdgeInsets.all(
+                    responsive.value(mobile: 16, tablet: 20, desktop: 24),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Appearance',
+                        style: TextStyle(
+                          fontSize: responsive.value(
+                            mobile: 16,
+                            tablet: 17,
+                            desktop: 18,
+                          ),
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Choose how the app looks. You can pick light, dark, or system.',
+                        style: TextStyle(
+                          fontSize: responsive.value(
+                            mobile: 13,
+                            tablet: 14,
+                            desktop: 14,
+                          ),
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                      SizedBox(
+                        height: responsive.value(
+                          mobile: 16,
+                          tablet: 20,
+                          desktop: 24,
+                        ),
+                      ),
+                      if (responsive.isMobile)
+                        Column(
+                          children: [
+                            _buildThemeOption(
+                              icon: LucideIcons.sun,
+                              label: 'Light',
+                              isSelected: themeState.mode == AppThemeMode.light,
+                              onTap: () => _setTheme(AppThemeMode.light),
+                              isDark: isDark,
+                              responsive: responsive,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildThemeOption(
+                              icon: LucideIcons.moon,
+                              label: 'Dark',
+                              isSelected: themeState.mode == AppThemeMode.dark,
+                              onTap: () => _setTheme(AppThemeMode.dark),
+                              isDark: isDark,
+                              responsive: responsive,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildThemeOption(
+                              icon: LucideIcons.laptop,
+                              label: 'System',
+                              isSelected:
+                                  themeState.mode == AppThemeMode.system,
+                              onTap: () => _setTheme(AppThemeMode.system),
+                              isDark: isDark,
+                              responsive: responsive,
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildThemeOption(
+                                icon: LucideIcons.sun,
+                                label: 'Light',
+                                isSelected:
+                                    themeState.mode == AppThemeMode.light,
+                                onTap: () => _setTheme(AppThemeMode.light),
+                                isDark: isDark,
+                                responsive: responsive,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildThemeOption(
+                                icon: LucideIcons.moon,
+                                label: 'Dark',
+                                isSelected:
+                                    themeState.mode == AppThemeMode.dark,
+                                onTap: () => _setTheme(AppThemeMode.dark),
+                                isDark: isDark,
+                                responsive: responsive,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildThemeOption(
+                                icon: LucideIcons.laptop,
+                                label: 'System',
+                                isSelected:
+                                    themeState.mode == AppThemeMode.system,
+                                onTap: () => _setTheme(AppThemeMode.system),
+                                isDark: isDark,
+                                responsive: responsive,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Theme',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 16,
-                        tablet: 17,
-                        desktop: 18,
-                      ),
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? AppTheme.darkForeground
-                          : AppTheme.lightForeground,
+              if (isOperationalManager) ...[
+                const SizedBox(height: 16),
+                MadCard(
+                  child: Padding(
+                    padding: EdgeInsets.all(
+                      responsive.value(mobile: 16, tablet: 20, desktop: 24),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Select your preferred theme',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 13,
-                        tablet: 14,
-                        desktop: 14,
-                      ),
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                  ),
-                  SizedBox(
-                    height: responsive.value(
-                      mobile: 16,
-                      tablet: 20,
-                      desktop: 24,
-                    ),
-                  ),
-                  // Theme options - stack on mobile
-                  if (responsive.isMobile)
-                    Column(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildThemeOption(
-                          icon: LucideIcons.sun,
-                          label: 'Light',
-                          isSelected: themeState.mode == AppThemeMode.light,
-                          onTap: () => _setTheme(AppThemeMode.light),
-                          isDark: isDark,
-                          responsive: responsive,
+                        Text(
+                          'Operational Manager',
+                          style: TextStyle(
+                            fontSize: responsive.value(
+                              mobile: 16,
+                              tablet: 17,
+                              desktop: 18,
+                            ),
+                            fontWeight: FontWeight.w600,
+                            color: isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'You are logged in as Operational Manager. Open the ITR module to manage ITR workflow.',
+                          style: TextStyle(
+                            fontSize: responsive.value(
+                              mobile: 13,
+                              tablet: 14,
+                              desktop: 14,
+                            ),
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
                         ),
                         const SizedBox(height: 12),
-                        _buildThemeOption(
-                          icon: LucideIcons.moon,
-                          label: 'Dark',
-                          isSelected: themeState.mode == AppThemeMode.dark,
-                          onTap: () => _setTheme(AppThemeMode.dark),
-                          isDark: isDark,
-                          responsive: responsive,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildThemeOption(
-                          icon: LucideIcons.laptop,
-                          label: 'System',
-                          isSelected: themeState.mode == AppThemeMode.system,
-                          onTap: () => _setTheme(AppThemeMode.system),
-                          isDark: isDark,
-                          responsive: responsive,
-                        ),
-                      ],
-                    )
-                  else
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildThemeOption(
-                            icon: LucideIcons.sun,
-                            label: 'Light',
-                            isSelected: themeState.mode == AppThemeMode.light,
-                            onTap: () => _setTheme(AppThemeMode.light),
-                            isDark: isDark,
-                            responsive: responsive,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildThemeOption(
-                            icon: LucideIcons.moon,
-                            label: 'Dark',
-                            isSelected: themeState.mode == AppThemeMode.dark,
-                            onTap: () => _setTheme(AppThemeMode.dark),
-                            isDark: isDark,
-                            responsive: responsive,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildThemeOption(
-                            icon: LucideIcons.laptop,
-                            label: 'System',
-                            isSelected: themeState.mode == AppThemeMode.system,
-                            onTap: () => _setTheme(AppThemeMode.system),
-                            isDark: isDark,
-                            responsive: responsive,
-                          ),
+                        MadButton(
+                          text: 'Open ITR Module',
+                          onPressed: () {
+                            final projectId = StoreProvider.of<AppState>(
+                              context,
+                            ).state.project.selectedProjectId;
+                            Navigator.pushNamed(
+                              context,
+                              projectId == null || projectId.isEmpty
+                                  ? '/projects'
+                                  : '/itr',
+                            );
+                          },
                         ),
                       ],
                     ),
-                ],
-              ),
-            ),
+                  ),
+                ),
+              ],
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _buildUsersTab(bool isDark, Responsive responsive) {
-    return StoreConnector<AppState, bool>(
-      converter: (store) => store.state.auth.isAdmin,
-      builder: (context, isAdmin) {
-        if (!isAdmin) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    LucideIcons.lock,
-                    size: responsive.value(mobile: 48, tablet: 56, desktop: 64),
-                    color:
-                        (isDark
-                                ? AppTheme.darkMutedForeground
-                                : AppTheme.lightMutedForeground)
-                            .withOpacity(0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Admin access required',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 16,
-                        tablet: 17,
-                        desktop: 18,
-                      ),
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? AppTheme.darkForeground
-                          : AppTheme.lightForeground,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'You need admin privileges to manage users',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 13,
-                        tablet: 14,
-                        desktop: 14,
-                      ),
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+  Widget _buildUsersTab(
+    bool isDark,
+    Responsive responsive,
+    bool canDeleteUsers,
+  ) {
+    if (_loadingUsers) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_usersError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: responsive.value(mobile: 48, tablet: 56, desktop: 64),
+                color: Colors.red.withOpacity(0.5),
               ),
-            ),
-          );
-        }
-
-        if (_loadingUsers) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (_usersError != null) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: responsive.value(mobile: 48, tablet: 56, desktop: 64),
-                    color: Colors.red.withOpacity(0.5),
+              const SizedBox(height: 12),
+              Text(
+                _usersError!,
+                style: TextStyle(
+                  fontSize: responsive.value(
+                    mobile: 14,
+                    tablet: 15,
+                    desktop: 16,
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _usersError!,
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 14,
-                        tablet: 15,
-                        desktop: 16,
-                      ),
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  MadButton(
-                    text: 'Retry',
-                    size: ButtonSize.sm,
-                    onPressed: _loadUsers,
-                  ),
-                ],
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-          );
-        }
+              const SizedBox(height: 12),
+              MadButton(
+                text: 'Retry',
+                size: ButtonSize.sm,
+                onPressed: _loadUsers,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'User Management',
-                  style: TextStyle(
-                    fontSize: responsive.value(
-                      mobile: 16,
-                      tablet: 17,
-                      desktop: 18,
-                    ),
-                    fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? AppTheme.darkForeground
-                        : AppTheme.lightForeground,
-                  ),
-                ),
-                MadButton(
-                  text: responsive.isMobile ? null : 'Add User',
-                  icon: LucideIcons.plus,
-                  size: ButtonSize.sm,
-                  onPressed: () =>
-                      _showAddUserDialog(context, isDark, responsive),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            MadSearchInput(
-              controller: _userSearchController,
-              hintText: 'Search by name, email, username or role...',
-              onChanged: (_) => setState(() {}),
-              onClear: () {
-                _userSearchController.clear();
-                setState(() {});
-              },
-              width: responsive.isMobile ? double.infinity : 320,
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: MadCard(
-                child: _filteredUsers.isEmpty
-                    ? Center(
-                        child: Text(
-                          _userSearchController.text.trim().isNotEmpty
-                              ? 'No users match your search'
-                              : 'No users yet',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDark
-                                ? AppTheme.darkMutedForeground
-                                : AppTheme.lightMutedForeground,
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _filteredUsers.length,
-                        itemBuilder: (context, index) {
-                          final user = _filteredUsers[index];
-                          return _buildUserListTile(user, isDark, responsive);
-                        },
-                      ),
+            Text(
+              'User Management',
+              style: TextStyle(
+                fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
+            ),
+            MadButton(
+              text: responsive.isMobile ? null : 'Add User',
+              icon: LucideIcons.plus,
+              size: ButtonSize.sm,
+              onPressed: () => _showAddUserDialog(context, isDark, responsive),
             ),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 12),
+        MadSearchInput(
+          controller: _userSearchController,
+          hintText: 'Search by name, email, username or role...',
+          onChanged: (_) => setState(() {}),
+          onClear: () {
+            _userSearchController.clear();
+            setState(() {});
+          },
+          width: responsive.isMobile ? double.infinity : 320,
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: MadCard(
+            child: _filteredUsers.isEmpty
+                ? Center(
+                    child: Text(
+                      _userSearchController.text.trim().isNotEmpty
+                          ? 'No users match your search'
+                          : 'No users yet',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _filteredUsers.length,
+                    itemBuilder: (context, index) {
+                      final user = _filteredUsers[index];
+                      return _buildUserListTile(
+                        user,
+                        isDark,
+                        responsive,
+                        canDeleteUsers,
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1178,7 +1215,12 @@ class _ProfilePageState extends State<ProfilePage> {
     return null;
   }
 
-  Widget _buildUserListTile(User user, bool isDark, Responsive responsive) {
+  Widget _buildUserListTile(
+    User user,
+    bool isDark,
+    Responsive responsive,
+    bool canDeleteUsers,
+  ) {
     if (responsive.isMobile) {
       // Card-style on mobile
       return Container(
@@ -1259,10 +1301,11 @@ class _ProfilePageState extends State<ProfilePage> {
               },
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Text('Delete', style: TextStyle(color: Colors.red)),
-                ),
+                if (canDeleteUsers)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete', style: TextStyle(color: Colors.red)),
+                  ),
               ],
             ),
           ],
@@ -1307,10 +1350,11 @@ class _ProfilePageState extends State<ProfilePage> {
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'edit', child: Text('Edit')),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Text('Delete', style: TextStyle(color: Colors.red)),
-              ),
+              if (canDeleteUsers)
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Delete', style: TextStyle(color: Colors.red)),
+                ),
             ],
           ),
         ],
@@ -1631,6 +1675,20 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
+class _ProfilePermissionsViewModel {
+  final bool isAdmin;
+  final bool isOperationalManager;
+  final bool canViewUserManagementTab;
+  final bool canViewAccessControlTab;
+
+  _ProfilePermissionsViewModel({
+    required this.isAdmin,
+    required this.isOperationalManager,
+    required this.canViewUserManagementTab,
+    required this.canViewAccessControlTab,
+  });
+}
+
 /// Form content for Add User dialog (stateful for controllers and role)
 class _AddUserForm extends StatefulWidget {
   final List<MadSelectOption<String>> roleOptions;
@@ -1674,25 +1732,22 @@ class _AddUserFormState extends State<_AddUserForm> {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text;
 
-    if (name.isEmpty ||
-        username.isEmpty ||
-        email.isEmpty ||
-        phone.isEmpty ||
-        password.isEmpty) {
-      setState(() => _errorText = 'Please fill all required fields');
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      setState(() => _errorText = 'Name, email, and password are required');
       return;
     }
     setState(() {
       _errorText = null;
       _loading = true;
     });
-    final result = await ApiClient.signup({
+    final result = await ApiClient.createUser({
       'name': name,
-      'username': username,
+      'username': username.isEmpty ? name : username,
       'email': email,
-      'phone_number': phone,
+      'phone_number': phone.isEmpty ? null : phone,
       'password': password,
       'role': _selectedRole,
+      'project': <String>[],
     });
     if (!mounted) return;
     setState(() => _loading = false);
@@ -1808,7 +1863,6 @@ class _EditUserFormState extends State<_EditUserForm> {
   late final TextEditingController _usernameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
-  late final TextEditingController _projectListController;
   late String _selectedRole;
   String? _errorText;
   bool _loading = false;
@@ -1823,9 +1877,6 @@ class _EditUserFormState extends State<_EditUserForm> {
     _phoneController = TextEditingController(
       text: widget.user.phoneNumber ?? '',
     );
-    _projectListController = TextEditingController(
-      text: widget.user.projectList?.join(', ') ?? '',
-    );
     _selectedRole = widget.user.role;
   }
 
@@ -1834,7 +1885,6 @@ class _EditUserFormState extends State<_EditUserForm> {
     _usernameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
-    _projectListController.dispose();
     super.dispose();
   }
 
@@ -1842,14 +1892,6 @@ class _EditUserFormState extends State<_EditUserForm> {
     final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
     final phone = _phoneController.text.trim();
-    final projectListStr = _projectListController.text.trim();
-    final projectList = projectListStr.isEmpty
-        ? <String>[]
-        : projectListStr
-              .split(',')
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty)
-              .toList();
 
     if (username.isEmpty || email.isEmpty) {
       setState(() => _errorText = 'Username and email are required');
@@ -1864,7 +1906,7 @@ class _EditUserFormState extends State<_EditUserForm> {
       'email': email,
       'phone_number': phone.isEmpty ? null : phone,
       'role': _selectedRole,
-      'project_list': projectList,
+      'project_list': widget.user.projectList ?? <String>[],
     });
     if (!mounted) return;
     setState(() => _loading = false);
@@ -1911,12 +1953,6 @@ class _EditUserFormState extends State<_EditUserForm> {
             options: widget.roleOptions,
             onChanged: (v) => setState(() => _selectedRole = v ?? 'labour'),
             placeholder: 'Select role',
-          ),
-          const SizedBox(height: 16),
-          MadInput(
-            controller: _projectListController,
-            labelText: 'Project IDs',
-            hintText: 'Comma-separated project IDs',
           ),
           if (_errorText != null) ...[
             const SizedBox(height: 12),

@@ -85,3 +85,28 @@ bool hasFunctionAccess(Map<String, dynamic>? user, String? functionKey) {
 
   return functions[functionKey] == true;
 }
+
+String? primaryFunctionKeyForPage(String? pagePath) {
+  if (pagePath == null || pagePath.isEmpty) return null;
+  final page = accessControlCatalog.where((p) => p.pagePath == pagePath);
+  if (page.isEmpty) return null;
+  final functions = page.first.functions;
+  if (functions.isEmpty) return null;
+
+  for (final fn in functions) {
+    if (fn.key.endsWith('.view')) return fn.key;
+  }
+  return functions.first.key;
+}
+
+bool hasRouteAccess(Map<String, dynamic>? user, String? route) {
+  if (route == null || route.isEmpty) return true;
+
+  final normalizedRoute = normalizeRouteForAccess(route);
+  if (!hasPageAccess(user, normalizedRoute)) return false;
+  if (alwaysAllowedPagePaths.contains(normalizedRoute)) return true;
+
+  final functionKey = primaryFunctionKeyForPage(normalizedRoute);
+  if (functionKey == null) return true;
+  return hasFunctionAccess(user, functionKey);
+}
