@@ -133,8 +133,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
   List<Project> get _filteredProjects {
     var list = _projects;
     final normalizedRole = (_currentUserRole ?? '').toLowerCase();
-    final canViewAllProjects =
-        normalizedRole == 'admin' || normalizedRole == 'operational_manager';
+    final canViewAllProjects = normalizedRole == 'admin';
     final assignedProjectIds = _resolveAssignedProjectIds(
       _currentUserProjectList,
     );

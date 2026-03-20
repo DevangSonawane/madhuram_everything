@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class User {
   final String id;
   final String name;
@@ -20,6 +22,35 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    List<String>? normalizeProjectList(dynamic value) {
+      if (value == null) return null;
+      if (value is List) {
+        return value
+            .map((entry) {
+              if (entry is Map) {
+                return (entry['project_id'] ??
+                        entry['id'] ??
+                        entry['name'] ??
+                        entry['project_name'] ??
+                        '')
+                    .toString();
+              }
+              return entry.toString();
+            })
+            .where((v) => v.trim().isNotEmpty)
+            .toList();
+      }
+      if (value is String && value.trim().isNotEmpty) {
+        try {
+          final parsed = jsonDecode(value);
+          return normalizeProjectList(parsed);
+        } catch (_) {
+          return <String>[];
+        }
+      }
+      return null;
+    }
+
     return User(
       id: (json['user_id'] ?? json['id'] ?? '').toString(),
       name: json['name'] ?? '',
@@ -27,9 +58,7 @@ class User {
       email: json['email'] ?? '',
       phoneNumber: json['phone_number'],
       role: json['role'] ?? 'labour',
-      projectList: json['project_list'] != null
-          ? List<String>.from(json['project_list'])
-          : null,
+      projectList: normalizeProjectList(json['project_list']),
       avatar: json['avatar'],
     );
   }

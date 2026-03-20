@@ -31,6 +31,8 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   List<User> _users = [];
+  List<MadSelectOption<String>> _projectOptions = [];
+  bool _loadingProjects = false;
   bool _loadingUsers = false;
   String? _usersError;
   bool _attemptedUsersLoad = false;
@@ -48,6 +50,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    _loadProjects();
   }
 
   @override
@@ -96,6 +99,51 @@ class _ProfilePageState extends State<ProfilePage> {
         _users = [];
         _loadingUsers = false;
         _usersError = 'Failed to load users';
+      });
+    }
+  }
+
+  Future<void> _loadProjects() async {
+    setState(() => _loadingProjects = true);
+    try {
+      final result = await ApiClient.getProjects();
+      if (!mounted) return;
+      if (result['success'] == true) {
+        final data = result['data'];
+        final list = data is List ? data : const [];
+        final options = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .map((project) {
+              final id = (project['project_id'] ?? project['id'] ?? '')
+                  .toString();
+              final name =
+                  (project['project_name'] ?? project['name'] ?? 'Project')
+                      .toString();
+              if (id.isEmpty) return null;
+              return MadSelectOption<String>(
+                value: id,
+                label: '$id - $name',
+              );
+            })
+            .whereType<MadSelectOption<String>>()
+            .toList();
+        options.sort((a, b) => a.label.compareTo(b.label));
+        setState(() {
+          _projectOptions = options;
+          _loadingProjects = false;
+        });
+      } else {
+        setState(() {
+          _projectOptions = [];
+          _loadingProjects = false;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _projectOptions = [];
+        _loadingProjects = false;
       });
     }
   }
@@ -1554,6 +1602,8 @@ class _ProfilePageState extends State<ProfilePage> {
           child: SafeArea(
             child: _AddUserForm(
               roleOptions: _roleOptions,
+              projectOptions: _projectOptions,
+              loadingProjects: _loadingProjects,
               onCancel: () => Navigator.pop(ctx),
               onSuccess: () {
                 Navigator.pop(ctx);
@@ -1572,6 +1622,8 @@ class _ProfilePageState extends State<ProfilePage> {
             constraints: BoxConstraints(maxWidth: responsive.dialogWidth()),
             child: _AddUserForm(
               roleOptions: _roleOptions,
+              projectOptions: _projectOptions,
+              loadingProjects: _loadingProjects,
               onCancel: () => Navigator.pop(ctx),
               onSuccess: () {
                 Navigator.pop(ctx);
@@ -1605,6 +1657,8 @@ class _ProfilePageState extends State<ProfilePage> {
             child: _EditUserForm(
               user: user,
               roleOptions: _roleOptions,
+              projectOptions: _projectOptions,
+              loadingProjects: _loadingProjects,
               onCancel: () => Navigator.pop(ctx),
               onSuccess: () {
                 Navigator.pop(ctx);
@@ -1624,6 +1678,8 @@ class _ProfilePageState extends State<ProfilePage> {
             child: _EditUserForm(
               user: user,
               roleOptions: _roleOptions,
+              projectOptions: _projectOptions,
+              loadingProjects: _loadingProjects,
               onCancel: () => Navigator.pop(ctx),
               onSuccess: () {
                 Navigator.pop(ctx);
@@ -1692,11 +1748,15 @@ class _ProfilePermissionsViewModel {
 /// Form content for Add User dialog (stateful for controllers and role)
 class _AddUserForm extends StatefulWidget {
   final List<MadSelectOption<String>> roleOptions;
+  final List<MadSelectOption<String>> projectOptions;
+  final bool loadingProjects;
   final VoidCallback onCancel;
   final VoidCallback onSuccess;
 
   const _AddUserForm({
     required this.roleOptions,
+    required this.projectOptions,
+    required this.loadingProjects,
     required this.onCancel,
     required this.onSuccess,
   });
@@ -1712,6 +1772,7 @@ class _AddUserFormState extends State<_AddUserForm> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   String _selectedRole = 'labour';
+  String _selectedProjectId = 'none';
   String? _errorText;
   bool _loading = false;
 
@@ -1740,6 +1801,9 @@ class _AddUserFormState extends State<_AddUserForm> {
       _errorText = null;
       _loading = true;
     });
+    final selectedProjects =
+        _selectedProjectId == 'none' ? <String>[] : <String>[_selectedProjectId];
+
     final result = await ApiClient.createUser({
       'name': name,
       'username': username.isEmpty ? name : username,
@@ -1747,7 +1811,8 @@ class _AddUserFormState extends State<_AddUserForm> {
       'phone_number': phone.isEmpty ? null : phone,
       'password': password,
       'role': _selectedRole,
-      'project': <String>[],
+      'project': selectedProjects,
+      'project_list': selectedProjects,
     });
     if (!mounted) return;
     setState(() => _loading = false);
@@ -1809,6 +1874,19 @@ class _AddUserFormState extends State<_AddUserForm> {
             hintText: 'Enter password',
             obscureText: true,
           ),
+          const SizedBox(height: 16),
+          MadSelect<String>(
+            labelText: 'Project',
+            value: _selectedProjectId,
+            options: [
+              const MadSelectOption(value: 'none', label: 'No project'),
+              ...widget.projectOptions,
+            ],
+            onChanged: (v) =>
+                setState(() => _selectedProjectId = v ?? 'none'),
+            placeholder:
+                widget.loadingProjects ? 'Loading projects...' : 'Select project',
+          ),
           if (_errorText != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -1845,12 +1923,16 @@ class _AddUserFormState extends State<_AddUserForm> {
 class _EditUserForm extends StatefulWidget {
   final User user;
   final List<MadSelectOption<String>> roleOptions;
+  final List<MadSelectOption<String>> projectOptions;
+  final bool loadingProjects;
   final VoidCallback onCancel;
   final VoidCallback onSuccess;
 
   const _EditUserForm({
     required this.user,
     required this.roleOptions,
+    required this.projectOptions,
+    required this.loadingProjects,
     required this.onCancel,
     required this.onSuccess,
   });
@@ -1864,6 +1946,7 @@ class _EditUserFormState extends State<_EditUserForm> {
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
   late String _selectedRole;
+  late String _selectedProjectId;
   String? _errorText;
   bool _loading = false;
 
@@ -1878,6 +1961,8 @@ class _EditUserFormState extends State<_EditUserForm> {
       text: widget.user.phoneNumber ?? '',
     );
     _selectedRole = widget.user.role;
+    final assigned = widget.user.projectList ?? const <String>[];
+    _selectedProjectId = assigned.isNotEmpty ? assigned.first : 'none';
   }
 
   @override
@@ -1901,12 +1986,15 @@ class _EditUserFormState extends State<_EditUserForm> {
       _errorText = null;
       _loading = true;
     });
+    final selectedProjects =
+        _selectedProjectId == 'none' ? <String>[] : <String>[_selectedProjectId];
+
     final result = await ApiClient.updateUser(widget.user.id, {
       'username': username,
       'email': email,
       'phone_number': phone.isEmpty ? null : phone,
       'role': _selectedRole,
-      'project_list': widget.user.projectList ?? <String>[],
+      'project_list': selectedProjects,
     });
     if (!mounted) return;
     setState(() => _loading = false);
@@ -1953,6 +2041,19 @@ class _EditUserFormState extends State<_EditUserForm> {
             options: widget.roleOptions,
             onChanged: (v) => setState(() => _selectedRole = v ?? 'labour'),
             placeholder: 'Select role',
+          ),
+          const SizedBox(height: 16),
+          MadSelect<String>(
+            labelText: 'Project',
+            value: _selectedProjectId,
+            options: [
+              const MadSelectOption(value: 'none', label: 'No project'),
+              ...widget.projectOptions,
+            ],
+            onChanged: (v) =>
+                setState(() => _selectedProjectId = v ?? 'none'),
+            placeholder:
+                widget.loadingProjects ? 'Loading projects...' : 'Select project',
           ),
           if (_errorText != null) ...[
             const SizedBox(height: 12),

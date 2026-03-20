@@ -46,6 +46,12 @@ const menuItems = <MenuItem>[
     category: _main,
     icon: LucideIcons.layoutDashboard,
   ),
+  MenuItem(
+    title: 'Attendance',
+    route: '/attendance',
+    category: _main,
+    icon: LucideIcons.userCheck,
+  ),
 
   // Project Management
   MenuItem(

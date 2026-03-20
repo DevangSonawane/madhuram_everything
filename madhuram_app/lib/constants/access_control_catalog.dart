@@ -51,6 +51,24 @@ const accessControlCatalog = <AccessControlPage>[
     ],
   ),
   AccessControlPage(
+    pagePath: '/attendance',
+    pageTitle: 'Attendance',
+    category: 'Main',
+    description: 'Capture attendance using selfie, site image, and location.',
+    functions: [
+      AccessControlFunction(
+        key: 'attendance.view',
+        label: 'View Attendance',
+        description: 'Open attendance module.',
+      ),
+      AccessControlFunction(
+        key: 'attendance.mark',
+        label: 'Mark Attendance',
+        description: 'Capture selfie, site image, and location for attendance.',
+      ),
+    ],
+  ),
+  AccessControlPage(
     pagePath: '/projects',
     pageTitle: 'Projects',
     category: 'Project Management',
