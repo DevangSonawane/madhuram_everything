@@ -331,6 +331,166 @@ class PdfService {
     return doc;
   }
 
+  /// Generate Purchase Request (Material Request) PDF
+  static Future<pw.Document> generatePurchaseRequestPdf({
+    required String prNumber,
+    required String projectName,
+    required String workOrder,
+    required String location,
+    required String mirNo,
+    required String urgency,
+    required String date,
+    required String approvedBy,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final doc = await createDocument();
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (context) {
+          return [
+            pw.Container(
+              padding: const pw.EdgeInsets.only(bottom: 12),
+              decoration: const pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(width: 0.5, color: PdfColors.grey400),
+                ),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'Material Request',
+                        style: pw.TextStyle(
+                          fontSize: 18,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        prNumber,
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.grey700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  pw.Text(
+                    date,
+                    style: const pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey400),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow('Project Name', projectName),
+                  _buildInfoRow('Work Order', workOrder),
+                  _buildInfoRow('Location', location),
+                  _buildInfoRow('MIR No', mirNo),
+                  _buildInfoRow('Urgency', urgency),
+                  _buildInfoRow('Approved By', approvedBy),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 16),
+            buildTable(
+              headers: const [
+                'Sr.',
+                'Material Description',
+                'Unit',
+                'Req. Qty',
+                'Make',
+                'Place of Utilisation',
+              ],
+              rows: items.asMap().entries.map((entry) {
+                final index = entry.key + 1;
+                final item = entry.value;
+                return [
+                  index.toString(),
+                  (item['material_description'] ?? '').toString(),
+                  (item['unit'] ?? '').toString(),
+                  (item['req_qty'] ?? '').toString(),
+                  (item['make'] ?? '').toString(),
+                  (item['place_of_utilisation'] ?? '').toString(),
+                ];
+              }).toList(),
+            ),
+            pw.SizedBox(height: 24),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSignatureBox('Requested By'),
+                _buildSignatureBox('Checked By'),
+                _buildSignatureBox('Approved By'),
+              ],
+            ),
+          ];
+        },
+      ),
+    );
+
+    return doc;
+  }
+
+  static pw.Widget _buildInfoRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 90,
+            child: pw.Text(
+              '$label:',
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+          pw.Expanded(
+            child: pw.Text(
+              value.isEmpty ? '-' : value,
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildSignatureBox(String label) {
+    return pw.Container(
+      width: 160,
+      height: 40,
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey400),
+      ),
+      alignment: pw.Alignment.bottomCenter,
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Text(
+        label,
+        style: const pw.TextStyle(fontSize: 9),
+      ),
+    );
+  }
+
   /// Generate Invoice PDF
   static Future<pw.Document> generateInvoicePdf({
     required String invoiceNumber,

@@ -1,15 +1,18 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import '../store/app_state.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../services/api_client.dart';
 import '../services/file_service.dart';
+import '../services/pdf_service.dart';
 import '../utils/responsive.dart';
 
 class PurchaseRequestItem {
@@ -800,6 +803,11 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                 onTap: () => _showRequestDialog(existing: request),
               ),
               MadMenuItem(
+                label: 'Email',
+                icon: LucideIcons.mail,
+                onTap: () => _openEmailDialog(request),
+              ),
+              MadMenuItem(
                 label: 'Delete',
                 icon: LucideIcons.trash2,
                 destructive: true,
@@ -899,6 +907,11 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                           label: 'Edit',
                           icon: LucideIcons.pencil,
                           onTap: () => _showRequestDialog(existing: request),
+                        ),
+                        MadMenuItem(
+                          label: 'Email',
+                          icon: LucideIcons.mail,
+                          onTap: () => _openEmailDialog(request),
                         ),
                         MadMenuItem(
                           label: 'Delete',
@@ -1243,6 +1256,28 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
       actions: [
         MadButton(text: 'Close', onPressed: () => Navigator.of(context).pop()),
       ],
+    );
+  }
+
+  Future<void> _openAttachment(String path) async {
+    if (path.isEmpty) return;
+    final uri = Uri.parse(
+      path.startsWith('http') ? path : ApiClient.getApiFileUrl(path),
+    );
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+        mounted) {
+      showToast(
+        context,
+        'Could not open attachment',
+        variant: ToastVariant.error,
+      );
+    }
+  }
+
+  void _openEmailDialog(PurchaseRequest pr) {
+    showDialog(
+      context: context,
+      builder: (context) => _PurchaseRequestEmailDialog(pr: pr),
     );
   }
 
@@ -2831,6 +2866,637 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PurchaseRequestEmailDialog extends StatefulWidget {
+  final PurchaseRequest pr;
+
+  const _PurchaseRequestEmailDialog({required this.pr});
+
+  @override
+  State<_PurchaseRequestEmailDialog> createState() =>
+      _PurchaseRequestEmailDialogState();
+}
+
+class _PurchaseRequestEmailDialogState
+    extends State<_PurchaseRequestEmailDialog> {
+  bool _loadingVendors = false;
+  bool _sending = false;
+  bool _downloading = false;
+  bool _vendorDropdownOpen = false;
+  List<Map<String, dynamic>> _vendors = [];
+  Set<String> _selectedVendorIds = {};
+  List<File> _attachments = [];
+  final TextEditingController _remarksController = TextEditingController();
+  final TextEditingController _vendorSearchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVendors();
+  }
+
+  @override
+  void dispose() {
+    _remarksController.dispose();
+    _vendorSearchController.dispose();
+    super.dispose();
+  }
+
+  String _vendorId(Map<String, dynamic> vendor) =>
+      (vendor['vendor_id'] ?? vendor['id'] ?? '').toString();
+
+  String _vendorName(Map<String, dynamic> vendor) =>
+      (vendor['vendor_name'] ??
+              vendor['vendor_company_name'] ??
+              vendor['name'] ??
+              'Vendor')
+          .toString();
+
+  String _vendorEmail(Map<String, dynamic> vendor) =>
+      (vendor['vendor_email'] ?? '').toString();
+
+  Future<void> _loadVendors() async {
+    setState(() => _loadingVendors = true);
+    try {
+      final projectId = widget.pr.projectId;
+      final result = projectId.isNotEmpty
+          ? await ApiClient.getVendorsByProject(projectId)
+          : await ApiClient.getVendors();
+      if (!mounted) return;
+      if (result['success'] == true) {
+        final data = result['data'];
+        final list = data is List ? data : const [];
+        final vendors = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .where(
+              (v) => _vendorEmail(v).trim().isNotEmpty,
+            )
+            .toList();
+        setState(() {
+          _vendors = vendors;
+          _loadingVendors = false;
+        });
+        return;
+      }
+      setState(() {
+        _vendors = [];
+        _loadingVendors = false;
+      });
+      showToast(
+        context,
+        (result['error'] ?? 'Failed to load vendors').toString(),
+        variant: ToastVariant.error,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _vendors = [];
+        _loadingVendors = false;
+      });
+      showToast(
+        context,
+        'Failed to load vendors',
+        variant: ToastVariant.error,
+      );
+    }
+  }
+
+  List<Map<String, dynamic>> get _filteredVendors {
+    final query = _vendorSearchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _vendors;
+    return _vendors.where((vendor) {
+      final name = _vendorName(vendor).toLowerCase();
+      final email = _vendorEmail(vendor).toLowerCase();
+      return name.contains(query) || email.contains(query);
+    }).toList();
+  }
+
+  void _toggleVendor(String vendorId, bool selected) {
+    setState(() {
+      final next = Set<String>.from(_selectedVendorIds);
+      if (selected) {
+        next.add(vendorId);
+      } else {
+        next.remove(vendorId);
+      }
+      _selectedVendorIds = next;
+    });
+  }
+
+  void _toggleVendorDropdown() {
+    setState(() => _vendorDropdownOpen = !_vendorDropdownOpen);
+  }
+
+  Future<void> _pickAttachments() async {
+    final files = await FileService.pickMultipleFilesWithSource(
+      context: context,
+    );
+    if (!mounted) return;
+    if (files.isEmpty) return;
+    setState(() {
+      _attachments = [..._attachments, ...files];
+    });
+  }
+
+  void _removeAttachment(File file) {
+    setState(() {
+      _attachments = _attachments.where((f) => f.path != file.path).toList();
+    });
+  }
+
+  void _clearAttachments() {
+    setState(() => _attachments = []);
+  }
+
+  String _formatDate(String? value) {
+    if (value == null || value.isEmpty) return '-';
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return value;
+    return DateFormat('dd.MM.yyyy').format(parsed);
+  }
+
+  Future<void> _downloadPdf() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final pr = widget.pr;
+      final prNumber = _formatPrNumber(pr);
+      final doc = await PdfService.generatePurchaseRequestPdf(
+        prNumber: prNumber,
+        projectName: pr.projectName,
+        workOrder: pr.workorderNo,
+        location: pr.location,
+        mirNo: pr.mirNo,
+        urgency: pr.urgency,
+        date: _formatDate(pr.date),
+        approvedBy: pr.approvedBy,
+        items: pr.items.map((i) => i.toJson()).toList(),
+      );
+      final file = await PdfService.saveToFile(
+        doc,
+        'Material-Request-$prNumber.pdf',
+      );
+      if (!mounted) return;
+      if (file != null) {
+        showToast(context, 'PDF saved to ${file.path}');
+      } else {
+        showToast(
+          context,
+          'Failed to save PDF',
+          variant: ToastVariant.error,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showToast(
+        context,
+        'Could not generate PDF',
+        variant: ToastVariant.error,
+      );
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  Future<void> _sendEmail() async {
+    if (_sending) return;
+    final selectedVendors = _vendors
+        .where((v) => _selectedVendorIds.contains(_vendorId(v)))
+        .toList();
+    if (selectedVendors.isEmpty) {
+      showToast(
+        context,
+        'Select at least one vendor with a valid email',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
+    setState(() => _sending = true);
+    try {
+      final pr = widget.pr;
+      final result = await ApiClient.sendPrEmail(
+        pr: {
+          'pr_id': pr.id,
+          'project_id': pr.projectId,
+          'sample_id': pr.sampleId,
+          'project_name': pr.projectName,
+          'workorder_no': pr.workorderNo,
+          'location': pr.location,
+          'mirno': pr.mirNo,
+          'urgency': pr.urgency,
+          'date': pr.date,
+          'approved_by': pr.approvedBy,
+          'remarks': pr.remarks,
+          'items': pr.items.map((i) => i.toJson()).toList(),
+        },
+        vendors: selectedVendors,
+        message: _remarksController.text.trim(),
+        attachments: _attachments,
+      );
+      if (!mounted) return;
+      if (result['success'] == true) {
+        showToast(context, 'PR email sent');
+        Navigator.of(context).pop();
+        return;
+      }
+      showToast(
+        context,
+        (result['error'] ?? 'Failed to send email').toString(),
+        variant: ToastVariant.error,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showToast(
+        context,
+        'Failed to send email',
+        variant: ToastVariant.error,
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pr = widget.pr;
+    final selectedVendors = _vendors
+        .where((v) => _selectedVendorIds.contains(_vendorId(v)))
+        .toList();
+    final muted = isDark
+        ? AppTheme.darkMutedForeground
+        : AppTheme.lightMutedForeground;
+    final border = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
+    final maxHeight = MediaQuery.of(context).size.height * 0.85;
+    final isMobile = Responsive(context).isMobile;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      child: Container(
+        constraints: BoxConstraints(maxWidth: 720, maxHeight: maxHeight),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Email Purchase Request',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Select vendors. The selected PR will be sent to their email addresses.',
+              style: TextStyle(color: muted),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MadCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'PR: ${_formatPrNumber(pr)}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Project: ${pr.projectName.isEmpty ? '-' : pr.projectName}',
+                              style: TextStyle(color: muted, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Attachment (optional)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _pickAttachments,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: border.withOpacity(0.8)),
+                          color: (isDark
+                                  ? AppTheme.darkMuted
+                                  : AppTheme.lightMuted)
+                              .withOpacity(0.15),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(LucideIcons.upload, size: 20, color: muted),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Drag and drop files here, or click to upload',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Selected files will be attached when you send the email.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: muted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_attachments.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      ..._attachments.map((file) {
+                        final name = file.path.split(RegExp(r'[/\\\\]')).last;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: border.withOpacity(0.6)),
+                            color: (isDark
+                                    ? AppTheme.darkMuted
+                                    : AppTheme.lightMuted)
+                                .withOpacity(0.25),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              MadButton(
+                                text: 'Remove',
+                                variant: ButtonVariant.ghost,
+                                size: ButtonSize.sm,
+                                onPressed: () => _removeAttachment(file),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: MadButton(
+                          text: 'Clear All',
+                          variant: ButtonVariant.outline,
+                          size: ButtonSize.sm,
+                          onPressed: _clearAttachments,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    MadTextarea(
+                      controller: _remarksController,
+                      labelText: 'Remarks (optional)',
+                      hintText: 'Add any note for vendors...',
+                      minLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Vendors',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    MadCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: _loadingVendors
+                            ? Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Loading vendors...',
+                                    style: TextStyle(color: muted),
+                                  ),
+                                ],
+                              )
+                            : _vendors.isEmpty
+                                ? Text(
+                                    'No vendors with email found for this project.',
+                                    style: TextStyle(color: muted),
+                                  )
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      InkWell(
+                                        onTap: _toggleVendorDropdown,
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 12,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color:
+                                                  border.withOpacity(0.7),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  _selectedVendorIds.isEmpty
+                                                      ? 'Select Vendors'
+                                                      : '${_selectedVendorIds.length} vendor(s) selected',
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              Icon(
+                                                _vendorDropdownOpen
+                                                    ? LucideIcons.chevronUp
+                                                    : LucideIcons.chevronDown,
+                                                size: 16,
+                                                color: muted,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      if (_vendorDropdownOpen) ...[
+                                        const SizedBox(height: 12),
+                                        MadInput(
+                                          controller: _vendorSearchController,
+                                          labelText: 'Search vendors',
+                                          hintText:
+                                              'Search vendor name or email...',
+                                        ),
+                                        const SizedBox(height: 12),
+                                        SizedBox(
+                                          height: isMobile ? 180 : 220,
+                                          child: ListView.separated(
+                                            itemCount: _filteredVendors.length,
+                                            separatorBuilder: (_, __) =>
+                                                const SizedBox(height: 10),
+                                            itemBuilder: (context, index) {
+                                              final vendor =
+                                                  _filteredVendors[index];
+                                              final id = _vendorId(vendor);
+                                              final checked =
+                                                  _selectedVendorIds
+                                                      .contains(id);
+                                              return MadCheckbox(
+                                                value: checked,
+                                                label: _vendorName(vendor),
+                                                description:
+                                                    _vendorEmail(vendor),
+                                                onChanged: (value) =>
+                                                    _toggleVendor(
+                                                  id,
+                                                  value,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 12),
+                                      if (selectedVendors.isNotEmpty)
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children:
+                                              selectedVendors.map((vendor) {
+                                            final id = _vendorId(vendor);
+                                            return Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                                color: (isDark
+                                                        ? AppTheme.darkMuted
+                                                        : AppTheme.lightMuted)
+                                                    .withOpacity(0.35),
+                                                border: Border.all(
+                                                  color:
+                                                      border.withOpacity(0.5),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    _vendorName(vendor),
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  InkWell(
+                                                    onTap: () =>
+                                                        _toggleVendor(
+                                                      id,
+                                                      false,
+                                                    ),
+                                                    child: const Icon(
+                                                      LucideIcons.x,
+                                                      size: 12,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                        )
+                                      else
+                                        Text(
+                                          'No vendor selected',
+                                          style: TextStyle(
+                                            color: muted,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  MadButton(
+                    text: 'Cancel',
+                    variant: ButtonVariant.outline,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  MadButton(
+                    text: _downloading ? 'Downloading...' : 'Download',
+                    icon: LucideIcons.download,
+                    variant: ButtonVariant.outline,
+                    disabled: _downloading || _sending,
+                    onPressed: _downloadPdf,
+                  ),
+                  MadButton(
+                    text: _sending ? 'Sending...' : 'Send Email',
+                    icon: LucideIcons.mail,
+                    disabled: _sending ||
+                        _loadingVendors ||
+                        _selectedVendorIds.isEmpty,
+                    onPressed: _sendEmail,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

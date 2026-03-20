@@ -153,6 +153,56 @@ class ApiClient {
     }
   }
 
+  static Future<Map<String, dynamic>> _multipartFilesRequest(
+    String method,
+    String endpoint,
+    Map<String, String> fields, {
+    required List<File> files,
+    String fileField = 'files',
+  }) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl$endpoint');
+    final request = http.MultipartRequest(method, uri);
+
+    if (token != null && token.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    request.fields.addAll(fields);
+
+    for (final file in files) {
+      request.files.add(
+        await http.MultipartFile.fromPath(fileField, file.path),
+      );
+    }
+
+    try {
+      final streamedResponse = await request.send().timeout(_httpTimeout);
+      final response = await http.Response.fromStream(streamedResponse);
+      return _handleResponse(response);
+    } on TimeoutException {
+      return {
+        'success': false,
+        'error':
+            'Upload timeout. Please check your internet connection and retry.',
+        'status': 408,
+      };
+    } on SocketException {
+      return {
+        'success': false,
+        'error':
+            'Unable to reach server. Verify API URL and network access in APK.',
+        'status': 503,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Upload failed: $e',
+        'status': 500,
+      };
+    }
+  }
+
   static Future<Map<String, dynamic>> _handleResponse(
     http.Response response,
   ) async {
@@ -866,6 +916,125 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/api/pr/$prId');
     final res = await _delete(uri, headers: _authHeaders(token));
     return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> sendPrEmail({
+    required Map<String, dynamic> pr,
+    required List<Map<String, dynamic>> vendors,
+    String? message,
+    List<File> attachments = const [],
+  }) async {
+    final prId = (pr['pr_id'] ?? pr['id'] ?? '').toString();
+    final normalizedVendors = vendors
+        .map((v) {
+          final vendor = Map<String, dynamic>.from(v);
+          final email = (vendor['vendor_email'] ?? '').toString().trim();
+          if (email.isEmpty) return null;
+          return {
+            'vendor_id': vendor['vendor_id'] ?? vendor['id'],
+            'vendor_name':
+                (vendor['vendor_name'] ??
+                        vendor['vendor_company_name'] ??
+                        'Vendor')
+                    .toString(),
+            'vendor_email': email,
+          };
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
+    final to = normalizedVendors
+        .map((v) => (v['vendor_email'] ?? '').toString().trim())
+        .where((email) => email.isNotEmpty)
+        .join(', ');
+
+    final user = await AuthStorage.getUser();
+    final userId = (user?['user_id'] ?? user?['id'] ?? user?['uid'])
+        ?.toString()
+        .trim();
+    final userName = (user?['user_name'] ??
+            user?['name'] ??
+            user?['username'] ??
+            user?['email'] ??
+            '')
+        .toString()
+        .trim();
+
+    Future<Map<String, dynamic>> sendWithLegacyEndpoint() async {
+      if (attachments.isNotEmpty) {
+        return _multipartRequest(
+          'POST',
+          '/api/pr/email',
+          {
+            'pr': jsonEncode(pr),
+            'vendors': jsonEncode(normalizedVendors),
+            if ((message ?? '').trim().isNotEmpty)
+              'custom_remarks': message!.trim(),
+          },
+          files: {'attachment': attachments.first},
+        );
+      }
+
+      final token = await _getToken();
+      final uri = Uri.parse('$baseUrl/api/pr/email');
+      final res = await _post(
+        uri,
+        headers: {
+          ..._authHeaders(token),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'pr': pr,
+          'vendors': normalizedVendors,
+          'custom_remarks': (message ?? '').trim(),
+        }),
+      );
+      return _handleResponse(res);
+    }
+
+    if (prId.isNotEmpty) {
+      List<dynamic> uploadedAttachments = [];
+      if (attachments.isNotEmpty) {
+        final uploadRes = await _multipartFilesRequest(
+          'POST',
+          '/api/pr/$prId/upload-email-attachment',
+          const {},
+          files: attachments,
+          fileField: 'files',
+        );
+        if (uploadRes['success'] == true) {
+          final data = uploadRes['data'];
+          uploadedAttachments =
+              (data is Map ? data['attachments'] : null) as List? ?? [];
+        } else {
+          if (uploadRes['status'] != 404) return uploadRes;
+          return sendWithLegacyEndpoint();
+        }
+      }
+
+      final token = await _getToken();
+      final uri = Uri.parse('$baseUrl/api/pr/$prId/send-email');
+      final res = await _post(
+        uri,
+        headers: {
+          ..._authHeaders(token),
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'to': to,
+          'cc': const [],
+          'message': (message ?? '').trim(),
+          'attachments': uploadedAttachments,
+          if (userId != null && userId.isNotEmpty) 'user_id': userId,
+          if (userName.isNotEmpty) 'user_name': userName,
+        }),
+      );
+      final result = await _handleResponse(res);
+      if (result['success'] == true) return result;
+      if (result['status'] != 404) return result;
+    }
+
+    return sendWithLegacyEndpoint();
   }
 
   // ============================================================================
