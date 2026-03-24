@@ -74,6 +74,10 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
   bool _isExtracting = false;
   bool _loadingServer = false;
   List<Map<String, dynamic>> _serverSamples = [];
+  List<Map<String, dynamic>> _inventoryItems = [];
+  bool _loadingInventory = false;
+  String _inventorySearch = '';
+  final Map<String, String> _pendingInventoryQty = {};
   List<String> _uploadFilePaths = [];
   String _selectedUploadedFile = '';
   String _searchQuery = '';
@@ -113,6 +117,27 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
 
       return building.contains(query) || site.contains(query) || work.contains(query) || items.contains(query);
     }).toList();
+  }
+
+  List<Map<String, dynamic>> get _filteredInventoryItems {
+    final query = _inventorySearch.trim().toLowerCase();
+    if (query.isEmpty) return _inventoryItems;
+    return _inventoryItems.where((item) {
+      final id = (item['inventory_id'] ?? item['id'] ?? '').toString();
+      final brand = (item['brand'] ?? '').toString().toLowerCase();
+      final name = (item['name'] ?? '').toString().toLowerCase();
+      return id.contains(query) || brand.contains(query) || name.contains(query);
+    }).toList();
+  }
+
+  String _inventoryId(Map<String, dynamic> item) =>
+      (item['inventory_id'] ?? item['id'] ?? '').toString();
+
+  int _inventoryQty(Map<String, dynamic> item) {
+    final raw = item['quantity'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '') ?? 0;
   }
 
   Future<void> _pickFile() async {
@@ -315,6 +340,130 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
     }
   }
 
+  Future<void> _loadInventoryItems() async {
+    if (_loadingInventory) return;
+    setState(() => _loadingInventory = true);
+    try {
+      final res = await ApiClient.getInventories();
+      if (!mounted) return;
+      if (res['success'] == true && res['data'] is List) {
+        final rows = (res['data'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+        setState(() => _inventoryItems = rows);
+      } else {
+        setState(() => _inventoryItems = []);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _inventoryItems = []);
+      showToast(
+        context,
+        'Failed to load inventory items.',
+        variant: ToastVariant.error,
+      );
+    } finally {
+      if (mounted) setState(() => _loadingInventory = false);
+    }
+  }
+
+  bool _isInventoryAlreadyAdded(String inventoryId) {
+    final items = List<Map<String, dynamic>>.from(
+      _createForm['item_description'] as List,
+    );
+    return items.any((row) {
+      final fields = (row['add_fields'] as List? ?? []);
+      return fields.any((field) {
+        if (field is! Map) return false;
+        return (field['key'] ?? '').toString() == 'inventory_id' &&
+            (field['value'] ?? '').toString() == inventoryId;
+      });
+    });
+  }
+
+  Future<void> _addInventoryToSample(
+    Map<String, dynamic> item,
+    int selectedQty,
+  ) async {
+    final inventoryId = _inventoryId(item);
+    if (inventoryId.isEmpty) return;
+    final available = _inventoryQty(item);
+
+    if (selectedQty <= 0) {
+      showToast(
+        context,
+        'Select a valid quantity.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
+    if (selectedQty > available) {
+      showToast(
+        context,
+        'Selected quantity exceeds available stock.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
+    if (_isInventoryAlreadyAdded(inventoryId)) {
+      showToast(context, 'This inventory item is already added.');
+      return;
+    }
+
+    final remaining = available - selectedQty;
+    final update = await ApiClient.updateInventory(inventoryId, {
+      'quantity': remaining,
+    });
+
+    if (!mounted) return;
+    if (update['success'] != true) {
+      showToast(
+        context,
+        (update['error'] ?? 'Could not update inventory quantity').toString(),
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
+    setState(() {
+      _inventoryItems = _inventoryItems.map((row) {
+        if (_inventoryId(row) == inventoryId) {
+          final next = Map<String, dynamic>.from(row);
+          next['quantity'] = remaining;
+          return next;
+        }
+        return row;
+      }).toList();
+
+      final items = List<Map<String, dynamic>>.from(
+        _createForm['item_description'] as List,
+      );
+      items.add({
+        'sr_no': (items.length + 1).toString(),
+        'description':
+            '${(item['brand'] ?? '').toString().trim().isEmpty ? '' : '${item['brand']} - '}${item['name'] ?? ''}',
+        'quantity': selectedQty.toString(),
+        'value': (item['price'] ?? '').toString(),
+        'add_fields': [
+          {'key': 'inventory_id', 'value': inventoryId},
+          {'key': 'brand', 'value': (item['brand'] ?? '').toString()},
+          {'key': 'name', 'value': (item['name'] ?? '').toString()},
+          {'key': 'quantity', 'value': selectedQty.toString()},
+          {'key': 'price', 'value': (item['price'] ?? '').toString()},
+          {'key': 'stockin', 'value': (item['stockin'] ?? false).toString()},
+          {'key': 'billing', 'value': (item['billing'] ?? false).toString()},
+        ],
+      });
+      _createForm['item_description'] = items;
+      _pendingInventoryQty.remove(inventoryId);
+    });
+
+    showToast(context, 'Item added and inventory updated.');
+  }
+
   Future<void> _uploadSampleFiles() async {
     final files = await FileService.pickMultipleFilesWithSource(context: context);
     if (files.isEmpty) return;
@@ -462,6 +611,7 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
         _projectId = vm.projectId;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _loadServerSamples();
+          if (mounted) _loadInventoryItems();
         });
       },
       onWillChange: (prev, next) {
@@ -1344,6 +1494,153 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
                   onPressed: _uploadSampleFiles,
                 ),
               ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Inventory Items',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+              ),
+            ),
+            const SizedBox(height: 8),
+            MadInput(
+              labelText: 'Search inventory',
+              hintText: 'Name, brand, or ID...',
+              onChanged: (v) => setState(() => _inventorySearch = v),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 260),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+                      .withValues(alpha: 0.6),
+                ),
+                color:
+                    (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(
+                  alpha: 0.35,
+                ),
+              ),
+              child: _loadingInventory
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : _filteredInventoryItems.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            'No inventory items found.',
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: _filteredInventoryItems.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: (isDark ? Colors.white : Colors.black)
+                                .withValues(alpha: 0.06),
+                          ),
+                          itemBuilder: (context, index) {
+                            final item = _filteredInventoryItems[index];
+                            final id = _inventoryId(item);
+                            final qty = _inventoryQty(item);
+                            final selectedQty =
+                                int.tryParse(_pendingInventoryQty[id] ?? '') ??
+                                1;
+                            return Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    (item['name'] ?? '-').toString(),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? AppTheme.darkForeground
+                                          : AppTheme.lightForeground,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${(item['brand'] ?? '-')} • #$id • Qty $qty',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark
+                                          ? AppTheme.darkMutedForeground
+                                          : AppTheme.lightMutedForeground,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      MadButton(
+                                        icon: LucideIcons.minus,
+                                        size: ButtonSize.icon,
+                                        variant: ButtonVariant.outline,
+                                        onPressed: () {
+                                          final current =
+                                              int.tryParse(_pendingInventoryQty[id] ?? '1') ?? 1;
+                                          final next =
+                                              (current - 1).clamp(1, qty);
+                                          setState(() {
+                                            _pendingInventoryQty[id] = next.toString();
+                                          });
+                                        },
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        selectedQty.toString(),
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark
+                                              ? AppTheme.darkForeground
+                                              : AppTheme.lightForeground,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      MadButton(
+                                        icon: LucideIcons.plus,
+                                        size: ButtonSize.icon,
+                                        variant: ButtonVariant.outline,
+                                        onPressed: () {
+                                          final current =
+                                              int.tryParse(_pendingInventoryQty[id] ?? '1') ?? 1;
+                                          final next =
+                                              (current + 1).clamp(1, qty);
+                                          setState(() {
+                                            _pendingInventoryQty[id] = next.toString();
+                                          });
+                                        },
+                                      ),
+                                      const SizedBox(width: 12),
+                                      MadButton(
+                                        text: 'Add',
+                                        size: ButtonSize.sm,
+                                        onPressed: qty <= 0
+                                            ? null
+                                            : () => _addInventoryToSample(
+                                                  item,
+                                                  selectedQty,
+                                                ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
             ),
             const SizedBox(height: 20),
             Text(

@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart' hide Material;
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/inventory.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
-import '../store/project_actions.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../utils/responsive.dart';
@@ -28,7 +25,6 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
   final _widthController = TextEditingController();
   final _heightController = TextEditingController();
 
-  String? _activeProjectId;
   bool _stockIn = true;
   bool _billing = false;
   bool _loading = false;
@@ -41,7 +37,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
 
   bool _didInitLoad = false;
   int _loadRequestId = 0;
-  String? _lastLoadedProjectId;
+  
 
   @override
   void dispose() {
@@ -65,42 +61,14 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     });
   }
 
-  String _projectLabel(List<Map<String, dynamic>> projects) {
-    if (_activeProjectId == 'all') return 'All Projects';
-    if (_activeProjectId == null || _activeProjectId!.isEmpty) {
-      return 'Select a project';
-    }
-
-    final match = projects.where((project) {
-      final id =
-          project['id']?.toString() ?? project['project_id']?.toString() ?? '';
-      return id == _activeProjectId;
-    }).firstOrNull;
-
-    if (match == null) return 'Project ${_activeProjectId!}';
-    return match['name']?.toString() ??
-        match['project_name']?.toString() ??
-        'Project ${_activeProjectId!}';
-  }
+  
 
   Future<void> _loadItems() async {
-    if (_activeProjectId == null || _activeProjectId!.isEmpty) {
-      _lastLoadedProjectId = null;
-      setState(() {
-        _items = [];
-        _loading = false;
-      });
-      return;
-    }
-
     final requestId = ++_loadRequestId;
-    _lastLoadedProjectId = _activeProjectId;
 
     setState(() => _loading = true);
     try {
-      final result = _activeProjectId == 'all'
-          ? await ApiClient.getInventories()
-          : await ApiClient.getInventoriesByProject(_activeProjectId!);
+      final result = await ApiClient.getInventories();
 
       if (!mounted || requestId != _loadRequestId) return;
 
@@ -116,7 +84,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     } catch (_) {
       if (!mounted || requestId != _loadRequestId) return;
       setState(() => _items = []);
-      showToast(context, 'Failed to load inventory items for this project.');
+      showToast(context, 'Failed to load inventory items.');
     } finally {
       if (mounted && requestId == _loadRequestId) {
         setState(() => _loading = false);
@@ -125,12 +93,6 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
   }
 
   Future<bool> _createInventory() async {
-    final projectId = _activeProjectId;
-    if (projectId == null || projectId.isEmpty || projectId == 'all') {
-      showToast(context, 'Select a project first');
-      return false;
-    }
-
     if (_brandController.text.trim().isEmpty ||
         _nameController.text.trim().isEmpty) {
       showToast(context, 'Brand and item name are required');
@@ -190,13 +152,6 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
   }
 
   Future<void> _openCreateDialog() async {
-    if (_activeProjectId == null ||
-        _activeProjectId!.isEmpty ||
-        _activeProjectId == 'all') {
-      showToast(context, 'Select a project first');
-      return;
-    }
-
     await MadDialog.show<void>(
       context: context,
       title: 'Add Inventory Item',
@@ -686,84 +641,57 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     final responsive = Responsive(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return StoreConnector<AppState, _InventoryViewModel>(
-      converter: (store) => _InventoryViewModel(
-        projects: store.state.project.projects,
-        selectedProjectId: store.state.project.selectedProjectId,
-      ),
-      builder: (context, vm) {
-        _activeProjectId ??= vm.selectedProjectId;
+    if (!_didInitLoad) {
+      _didInitLoad = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadItems());
+    }
 
-        if (!_didInitLoad) {
-          _didInitLoad = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) => _loadItems());
-        } else if (_activeProjectId != _lastLoadedProjectId && !_loading) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _loadItems());
-        }
-
-        final projectOptions = [
-          const MadSelectOption<String>(value: 'all', label: 'All projects'),
-          ...vm.projects.map((project) {
-            final id =
-                project['id']?.toString() ??
-                project['project_id']?.toString() ??
-                '';
-            final name =
-                project['name']?.toString() ??
-                project['project_name']?.toString() ??
-                'Project $id';
-            return MadSelectOption<String>(value: id, label: name);
-          }),
-        ];
-
-        return ProtectedRoute(
-          title: 'Add Inventory',
-          route: '/inventory/add',
-          headerLeadingIcon: LucideIcons.arrowLeft,
-          onHeaderLeadingPressed: () =>
-              Navigator.pushReplacementNamed(context, '/projects'),
-          requireProject: false,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHero(isDark, vm.projects),
-                SizedBox(
-                  height: responsive.value(mobile: 14, tablet: 16, desktop: 20),
-                ),
-                _buildStats(isDark, responsive),
-                SizedBox(
-                  height: responsive.value(mobile: 14, tablet: 16, desktop: 20),
-                ),
-                if (responsive.isDesktop)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(width: 370, child: _buildForm(projectOptions)),
-                      SizedBox(width: responsive.spacing),
-                      Expanded(child: _buildInventoryPanel(isDark, responsive)),
-                    ],
-                  )
-                else ...[
-                  _buildForm(projectOptions),
-                  SizedBox(
-                    height: responsive.value(
-                      mobile: 14,
-                      tablet: 16,
-                      desktop: 20,
-                    ),
-                  ),
-                  _buildInventoryPanel(isDark, responsive),
-                ],
-              ],
+    return ProtectedRoute(
+      title: 'Add Inventory',
+      route: '/inventory/add',
+      headerLeadingIcon: LucideIcons.arrowLeft,
+      onHeaderLeadingPressed: () =>
+          Navigator.pushReplacementNamed(context, '/projects'),
+      requireProject: false,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHero(isDark),
+            SizedBox(
+              height: responsive.value(mobile: 14, tablet: 16, desktop: 20),
             ),
-          ),
-        );
-      },
+            _buildStats(isDark, responsive),
+            SizedBox(
+              height: responsive.value(mobile: 14, tablet: 16, desktop: 20),
+            ),
+            if (responsive.isDesktop)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 370, child: _buildForm()),
+                  SizedBox(width: responsive.spacing),
+                  Expanded(child: _buildInventoryPanel(isDark, responsive)),
+                ],
+              )
+            else ...[
+              _buildForm(),
+              SizedBox(
+                height: responsive.value(
+                  mobile: 14,
+                  tablet: 16,
+                  desktop: 20,
+                ),
+              ),
+              _buildInventoryPanel(isDark, responsive),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildHero(bool isDark, List<Map<String, dynamic>> projects) {
+  Widget _buildHero(bool isDark) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -799,7 +727,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Create inventory entries for ${_projectLabel(projects)}.',
+            'Create inventory entries for your organization.',
             style: TextStyle(
               fontSize: 13,
               color: isDark
@@ -903,7 +831,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     );
   }
 
-  Widget _buildForm(List<MadSelectOption<String>> projectOptions) {
+  Widget _buildForm() {
     return MadCard(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -925,49 +853,11 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              'Mapped fields: project_id, brand, quantity, name, price, unit, width, height, stockin, billing.',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppTheme.darkMutedForeground
-                    : AppTheme.lightMutedForeground,
-              ),
-            ),
-            const SizedBox(height: 16),
-            MadSelect<String>(
-              labelText: 'Project',
-              placeholder: 'Select project',
-              value: _activeProjectId,
-              options: projectOptions,
-              onChanged: (value) {
-                setState(() => _activeProjectId = value);
-
-                if (value != null && value != 'all') {
-                  final store = StoreProvider.of<AppState>(context);
-                  final match = store.state.project.projects.firstWhere(
-                    (p) =>
-                        (p['id']?.toString() ?? p['project_id']?.toString()) ==
-                        value,
-                    orElse: () => const {},
-                  );
-                  if (match.isNotEmpty) {
-                    store.dispatch(SelectProject(match));
-                  }
-                }
-
-                _loadItems();
-              },
-            ),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: MadButton(
                 text: '+ Add inventory',
-                disabled:
-                    _activeProjectId == null ||
-                    _activeProjectId!.isEmpty ||
-                    _activeProjectId == 'all',
                 onPressed: _openCreateDialog,
               ),
             ),
@@ -1061,7 +951,6 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
               variant: ButtonVariant.outline,
               size: ButtonSize.icon,
               loading: _loading,
-              disabled: _activeProjectId == null || _activeProjectId!.isEmpty,
               onPressed: _loading ? null : _loadItems,
             ),
           ],
@@ -1125,7 +1014,6 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
               variant: ButtonVariant.outline,
               size: ButtonSize.icon,
               loading: _loading,
-              disabled: _activeProjectId == null || _activeProjectId!.isEmpty,
               onPressed: _loading ? null : _loadItems,
             ),
           ],
@@ -1135,9 +1023,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
   }
 
   Widget _inventoryTitle(bool isDark) {
-    final description = _activeProjectId == 'all'
-        ? 'Showing items across all projects.'
-        : 'Current items for the selected project.';
+    const description = 'Showing items across all projects.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1533,14 +1419,4 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
       ),
     );
   }
-}
-
-class _InventoryViewModel {
-  final List<Map<String, dynamic>> projects;
-  final String? selectedProjectId;
-
-  _InventoryViewModel({
-    required this.projects,
-    required this.selectedProjectId,
-  });
 }
