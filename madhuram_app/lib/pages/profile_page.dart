@@ -1772,7 +1772,7 @@ class _AddUserFormState extends State<_AddUserForm> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   String _selectedRole = 'labour';
-  String _selectedProjectId = 'none';
+  Set<String> _selectedProjectIds = {};
   String? _errorText;
   bool _loading = false;
 
@@ -1801,8 +1801,7 @@ class _AddUserFormState extends State<_AddUserForm> {
       _errorText = null;
       _loading = true;
     });
-    final selectedProjects =
-        _selectedProjectId == 'none' ? <String>[] : <String>[_selectedProjectId];
+    final selectedProjects = _selectedProjectIds.toList();
 
     final result = await ApiClient.createUser({
       'name': name,
@@ -1875,18 +1874,49 @@ class _AddUserFormState extends State<_AddUserForm> {
             obscureText: true,
           ),
           const SizedBox(height: 16),
-          MadSelect<String>(
-            labelText: 'Project',
-            value: _selectedProjectId,
-            options: [
-              const MadSelectOption(value: 'none', label: 'No project'),
-              ...widget.projectOptions,
-            ],
-            onChanged: (v) =>
-                setState(() => _selectedProjectId = v ?? 'none'),
-            placeholder:
-                widget.loadingProjects ? 'Loading projects...' : 'Select project',
+          Text(
+            'Projects',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppTheme.darkForeground
+                  : AppTheme.lightForeground,
+            ),
           ),
+          const SizedBox(height: 8),
+          if (widget.loadingProjects)
+            Text(
+              'Loading projects...',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
+            )
+          else
+            Column(
+              children: widget.projectOptions.map((option) {
+                final isSelected = _selectedProjectIds.contains(option.value);
+                return CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: isSelected,
+                  title: Text(option.label),
+                  onChanged: (checked) {
+                    if (checked == null) return;
+                    setState(() {
+                      if (checked) {
+                        _selectedProjectIds.add(option.value);
+                      } else {
+                        _selectedProjectIds.remove(option.value);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
+            ),
           if (_errorText != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -1946,7 +1976,7 @@ class _EditUserFormState extends State<_EditUserForm> {
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
   late String _selectedRole;
-  late String _selectedProjectId;
+  late Set<String> _selectedProjectIds;
   String? _errorText;
   bool _loading = false;
 
@@ -1962,7 +1992,7 @@ class _EditUserFormState extends State<_EditUserForm> {
     );
     _selectedRole = widget.user.role;
     final assigned = widget.user.projectList ?? const <String>[];
-    _selectedProjectId = assigned.isNotEmpty ? assigned.first : 'none';
+    _selectedProjectIds = Set<String>.from(assigned);
   }
 
   @override
@@ -1986,8 +2016,7 @@ class _EditUserFormState extends State<_EditUserForm> {
       _errorText = null;
       _loading = true;
     });
-    final selectedProjects =
-        _selectedProjectId == 'none' ? <String>[] : <String>[_selectedProjectId];
+    final selectedProjects = _selectedProjectIds.toList();
 
     final result = await ApiClient.updateUser(widget.user.id, {
       'username': username,
@@ -2043,18 +2072,49 @@ class _EditUserFormState extends State<_EditUserForm> {
             placeholder: 'Select role',
           ),
           const SizedBox(height: 16),
-          MadSelect<String>(
-            labelText: 'Project',
-            value: _selectedProjectId,
-            options: [
-              const MadSelectOption(value: 'none', label: 'No project'),
-              ...widget.projectOptions,
-            ],
-            onChanged: (v) =>
-                setState(() => _selectedProjectId = v ?? 'none'),
-            placeholder:
-                widget.loadingProjects ? 'Loading projects...' : 'Select project',
+          Text(
+            'Projects',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppTheme.darkForeground
+                  : AppTheme.lightForeground,
+            ),
           ),
+          const SizedBox(height: 8),
+          if (widget.loadingProjects)
+            Text(
+              'Loading projects...',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
+            )
+          else
+            Column(
+              children: widget.projectOptions.map((option) {
+                final isSelected = _selectedProjectIds.contains(option.value);
+                return CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: isSelected,
+                  title: Text(option.label),
+                  onChanged: (checked) {
+                    if (checked == null) return;
+                    setState(() {
+                      if (checked) {
+                        _selectedProjectIds.add(option.value);
+                      } else {
+                        _selectedProjectIds.remove(option.value);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
+            ),
           if (_errorText != null) ...[
             const SizedBox(height: 12),
             Text(

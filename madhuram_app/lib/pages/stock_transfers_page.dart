@@ -624,12 +624,29 @@ class _TransferItemRow extends StatefulWidget {
 class _TransferItemRowState extends State<_TransferItemRow> {
   late TextEditingController _materialController;
   late TextEditingController _qtyController;
+  String _currentUnit = 'Nos';
+
+  static const Map<String, double> _lengthUnitToMm = {
+    'mm': 1.0,
+    'cm': 10.0,
+    'm': 1000.0,
+    'inch': 25.4,
+    'ft': 304.8,
+  };
+
+  bool _isLengthUnit(String unit) => _lengthUnitToMm.containsKey(unit);
+
+  String _formatQuantity(double value) {
+    final fixed = value.toStringAsFixed(3);
+    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
 
   @override
   void initState() {
     super.initState();
     _materialController = TextEditingController(text: widget.item.material);
     _qtyController = TextEditingController(text: widget.item.quantity);
+    _currentUnit = widget.item.unit;
   }
 
   @override
@@ -684,12 +701,33 @@ class _TransferItemRowState extends State<_TransferItemRow> {
                     placeholder: 'Unit',
                     value: item.unit,
                     options: const [
+                      MadSelectOption(value: 'mm', label: 'mm'),
+                      MadSelectOption(value: 'cm', label: 'cm'),
+                      MadSelectOption(value: 'm', label: 'm'),
+                      MadSelectOption(value: 'inch', label: 'inch'),
+                      MadSelectOption(value: 'ft', label: 'ft'),
                       MadSelectOption(value: 'Nos', label: 'Nos'),
                       MadSelectOption(value: 'Bags', label: 'Bags'),
                       MadSelectOption(value: 'Meters', label: 'Meters'),
                       MadSelectOption(value: 'KG', label: 'KG'),
                     ],
-                    onChanged: (v) => setState(() => item.unit = v ?? 'Nos'),
+                    onChanged: (v) {
+                      final nextUnit = v ?? 'Nos';
+                      final qty = double.tryParse(_qtyController.text.trim());
+                      if (qty != null &&
+                          _isLengthUnit(_currentUnit) &&
+                          _isLengthUnit(nextUnit)) {
+                        final inMm = qty * _lengthUnitToMm[_currentUnit]!;
+                        final nextQty = inMm / _lengthUnitToMm[nextUnit]!;
+                        final formatted = _formatQuantity(nextQty);
+                        _qtyController.text = formatted;
+                        item.quantity = formatted;
+                      }
+                      setState(() {
+                        item.unit = nextUnit;
+                        _currentUnit = nextUnit;
+                      });
+                    },
                   ),
                 ),
               ],
