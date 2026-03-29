@@ -52,6 +52,11 @@ class AccessControlStore {
     final userId = (user['user_id'] ?? user['id'] ?? '').toString();
     if (userId.isEmpty) return user;
 
+    final serverAccess = user['access_control'];
+    if (serverAccess is Map<String, dynamic>) {
+      return user;
+    }
+
     final override = await getUserAccessControlOverride(userId);
     if (override == null) return user;
 

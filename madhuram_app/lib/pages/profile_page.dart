@@ -923,12 +923,33 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     setState(() => _savingAccessControl = true);
+    final normalized = normalizeAccessControl(_draftAccessControl);
     await AccessControlStore.saveUserAccessControlOverride(
       selectedUser.id,
-      normalizeAccessControl(_draftAccessControl),
+      normalized,
     );
 
     if (!mounted) return;
+
+    setState(() {
+      _users = _users
+          .map(
+            (u) => u.id == selectedUser.id
+                ? User(
+                    id: u.id,
+                    name: u.name,
+                    username: u.username,
+                    email: u.email,
+                    phoneNumber: u.phoneNumber,
+                    role: u.role,
+                    projectList: u.projectList,
+                    avatar: u.avatar,
+                    accessControl: normalized,
+                  )
+                : u,
+          )
+          .toList();
+    });
 
     final store = StoreProvider.of<AppState>(context);
     final currentUser = store.state.auth.user;
@@ -936,9 +957,7 @@ class _ProfilePageState extends State<ProfilePage> {
         .toString();
     if (currentUserId == selectedUser.id && currentUser != null) {
       final updatedCurrentUser = Map<String, dynamic>.from(currentUser);
-      updatedCurrentUser['access_control'] = normalizeAccessControl(
-        _draftAccessControl,
-      );
+      updatedCurrentUser['access_control'] = normalized;
       store.dispatch(LoginSuccess(updatedCurrentUser));
       await AuthStorage.setUser(updatedCurrentUser);
     }

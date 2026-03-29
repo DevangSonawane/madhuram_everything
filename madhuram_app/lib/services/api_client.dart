@@ -362,6 +362,20 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static Future<Map<String, dynamic>> updateUserAccessControl(
+    String userId,
+    Map<String, dynamic> accessControl,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/auth/users/$userId/access-control');
+    final res = await _patch(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({'access_control': accessControl}),
+    );
+    return _handleResponse(res);
+  }
+
   static Future<Map<String, dynamic>> deleteUser(String userId) async {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/auth/users/$userId');

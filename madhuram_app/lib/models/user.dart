@@ -9,6 +9,7 @@ class User {
   final String role;
   final List<String>? projectList;
   final String? avatar;
+  final Map<String, dynamic>? accessControl;
 
   const User({
     required this.id,
@@ -19,6 +20,7 @@ class User {
     required this.role,
     this.projectList,
     this.avatar,
+    this.accessControl,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -60,6 +62,9 @@ class User {
       role: json['role'] ?? 'labour',
       projectList: normalizeProjectList(json['project_list']),
       avatar: json['avatar'],
+      accessControl: json['access_control'] is Map
+          ? Map<String, dynamic>.from(json['access_control'] as Map)
+          : null,
     );
   }
 
@@ -72,6 +77,7 @@ class User {
     'role': role,
     'project_list': projectList,
     'avatar': avatar,
+    'access_control': accessControl,
   };
 
   bool get isAdmin => role == 'admin';
