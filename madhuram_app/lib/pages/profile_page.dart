@@ -1790,6 +1790,8 @@ class _AddUserFormState extends State<_AddUserForm> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _checkInController = TextEditingController();
+  final _checkOutController = TextEditingController();
   String _selectedRole = 'labour';
   Set<String> _selectedProjectIds = {};
   String? _errorText;
@@ -1802,7 +1804,37 @@ class _AddUserFormState extends State<_AddUserForm> {
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
+    _checkInController.dispose();
+    _checkOutController.dispose();
     super.dispose();
+  }
+
+  String _formatTime(TimeOfDay time) {
+    final hh = time.hour.toString().padLeft(2, '0');
+    final mm = time.minute.toString().padLeft(2, '0');
+    return '$hh:$mm:00';
+  }
+
+  TimeOfDay? _parseTime(String value) {
+    final parts = value.split(':');
+    if (parts.length < 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h.clamp(0, 23), minute: m.clamp(0, 59));
+  }
+
+  Future<void> _pickTime({required bool isCheckIn}) async {
+    final controller = isCheckIn ? _checkInController : _checkOutController;
+    final initial = _parseTime(controller.text) ?? const TimeOfDay(hour: 9, minute: 0);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+    );
+    if (picked == null) return;
+    setState(() {
+      controller.text = _formatTime(picked);
+    });
   }
 
   Future<void> _submit() async {
@@ -1811,9 +1843,18 @@ class _AddUserFormState extends State<_AddUserForm> {
     final email = _emailController.text.trim();
     final phone = _phoneController.text.trim();
     final password = _passwordController.text;
+    final checkInTime = _checkInController.text.trim();
+    final checkOutTime = _checkOutController.text.trim();
 
     if (name.isEmpty || email.isEmpty || password.isEmpty) {
       setState(() => _errorText = 'Name, email, and password are required');
+      return;
+    }
+    if (_selectedRole == 'labour' &&
+        (checkInTime.isEmpty || checkOutTime.isEmpty)) {
+      setState(
+        () => _errorText = 'Check-in and check-out times are required for labour',
+      );
       return;
     }
     setState(() {
@@ -1822,7 +1863,7 @@ class _AddUserFormState extends State<_AddUserForm> {
     });
     final selectedProjects = _selectedProjectIds.toList();
 
-    final result = await ApiClient.createUser({
+    final payload = <String, dynamic>{
       'name': name,
       'username': username.isEmpty ? name : username,
       'email': email,
@@ -1831,7 +1872,13 @@ class _AddUserFormState extends State<_AddUserForm> {
       'role': _selectedRole,
       'project': selectedProjects,
       'project_list': selectedProjects,
-    });
+    };
+    if (_selectedRole == 'labour') {
+      payload['check_in_time'] = checkInTime;
+      payload['check_out_time'] = checkOutTime;
+    }
+
+    final result = await ApiClient.createUser(payload);
     if (!mounted) return;
     setState(() => _loading = false);
     if (result['success'] == true) {
@@ -1882,9 +1929,83 @@ class _AddUserFormState extends State<_AddUserForm> {
             labelText: 'Role',
             value: _selectedRole,
             options: widget.roleOptions,
-            onChanged: (v) => setState(() => _selectedRole = v ?? 'labour'),
+            onChanged: (v) {
+              setState(() {
+                _selectedRole = v ?? 'labour';
+                if (_selectedRole != 'labour') {
+                  _checkInController.clear();
+                  _checkOutController.clear();
+                }
+              });
+            },
             placeholder: 'Select role',
           ),
+          if (_selectedRole == 'labour') ...[
+            const SizedBox(height: 16),
+            DefaultTabController(
+              length: 2,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: (Theme.of(context).brightness == Brightness.dark
+                          ? AppTheme.darkMuted
+                          : AppTheme.lightMuted)
+                      .withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? AppTheme.darkBorder
+                        : AppTheme.lightBorder,
+                  ),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TabBar(
+                      labelColor: Theme.of(context).brightness == Brightness.dark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
+                      unselectedLabelColor:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                      indicatorColor: AppTheme.primaryColor,
+                      tabs: const [
+                        Tab(text: 'Check In'),
+                        Tab(text: 'Check Out'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 110,
+                      child: TabBarView(
+                        children: [
+                          MadInput(
+                            controller: _checkInController,
+                            labelText: 'Check In Time',
+                            hintText: 'HH:MM:SS',
+                            suffix: IconButton(
+                              icon: const Icon(Icons.access_time, size: 18),
+                              onPressed: () => _pickTime(isCheckIn: true),
+                            ),
+                          ),
+                          MadInput(
+                            controller: _checkOutController,
+                            labelText: 'Check Out Time',
+                            hintText: 'HH:MM:SS',
+                            suffix: IconButton(
+                              icon: const Icon(Icons.access_time, size: 18),
+                              onPressed: () => _pickTime(isCheckIn: false),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           MadInput(
             controller: _passwordController,

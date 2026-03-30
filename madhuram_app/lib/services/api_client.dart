@@ -1389,6 +1389,20 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static Future<Map<String, dynamic>> checkoutAttendance(
+    String id,
+    Map<String, dynamic> data,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/attendance/checkout/$id');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode(data),
+    );
+    return _handleResponse(res);
+  }
+
   static Future<Map<String, dynamic>> deleteAttendance(
     String id, {
     String? userId,

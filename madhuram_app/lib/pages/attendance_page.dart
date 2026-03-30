@@ -28,12 +28,20 @@ class _AttendancePageState extends State<AttendancePage> {
   Position? _position;
   String? _locationName;
   DateTime? _locationCapturedAt;
+  String? _lastAttendanceId;
+  File? _checkoutSelfie;
+  File? _checkoutSiteImage;
+  Position? _checkoutPosition;
+  String? _checkoutLocationName;
+  DateTime? _checkoutLocationCapturedAt;
   String? _userName;
   String? _userId;
   String? _userPhone;
   String? _projectId;
   bool _locating = false;
   bool _submitting = false;
+  bool _checkoutSubmitting = false;
+  _AttendanceMode _mode = _AttendanceMode.select;
 
   @override
   void didChangeDependencies() {
@@ -138,6 +146,15 @@ class _AttendancePageState extends State<AttendancePage> {
       _userPhone = resolvedPhone;
       _projectId = resolvedProjectId;
     });
+  }
+
+  String? _resolveAttendanceId(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      return data['attendance_id']?.toString() ??
+          data['attendanceId']?.toString() ??
+          data['id']?.toString();
+    }
+    return null;
   }
 
   String? _resolveUserId(Map<String, dynamic>? user) {
@@ -341,6 +358,10 @@ class _AttendancePageState extends State<AttendancePage> {
 
       final createResult = await ApiClient.createAttendance(payload);
       if (createResult['success'] == true) {
+        final createdId = _resolveAttendanceId(createResult['data']);
+        if (createdId != null && createdId.trim().isNotEmpty) {
+          _lastAttendanceId = createdId;
+        }
         if (mounted) {
           await showDialog<void>(
             context: context,
@@ -365,6 +386,7 @@ class _AttendancePageState extends State<AttendancePage> {
             _position = null;
             _locationName = null;
             _locationCapturedAt = null;
+            _mode = _AttendanceMode.select;
           });
         }
       } else {
@@ -378,6 +400,271 @@ class _AttendancePageState extends State<AttendancePage> {
       if (!mounted) return;
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _captureCheckoutSelfie() async {
+    final photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.front,
+      imageQuality: 85,
+    );
+    if (photo == null) return;
+    setState(() => _checkoutSelfie = File(photo.path));
+  }
+
+  Future<void> _captureCheckoutSiteImage() async {
+    final photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.rear,
+      imageQuality: 85,
+    );
+    if (photo == null) return;
+    setState(() => _checkoutSiteImage = File(photo.path));
+  }
+
+  Future<void> _captureCheckoutLocation() async {
+    if (_locating) return;
+    _syncUserContext(force: true);
+    setState(() => _locating = true);
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          showToast(
+            context,
+            'Location services are disabled. Please enable them.',
+            variant: ToastVariant.error,
+          );
+        }
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          showToast(
+            context,
+            'Location permission is required to check out.',
+            variant: ToastVariant.error,
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (!mounted) return;
+      setState(() {
+        _checkoutPosition = position;
+        _checkoutLocationCapturedAt = DateTime.now();
+        _checkoutLocationName = null;
+      });
+      _resolveCheckoutLocationName(position);
+    } catch (_) {
+      if (mounted) {
+        showToast(
+          context,
+          'Unable to capture location',
+          variant: ToastVariant.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  Future<void> _resolveCheckoutLocationName(Position position) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (!mounted) return;
+      if (placemarks.isEmpty) return;
+      final place = placemarks.first;
+      final parts = <String>[];
+      final name = place.name?.trim();
+      if (name != null && name.isNotEmpty) parts.add(name);
+      final subLocality = place.subLocality?.trim();
+      if (subLocality != null && subLocality.isNotEmpty) {
+        parts.add(subLocality);
+      }
+      final locality = place.locality?.trim();
+      if (locality != null && locality.isNotEmpty) parts.add(locality);
+      final adminArea = place.administrativeArea?.trim();
+      if (adminArea != null && adminArea.isNotEmpty) parts.add(adminArea);
+      final postal = place.postalCode?.trim();
+      if (postal != null && postal.isNotEmpty) parts.add(postal);
+      setState(() {
+        _checkoutLocationName = parts.isEmpty ? null : parts.join(', ');
+      });
+    } catch (_) {
+      // Silently ignore reverse geocoding failures.
+    }
+  }
+
+  Future<void> _submitCheckout() async {
+    if (_checkoutSubmitting) return;
+    if (_lastAttendanceId == null || _lastAttendanceId!.trim().isEmpty) {
+      showToast(
+        context,
+        'Please complete check-in first.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    final shouldSubmit = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Submit Checkout?'),
+          content: const Text(
+            'This will upload photos and send your checkout to admin.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Submit'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldSubmit != true) return;
+    if (_checkoutSelfie == null || _checkoutSiteImage == null) {
+      showToast(
+        context,
+        'Capture both selfie and site photo to check out.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    if (_checkoutPosition == null) {
+      showToast(
+        context,
+        'Capture location to check out.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
+    setState(() => _checkoutSubmitting = true);
+    try {
+      final store = StoreProvider.of<AppState>(context);
+      final user = store.state.auth.user;
+      final userId = _resolveUserId(user);
+      final userName = _resolveUserName(user);
+      final userIdValue = userId;
+
+      final selfieUpload = await ApiClient.uploadAttendanceImage(
+        _checkoutSelfie!,
+        userId: userIdValue,
+        userName: userName,
+      );
+      if (selfieUpload['success'] != true) {
+        showToast(
+          context,
+          selfieUpload['error']?.toString() ?? 'Unable to upload selfie.',
+          variant: ToastVariant.error,
+        );
+        return;
+      }
+      final selfiePath = _resolveFilePath(selfieUpload['data']);
+      if (selfiePath == null || selfiePath.trim().isEmpty) {
+        showToast(
+          context,
+          'Selfie upload did not return a file path.',
+          variant: ToastVariant.error,
+        );
+        return;
+      }
+
+      final siteUpload = await ApiClient.uploadAttendanceImage(
+        _checkoutSiteImage!,
+        userId: userIdValue,
+        userName: userName,
+      );
+      if (siteUpload['success'] != true) {
+        showToast(
+          context,
+          siteUpload['error']?.toString() ?? 'Unable to upload site photo.',
+          variant: ToastVariant.error,
+        );
+        return;
+      }
+      final sitePath = _resolveFilePath(siteUpload['data']);
+      if (sitePath == null || sitePath.trim().isEmpty) {
+        showToast(
+          context,
+          'Site photo upload did not return a file path.',
+          variant: ToastVariant.error,
+        );
+        return;
+      }
+
+      final payload = <String, dynamic>{
+        'photo_selfie': selfiePath,
+        'photo_site': sitePath,
+        'location': _checkoutLocationName,
+        'latitude': _checkoutPosition?.latitude,
+        'longitude': _checkoutPosition?.longitude,
+        'user_id': userIdValue,
+      };
+
+      payload.removeWhere(
+        (_, value) => value == null || value.toString().trim().isEmpty,
+      );
+
+      final createResult =
+          await ApiClient.checkoutAttendance(_lastAttendanceId!, payload);
+      if (createResult['success'] == true) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('Checkout Submitted'),
+                content: const Text('Checkout submitted successfully.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('OK'),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+        if (mounted) {
+          setState(() {
+            _checkoutSelfie = null;
+            _checkoutSiteImage = null;
+            _checkoutPosition = null;
+            _checkoutLocationName = null;
+            _checkoutLocationCapturedAt = null;
+            _mode = _AttendanceMode.select;
+          });
+        }
+      } else {
+        showToast(
+          context,
+          createResult['error']?.toString() ??
+              'Failed to submit checkout.',
+          variant: ToastVariant.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkoutSubmitting = false);
     }
   }
 
@@ -550,6 +837,97 @@ class _AttendancePageState extends State<AttendancePage> {
     );
   }
 
+  Widget _buildCheckoutLocationCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = isDark
+        ? AppTheme.darkMutedForeground
+        : AppTheme.lightMutedForeground;
+
+    final lat = _checkoutPosition?.latitude.toStringAsFixed(6) ?? '-';
+    final lng = _checkoutPosition?.longitude.toStringAsFixed(6) ?? '-';
+    final timestamp = _checkoutLocationCapturedAt == null
+        ? '-'
+        : DateFormat('dd MMM yyyy, hh:mm a')
+            .format(_checkoutLocationCapturedAt!);
+    final locationLabel = _checkoutLocationName ?? '-';
+    final userLabel = _userName ?? '-';
+
+    return MadCard(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(LucideIcons.mapPin, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Location',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Capture your current checkout location.',
+              style: TextStyle(color: muted, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                ),
+                color:
+                    (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                        .withValues(alpha: 0.12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Latitude: $lat', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text('Longitude: $lng', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Location: $locationLabel',
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Name: $userLabel',
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Captured at: $timestamp',
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            MadButton(
+              text: _locating ? 'Capturing...' : 'Capture Location',
+              icon: LucideIcons.locateFixed,
+              disabled: _locating,
+              onPressed: _captureCheckoutLocation,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -579,103 +957,299 @@ class _AttendancePageState extends State<AttendancePage> {
                   end: Alignment.centerRight,
                 ),
               ),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Attendance',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 22,
-                        tablet: 26,
-                        desktop: 28,
-                      ),
-                      fontWeight: FontWeight.bold,
-                      color: isDark
-                          ? AppTheme.darkForeground
-                          : AppTheme.lightForeground,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _mode == _AttendanceMode.select
+                              ? 'Attendance'
+                              : _mode == _AttendanceMode.checkIn
+                                  ? 'Check In'
+                                  : 'Check Out',
+                          style: TextStyle(
+                            fontSize: responsive.value(
+                              mobile: 22,
+                              tablet: 26,
+                              desktop: 28,
+                            ),
+                            fontWeight: FontWeight.bold,
+                            color: isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _mode == _AttendanceMode.checkIn
+                              ? 'Capture selfie, site photo, and location to mark attendance.'
+                              : _mode == _AttendanceMode.checkOut
+                                  ? 'Capture selfie, site photo, and location to check out.'
+                                  : 'Choose an action to continue.',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Capture selfie, site photo, and location to mark attendance.',
-                    style: TextStyle(
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
+                  if (_mode != _AttendanceMode.select)
+                    MadButton(
+                      text: 'Back',
+                      variant: ButtonVariant.outline,
+                      icon: LucideIcons.arrowLeft,
+                      onPressed: () {
+                        setState(() {
+                          _mode = _AttendanceMode.select;
+                        });
+                      },
                     ),
-                  ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                SizedBox(
-                  width: isMobile ? double.infinity : 360,
-                  child: _buildPhotoCard(
-                    title: 'Selfie',
-                    subtitle: 'Capture a clear selfie for attendance.',
-                    icon: LucideIcons.user,
-                    onCapture: _captureSelfie,
-                    photo: _selfie,
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 360,
-                  child: _buildPhotoCard(
-                    title: 'Site Photo',
-                    subtitle: 'Capture the current site image.',
-                    icon: LucideIcons.building,
-                    onCapture: _captureSiteImage,
-                    photo: _siteImage,
-                  ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 360,
-                  child: _buildLocationCard(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            MadCard(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Submit Attendance',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+            if (_mode == _AttendanceMode.select) ...[
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  SizedBox(
+                    width: isMobile ? double.infinity : 320,
+                    child: MadCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(LucideIcons.logIn, size: 24),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Check In',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Capture selfie, site photo, and location.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            MadButton(
+                              text: 'Start Check In',
+                              icon: LucideIcons.arrowRight,
+                              onPressed: () {
+                                setState(() {
+                                  _mode = _AttendanceMode.checkIn;
+                                  _selfie = null;
+                                  _siteImage = null;
+                                  _position = null;
+                                  _locationName = null;
+                                  _locationCapturedAt = null;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Ensure both photos and location are captured before submission.',
-                      style: TextStyle(
-                        color: isDark
-                            ? AppTheme.darkMutedForeground
-                            : AppTheme.lightMutedForeground,
+                  ),
+                  SizedBox(
+                    width: isMobile ? double.infinity : 320,
+                    child: MadCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(LucideIcons.logOut, size: 24),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Check Out',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Capture selfie, site photo, and location.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            MadButton(
+                              text: 'Start Check Out',
+                              icon: LucideIcons.arrowRight,
+                              onPressed: () {
+                                setState(() {
+                                  _mode = _AttendanceMode.checkOut;
+                                  _checkoutSelfie = null;
+                                  _checkoutSiteImage = null;
+                                  _checkoutPosition = null;
+                                  _checkoutLocationName = null;
+                                  _checkoutLocationCapturedAt = null;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    MadButton(
-                      text: _submitting ? 'Submitting...' : 'Submit to Admin',
-                      icon: LucideIcons.send,
-                      disabled: _submitting,
-                      onPressed: _submitAttendance,
+                  ),
+                ],
+              ),
+            ] else if (_mode == _AttendanceMode.checkOut) ...[
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  SizedBox(
+                    width: isMobile ? double.infinity : 360,
+                    child: _buildPhotoCard(
+                      title: 'Selfie',
+                      subtitle: 'Capture a clear selfie for checkout.',
+                      icon: LucideIcons.user,
+                      onCapture: _captureCheckoutSelfie,
+                      photo: _checkoutSelfie,
                     ),
-                  ],
+                  ),
+                  SizedBox(
+                    width: isMobile ? double.infinity : 360,
+                    child: _buildPhotoCard(
+                      title: 'Site Photo',
+                      subtitle: 'Capture the current site image.',
+                      icon: LucideIcons.building,
+                      onCapture: _captureCheckoutSiteImage,
+                      photo: _checkoutSiteImage,
+                    ),
+                  ),
+                  SizedBox(
+                    width: isMobile ? double.infinity : 360,
+                    child: _buildCheckoutLocationCard(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              MadCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Submit Check Out',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Ensure both photos and location are captured before submission.',
+                        style: TextStyle(
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      MadButton(
+                        text: _checkoutSubmitting ? 'Submitting...' : 'Submit to Admin',
+                        icon: LucideIcons.send,
+                        disabled: _checkoutSubmitting,
+                        onPressed: _submitCheckout,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ] else ...[
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: [
+                  SizedBox(
+                    width: isMobile ? double.infinity : 360,
+                    child: _buildPhotoCard(
+                      title: 'Selfie',
+                      subtitle: 'Capture a clear selfie for attendance.',
+                      icon: LucideIcons.user,
+                      onCapture: _captureSelfie,
+                      photo: _selfie,
+                    ),
+                  ),
+                  SizedBox(
+                    width: isMobile ? double.infinity : 360,
+                    child: _buildPhotoCard(
+                      title: 'Site Photo',
+                      subtitle: 'Capture the current site image.',
+                      icon: LucideIcons.building,
+                      onCapture: _captureSiteImage,
+                      photo: _siteImage,
+                    ),
+                  ),
+                  SizedBox(
+                    width: isMobile ? double.infinity : 360,
+                    child: _buildLocationCard(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              MadCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Submit Attendance',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Ensure both photos and location are captured before submission.',
+                        style: TextStyle(
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      MadButton(
+                        text: _submitting ? 'Submitting...' : 'Submit to Admin',
+                        icon: LucideIcons.send,
+                        disabled: _submitting,
+                        onPressed: _submitAttendance,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 }
+
+enum _AttendanceMode { select, checkIn, checkOut }
