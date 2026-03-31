@@ -2,22 +2,26 @@ import '../constants/access_control_catalog.dart';
 
 const alwaysAllowedPagePaths = <String>{'/profile', '/settings'};
 
-Map<String, dynamic> buildDefaultAccessControl() {
+Map<String, dynamic> buildNoAccessControl() {
   final pages = <String, bool>{};
   final functions = <String, bool>{};
 
   for (final page in accessControlCatalog) {
-    pages[page.pagePath] = true;
+    pages[page.pagePath] = false;
     for (final fn in page.functions) {
-      functions[fn.key] = true;
+      functions[fn.key] = false;
     }
   }
 
   return {'pages': pages, 'functions': functions};
 }
 
+Map<String, dynamic> buildDefaultAccessControl() {
+  return buildNoAccessControl();
+}
+
 Map<String, dynamic> normalizeAccessControl(dynamic rawAccessControl) {
-  final fallback = buildDefaultAccessControl();
+  final fallback = buildNoAccessControl();
 
   final fallbackPages = Map<String, bool>.from(
     fallback['pages'] as Map<String, bool>,
@@ -32,8 +36,17 @@ Map<String, dynamic> normalizeAccessControl(dynamic rawAccessControl) {
 
   if (rawPages is Map) {
     rawPages.forEach((key, value) {
-      fallbackPages[key.toString()] = value == true;
+      final rawKey = key.toString();
+      final normalizedKey =
+          rawKey.startsWith('/') ? rawKey : '/${rawKey.trim()}';
+      fallbackPages[normalizedKey] = value == true;
     });
+  }
+  if (rawPages is Map && rawPages.containsKey('/')) {
+    fallbackPages['/dashboard'] = rawPages['/'] == true;
+  }
+  if (rawPages is Map && rawPages.containsKey('/dashboard')) {
+    fallbackPages['/dashboard'] = rawPages['/dashboard'] == true;
   }
   if (rawFunctions is Map) {
     rawFunctions.forEach((key, value) {
@@ -65,10 +78,10 @@ bool hasPageAccess(Map<String, dynamic>? user, String? pagePath) {
   if (user?['role'] == 'admin') return true;
 
   final accessControl = user?['access_control'];
-  if (accessControl is! Map) return true;
+  if (accessControl is! Map) return false;
   final pages = accessControl['pages'];
-  if (pages is! Map) return true;
-  if (!pages.containsKey(pagePath)) return true;
+  if (pages is! Map) return false;
+  if (!pages.containsKey(pagePath)) return false;
 
   return pages[pagePath] == true;
 }
@@ -78,10 +91,10 @@ bool hasFunctionAccess(Map<String, dynamic>? user, String? functionKey) {
   if (user?['role'] == 'admin') return true;
 
   final accessControl = user?['access_control'];
-  if (accessControl is! Map) return true;
+  if (accessControl is! Map) return false;
   final functions = accessControl['functions'];
-  if (functions is! Map) return true;
-  if (!functions.containsKey(functionKey)) return true;
+  if (functions is! Map) return false;
+  if (!functions.containsKey(functionKey)) return false;
 
   return functions[functionKey] == true;
 }

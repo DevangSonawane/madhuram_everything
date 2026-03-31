@@ -10,6 +10,7 @@ import 'package:flutter_redux/flutter_redux.dart';
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
+import '../services/auth_storage.dart';
 import '../store/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
@@ -155,6 +156,178 @@ class _AttendancePageState extends State<AttendancePage> {
           data['id']?.toString();
     }
     return null;
+  }
+
+  DateTime? _tryParseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is int) {
+      final parsed = DateTime.fromMillisecondsSinceEpoch(value);
+      return parsed;
+    }
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      final parsed = DateTime.tryParse(trimmed);
+      if (parsed != null) return parsed;
+      final hhmm = RegExp(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$');
+      final match = hhmm.firstMatch(trimmed);
+      if (match != null) {
+        final hours = int.tryParse(match.group(1) ?? '');
+        final minutes = int.tryParse(match.group(2) ?? '');
+        if (hours != null && minutes != null) {
+          final now = DateTime.now();
+          return DateTime(
+            now.year,
+            now.month,
+            now.day,
+            hours,
+            minutes,
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _resolveAttendanceDate(Map<String, dynamic> item) {
+    final direct = item['date']?.toString();
+    if (direct != null && direct.trim().isNotEmpty) {
+      return direct.trim();
+    }
+    for (final key in ['check_in_date', 'created_at', 'updated_at']) {
+      final parsed = _tryParseDateTime(item[key]);
+      if (parsed != null) {
+        return DateFormat('yyyy-MM-dd').format(parsed);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _cacheLastAttendanceId(
+    String attendanceId, {
+    String? userId,
+    String? projectId,
+  }) async {
+    final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await AuthStorage.setLastAttendanceContext(
+      attendanceId: attendanceId,
+      date: todayKey,
+      userId: userId,
+      projectId: projectId,
+    );
+    _lastAttendanceId = attendanceId;
+  }
+
+  Future<String?> _resolveCheckoutAttendanceId() async {
+    if (_lastAttendanceId != null && _lastAttendanceId!.trim().isNotEmpty) {
+      return _lastAttendanceId;
+    }
+
+    final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final stored = await AuthStorage.getLastAttendanceContext();
+    final storedId = stored['attendance_id'];
+    final storedDate = stored['date'];
+    final storedUser = stored['user_id'];
+    final storedProject = stored['project_id'];
+    debugPrint(
+      '[Attendance] Stored attendance context: id=$storedId date=$storedDate user=$storedUser project=$storedProject',
+    );
+
+    if (storedId != null &&
+        storedId.trim().isNotEmpty &&
+        storedDate == todayKey &&
+        (storedUser == null || storedUser == _userId) &&
+        (storedProject == null || storedProject == _projectId)) {
+      _lastAttendanceId = storedId;
+      return storedId;
+    }
+
+    final userId = _userId;
+    if (userId == null || userId.trim().isEmpty) {
+      return null;
+    }
+
+    final result = await ApiClient.getAttendanceByUser(userId);
+    debugPrint('[Attendance] getAttendanceByUser response: $result');
+    if (result['success'] != true) {
+      return null;
+    }
+    final data = result['data'];
+    if (data is! List) return null;
+
+    final projectId = _projectId;
+    final matches = <Map<String, dynamic>>[];
+    final recent = <Map<String, dynamic>>[];
+    final now = DateTime.now();
+    for (final item in data) {
+      if (item is! Map<String, dynamic>) continue;
+      final dateKey = _resolveAttendanceDate(item);
+      if (projectId != null && projectId.trim().isNotEmpty) {
+        final itemProjectId =
+            item['project_id']?.toString() ?? item['projectId']?.toString();
+        if (itemProjectId != null &&
+            itemProjectId.trim().isNotEmpty &&
+            itemProjectId != projectId) {
+          continue;
+        }
+      }
+      if (dateKey == todayKey) {
+        matches.add(item);
+      }
+      final parsed = _tryParseDateTime(
+        item['created_at'] ??
+            item['updated_at'] ??
+            item['check_in_time'] ??
+            item['check_in_at'],
+      );
+      if (parsed != null) {
+        final hours = now.difference(parsed).inHours;
+        if (hours.abs() <= 24) {
+          recent.add(item);
+        }
+      }
+    }
+
+    debugPrint(
+      '[Attendance] Attendance matches today=${matches.length} recent=${recent.length}',
+    );
+
+    final candidates = matches.isNotEmpty ? matches : recent;
+    if (candidates.isEmpty) return null;
+
+    candidates.sort((a, b) {
+      final aTime = _tryParseDateTime(
+        a['check_out_time'] ??
+            a['checkout_time'] ??
+            a['check_in_time'] ??
+            a['created_at'] ??
+            a['updated_at'],
+      );
+      final bTime = _tryParseDateTime(
+        b['check_out_time'] ??
+            b['checkout_time'] ??
+            b['check_in_time'] ??
+            b['created_at'] ??
+            b['updated_at'],
+      );
+      final aMillis = aTime?.millisecondsSinceEpoch ?? 0;
+      final bMillis = bTime?.millisecondsSinceEpoch ?? 0;
+      return bMillis.compareTo(aMillis);
+    });
+
+    final latest = candidates.first;
+    final resolvedId = _resolveAttendanceId(latest);
+    if (resolvedId == null || resolvedId.trim().isEmpty) {
+      return null;
+    }
+
+    await _cacheLastAttendanceId(
+      resolvedId,
+      userId: userId,
+      projectId: projectId,
+    );
+    return resolvedId;
   }
 
   String? _resolveUserId(Map<String, dynamic>? user) {
@@ -360,7 +533,13 @@ class _AttendancePageState extends State<AttendancePage> {
       if (createResult['success'] == true) {
         final createdId = _resolveAttendanceId(createResult['data']);
         if (createdId != null && createdId.trim().isNotEmpty) {
-          _lastAttendanceId = createdId;
+          await _cacheLastAttendanceId(
+            createdId,
+            userId: userId,
+            projectId: projectId,
+          );
+        } else {
+          await _resolveCheckoutAttendanceId();
         }
         if (mounted) {
           await showDialog<void>(
@@ -511,14 +690,7 @@ class _AttendancePageState extends State<AttendancePage> {
 
   Future<void> _submitCheckout() async {
     if (_checkoutSubmitting) return;
-    if (_lastAttendanceId == null || _lastAttendanceId!.trim().isEmpty) {
-      showToast(
-        context,
-        'Please complete check-in first.',
-        variant: ToastVariant.error,
-      );
-      return;
-    }
+    _syncUserContext(force: true);
     final shouldSubmit = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -559,18 +731,35 @@ class _AttendancePageState extends State<AttendancePage> {
     }
 
     setState(() => _checkoutSubmitting = true);
+    debugPrint('[Attendance] Checkout submit started');
+    debugPrint('[Attendance] Checkout userId=$_userId projectId=$_projectId');
+    final attendanceId = await _resolveCheckoutAttendanceId();
+    debugPrint('[Attendance] Checkout resolved attendanceId=$attendanceId');
+    if (attendanceId == null || attendanceId.trim().isEmpty) {
+      if (mounted) {
+        showToast(
+          context,
+          'Unable to find today\'s check-in. Please check in again.',
+          variant: ToastVariant.error,
+        );
+        setState(() => _checkoutSubmitting = false);
+      }
+      return;
+    }
     try {
       final store = StoreProvider.of<AppState>(context);
       final user = store.state.auth.user;
       final userId = _resolveUserId(user);
       final userName = _resolveUserName(user);
       final userIdValue = userId;
+      debugPrint('[Attendance] Checkout payload userId=$userIdValue name=$userName');
 
       final selfieUpload = await ApiClient.uploadAttendanceImage(
         _checkoutSelfie!,
         userId: userIdValue,
         userName: userName,
       );
+      debugPrint('[Attendance] Checkout selfie upload response: $selfieUpload');
       if (selfieUpload['success'] != true) {
         showToast(
           context,
@@ -594,6 +783,7 @@ class _AttendancePageState extends State<AttendancePage> {
         userId: userIdValue,
         userName: userName,
       );
+      debugPrint('[Attendance] Checkout site upload response: $siteUpload');
       if (siteUpload['success'] != true) {
         showToast(
           context,
@@ -625,9 +815,16 @@ class _AttendancePageState extends State<AttendancePage> {
         (_, value) => value == null || value.toString().trim().isEmpty,
       );
 
+      debugPrint('[Attendance] Checkout request payload: $payload');
       final createResult =
-          await ApiClient.checkoutAttendance(_lastAttendanceId!, payload);
+          await ApiClient.checkoutAttendance(attendanceId, payload);
+      debugPrint('[Attendance] Checkout response: $createResult');
       if (createResult['success'] == true) {
+        await _cacheLastAttendanceId(
+          attendanceId,
+          userId: userIdValue,
+          projectId: _projectId,
+        );
         if (mounted) {
           await showDialog<void>(
             context: context,

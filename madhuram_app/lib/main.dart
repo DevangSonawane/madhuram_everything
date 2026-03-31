@@ -149,10 +149,24 @@ Future<void> _restoreAuthState() async {
     if (hasUser) {
       final user = await AuthStorage.getUser();
       if (user != null) {
-        final resolvedUser = await AccessControlStore.resolveUserAccessControl(
-          user,
-        );
+        var resolvedUser = AccessControlStore.resolveUserAccessControl(user);
         store.dispatch(LoginSuccess(resolvedUser));
+
+        final userId =
+            (resolvedUser['user_id'] ?? resolvedUser['id'] ?? '').toString();
+        if (userId.isNotEmpty) {
+          final accessResult = await ApiClient.getAccessUser(userId);
+          if (accessResult['success'] == true &&
+              accessResult['data'] is Map<String, dynamic>) {
+            resolvedUser = AccessControlStore.resolveUserAccessControl(
+              resolvedUser,
+              accessControl:
+                  Map<String, dynamic>.from(accessResult['data'] as Map),
+            );
+            await AuthStorage.setUser(resolvedUser);
+            store.dispatch(LoginSuccess(resolvedUser));
+          }
+        }
 
         // Restore selected project from local storage WITHOUT calling API.
         // This ensures instant startup. The API fetch is done later when

@@ -81,9 +81,24 @@ class _LoginPageState extends State<LoginPage> {
           }
           return;
         }
-        final resolvedUser = await AccessControlStore.resolveUserAccessControl(
-          user,
-        );
+        final userId = (user['user_id'] ?? user['id'] ?? '').toString();
+        Map<String, dynamic> resolvedUser = user;
+        if (userId.isNotEmpty) {
+          final accessResult = await ApiClient.getAccessUser(userId);
+          if (accessResult['success'] == true &&
+              accessResult['data'] is Map<String, dynamic>) {
+            resolvedUser = AccessControlStore.resolveUserAccessControl(
+              user,
+              accessControl:
+                  Map<String, dynamic>.from(accessResult['data'] as Map),
+            );
+          } else {
+            resolvedUser = AccessControlStore.resolveUserAccessControl(user);
+          }
+        } else {
+          resolvedUser = AccessControlStore.resolveUserAccessControl(user);
+        }
+        await AuthStorage.setUser(resolvedUser);
         store.dispatch(LoginSuccess(resolvedUser));
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/projects');

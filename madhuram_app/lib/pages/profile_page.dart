@@ -65,11 +65,16 @@ class _ProfilePageState extends State<ProfilePage> {
       _usersError = null;
     });
     try {
-      final result = await ApiClient.getUsers();
+      final result = await ApiClient.getAccessAllUsers();
       if (!mounted) return;
       if (result['success'] == true) {
         final data = result['data'] as List;
-        final loaded = data.map((e) => User.fromJson(e)).toList()
+        final loaded = data
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .map((e) => AccessControlStore.resolveUserAccessControl(e))
+            .map((e) => User.fromJson(e))
+            .toList()
           ..sort(
             (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
           );
@@ -832,7 +837,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final selectedUser = _findUserById(userId);
     if (selectedUser == null) return;
 
-    final resolvedUser = await AccessControlStore.resolveUserAccessControl(
+    final resolvedUser = AccessControlStore.resolveUserAccessControl(
       selectedUser.toJson(),
     );
     if (!mounted) return;
@@ -924,10 +929,35 @@ class _ProfilePageState extends State<ProfilePage> {
 
     setState(() => _savingAccessControl = true);
     final normalized = normalizeAccessControl(_draftAccessControl);
-    await AccessControlStore.saveUserAccessControlOverride(
-      selectedUser.id,
-      normalized,
-    );
+    final store = StoreProvider.of<AppState>(context);
+    final currentUser = store.state.auth.user;
+    final grantedBy =
+        (currentUser?['user_id'] ?? currentUser?['id'] ?? '').toString();
+    final grantedByName =
+        currentUser?['name']?.toString() ??
+        currentUser?['email']?.toString();
+    final payload = {
+      'pages': normalized['pages'] ?? <String, dynamic>{},
+      'functions': normalized['functions'] ?? <String, dynamic>{},
+      if (grantedBy.isNotEmpty) 'granted_by': grantedBy,
+      if (grantedByName != null && grantedByName.isNotEmpty)
+        'granted_by_name': grantedByName,
+    };
+    final saveResult =
+        await ApiClient.updateAccessUserBulk(selectedUser.id, payload);
+    if (saveResult['success'] != true) {
+      if (!mounted) return;
+      setState(() => _savingAccessControl = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saveResult['error']?.toString() ??
+                'Failed to update access permissions.',
+          ),
+        ),
+      );
+      return;
+    }
 
     if (!mounted) return;
 
@@ -951,8 +981,6 @@ class _ProfilePageState extends State<ProfilePage> {
           .toList();
     });
 
-    final store = StoreProvider.of<AppState>(context);
-    final currentUser = store.state.auth.user;
     final currentUserId = (currentUser?['user_id'] ?? currentUser?['id'] ?? '')
         .toString();
     if (currentUserId == selectedUser.id && currentUser != null) {

@@ -58,7 +58,7 @@ class AuthRefreshService {
     }
 
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(seconds: 2),
       (_) => refreshUser(),
     );
 
@@ -83,19 +83,27 @@ class AuthRefreshService {
       return;
     }
 
-    final result = await ApiClient.getUserById(userId);
-    if (result['success'] != true) {
+    final userResult = await ApiClient.getUserById(userId);
+    if (userResult['success'] != true) {
       return;
     }
 
-    final data = result['data'];
+    final data = userResult['data'];
     if (data is! Map<String, dynamic>) {
       return;
     }
 
+    final accessResult = await ApiClient.getAccessUser(userId);
+    final accessControl = (accessResult['success'] == true &&
+            accessResult['data'] is Map<String, dynamic>)
+        ? Map<String, dynamic>.from(accessResult['data'] as Map)
+        : null;
+
     final mergedUser = {...data, 'token': token};
-    final resolvedUser =
-        await AccessControlStore.resolveUserAccessControl(mergedUser);
+    final resolvedUser = AccessControlStore.resolveUserAccessControl(
+      mergedUser,
+      accessControl: accessControl,
+    );
 
     await AuthStorage.setUser(resolvedUser);
     store.dispatch(LoginSuccess(resolvedUser));

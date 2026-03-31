@@ -362,6 +362,87 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  // ============================================================================
+  // Access Control
+  // ============================================================================
+  static Future<Map<String, dynamic>> getAccessCatalog() async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/access/catalog');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getAccessUser(String userId) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/access/user/$userId');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getAccessAllUsers() async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/access/all-users');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> revokeAccessUser(String userId) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/access/user/$userId');
+    final res = await _delete(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> updateAccessUserPage(
+    String userId,
+    String pagePath,
+    Map<String, dynamic> payload,
+  ) async {
+    final token = await _getToken();
+    final encodedPagePath = Uri.encodeComponent(pagePath);
+    final uri = Uri.parse(
+      '$baseUrl/api/access/user/$userId/page/$encodedPagePath',
+    );
+    final res = await _put(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> updateAccessUserFunction(
+    String userId,
+    String functionKey,
+    Map<String, dynamic> payload,
+  ) async {
+    final token = await _getToken();
+    final encodedFunctionKey = Uri.encodeComponent(functionKey);
+    final uri = Uri.parse(
+      '$baseUrl/api/access/user/$userId/function/$encodedFunctionKey',
+    );
+    final res = await _put(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> updateAccessUserBulk(
+    String userId,
+    Map<String, dynamic> payload,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/access/user/$userId/bulk');
+    final res = await _put(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    );
+    return _handleResponse(res);
+  }
+
   static Future<Map<String, dynamic>> updateUserAccessControl(
     String userId,
     Map<String, dynamic> accessControl,
@@ -1368,6 +1449,15 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static Future<Map<String, dynamic>> getAttendanceByUser(
+    String userId,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/attendance/user/$userId');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
   static Future<Map<String, dynamic>> getAttendanceById(String id) async {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/attendance/$id');
@@ -1395,7 +1485,7 @@ class ApiClient {
   ) async {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/attendance/checkout/$id');
-    final res = await _post(
+    final res = await _put(
       uri,
       headers: _authHeaders(token),
       body: jsonEncode(data),
