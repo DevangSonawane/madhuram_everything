@@ -37,6 +37,7 @@ class _MIRCreatePageState extends State<MIRCreatePage> {
 
   String? _selectedPoId;
   String? _selectedChallanNo;
+  String? _preselectChallan;
   String _attachmentPath = '';
 
   List<Map<String, dynamic>> _projectPos = [];
@@ -47,6 +48,11 @@ class _MIRCreatePageState extends State<MIRCreatePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map && args['challan'] != null) {
+        final raw = args['challan'].toString().trim();
+        if (raw.isNotEmpty) _preselectChallan = raw;
+      }
       _initForm();
     });
   }
@@ -85,6 +91,15 @@ class _MIRCreatePageState extends State<MIRCreatePage> {
     }
 
     await Future.wait([_loadPOs(projectId), _loadChallans(projectId)]);
+    if (_preselectChallan != null && _preselectChallan!.isNotEmpty) {
+      final exists = _challanOptions.any((row) {
+        final challanNo = (row['challan_number'] ?? '').toString().trim();
+        return challanNo == _preselectChallan;
+      });
+      if (exists) {
+        await _handleChallanChange(_preselectChallan);
+      }
+    }
     if (!mounted) return;
     setState(() => _loading = false);
   }

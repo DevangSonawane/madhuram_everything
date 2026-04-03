@@ -36,10 +36,13 @@ import 'pages/profile_page.dart';
 // Inventory Module
 import 'pages/materials_page.dart';
 import 'pages/add_inventory_page.dart';
+import 'pages/inventory_history_page.dart';
+import 'pages/inventory_item_history_page.dart';
 import 'pages/stock_areas_page.dart';
 import 'pages/stock_transfers_page.dart';
 import 'pages/consumption_page.dart';
 import 'pages/returns_page.dart';
+import 'pages/quotes_search_page.dart';
 
 // Procurement Module
 import 'pages/purchase_requests_page.dart';
@@ -105,6 +108,11 @@ final Map<String, Widget Function(BuildContext)> _appRoutes = {
   '/inventory/add': (context) => const AddInventoryPage(),
   '/inventory': (context) => const AddInventoryPage(),
   '/projects/inventory/add': (context) => const AddInventoryPage(),
+  '/projects/inventory/full': (context) => const AddInventoryPage(
+        fullScreen: true,
+      ),
+  '/projects/inventory/history': (context) => const InventoryHistoryPage(),
+  '/projects/quotes/search': (context) => const QuotesSearchPage(),
   '/stock-transfers': (context) => const StockTransfersPage(),
   '/consumption': (context) => const ConsumptionPage(),
   '/returns': (context) => const ReturnsPage(),
@@ -273,6 +281,30 @@ class MyApp extends StatelessWidget {
                   transitionDuration: AppAnimations.normal,
                 );
               }
+              if (settings.name == '/projects/inventory/full') {
+                return PageRouteBuilder<void>(
+                  settings: settings,
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const AddInventoryPage(fullScreen: true),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                  transitionDuration: AppAnimations.normal,
+                );
+              }
+              if (settings.name == '/projects/inventory/history') {
+                return PageRouteBuilder<void>(
+                  settings: settings,
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const InventoryHistoryPage(),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                  transitionDuration: AppAnimations.normal,
+                );
+              }
               if (settings.name == '/challans/detail') {
                 final id = settings.arguments?.toString() ?? '';
                 return PageRouteBuilder<void>(
@@ -316,6 +348,19 @@ class MyApp extends StatelessWidget {
                         poItems: mapItems(poRaw),
                         deliveryItems: mapItems(deliveryRaw),
                       ),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                  transitionDuration: AppAnimations.normal,
+                );
+              }
+              if (settings.name == '/projects/inventory/item-history') {
+                final id = settings.arguments?.toString() ?? '';
+                return PageRouteBuilder<void>(
+                  settings: settings,
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      InventoryItemHistoryPage(inventoryId: id),
                   transitionsBuilder:
                       (context, animation, secondaryAnimation, child) {
                         return FadeTransition(opacity: animation, child: child);

@@ -1055,35 +1055,39 @@ class ApiClient {
     return _handleResponse(res);
   }
 
-  static Future<Map<String, dynamic>> sendPrEmail({
-    required Map<String, dynamic> pr,
-    required List<Map<String, dynamic>> vendors,
-    String? message,
-    List<File> attachments = const [],
-  }) async {
-    final prId = (pr['pr_id'] ?? pr['id'] ?? '').toString();
-    final normalizedVendors = vendors
-        .map((v) {
-          final vendor = Map<String, dynamic>.from(v);
-          final email = (vendor['vendor_email'] ?? '').toString().trim();
-          if (email.isEmpty) return null;
-          return {
-            'vendor_id': vendor['vendor_id'] ?? vendor['id'],
-            'vendor_name':
-                (vendor['vendor_name'] ??
-                        vendor['vendor_company_name'] ??
-                        'Vendor')
-                    .toString(),
-            'vendor_email': email,
-          };
-        })
-        .whereType<Map<String, dynamic>>()
-        .toList();
+  static Future<Map<String, dynamic>> uploadPrEmailAttachments(
+    String prId,
+    List<File> files,
+  ) async {
+    if (prId.isEmpty || files.isEmpty) {
+      return {
+        'success': false,
+        'error': 'PR id and attachments are required',
+      };
+    }
+    return _multipartFilesRequest(
+      'POST',
+      '/api/pr/$prId/upload-email-attachment',
+      const {},
+      files: files,
+      fileField: 'files',
+    );
+  }
 
-    final to = normalizedVendors
-        .map((v) => (v['vendor_email'] ?? '').toString().trim())
-        .where((email) => email.isNotEmpty)
-        .join(', ');
+  static Future<Map<String, dynamic>> sendPrEmail({
+    required String prId,
+    required String to,
+    List<String> cc = const [],
+    String message = '',
+    List<dynamic> attachments = const [],
+    List<File> attachmentFiles = const [],
+  }) async {
+    if (prId.isEmpty) {
+      return {
+        'success': false,
+        'error': 'PR id is required to send email.',
+      };
+    }
 
     final user = await AuthStorage.getUser();
     final userId = (user?['user_id'] ?? user?['id'] ?? user?['uid'])
@@ -1097,81 +1101,130 @@ class ApiClient {
         .toString()
         .trim();
 
-    Future<Map<String, dynamic>> sendWithLegacyEndpoint() async {
-      if (attachments.isNotEmpty) {
-        return _multipartRequest(
-          'POST',
-          '/api/pr/email',
-          {
-            'pr': jsonEncode(pr),
-            'vendors': jsonEncode(normalizedVendors),
-            if ((message ?? '').trim().isNotEmpty)
-              'custom_remarks': message!.trim(),
-          },
-          files: {'attachment': attachments.first},
-        );
-      }
-
-      final token = await _getToken();
-      final uri = Uri.parse('$baseUrl/api/pr/email');
-      final res = await _post(
-        uri,
-        headers: {
-          ..._authHeaders(token),
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'pr': pr,
-          'vendors': normalizedVendors,
-          'custom_remarks': (message ?? '').trim(),
-        }),
-      );
-      return _handleResponse(res);
+    List<dynamic> resolvedAttachments = List<dynamic>.from(attachments);
+    if (attachmentFiles.isNotEmpty) {
+      final uploadRes = await uploadPrEmailAttachments(prId, attachmentFiles);
+      if (uploadRes['success'] != true) return uploadRes;
+      final data = uploadRes['data'];
+      resolvedAttachments = (data is Map ? data['attachments'] : null)
+              as List? ??
+          [];
     }
 
-    if (prId.isNotEmpty) {
-      List<dynamic> uploadedAttachments = [];
-      if (attachments.isNotEmpty) {
-        final uploadRes = await _multipartFilesRequest(
-          'POST',
-          '/api/pr/$prId/upload-email-attachment',
-          const {},
-          files: attachments,
-          fileField: 'files',
-        );
-        if (uploadRes['success'] == true) {
-          final data = uploadRes['data'];
-          uploadedAttachments =
-              (data is Map ? data['attachments'] : null) as List? ?? [];
-        } else {
-          if (uploadRes['status'] != 404) return uploadRes;
-          return sendWithLegacyEndpoint();
-        }
-      }
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr/$prId/send-email');
+    final res = await _post(
+      uri,
+      headers: {
+        ..._authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'to': to.trim(),
+        'cc': cc.where((e) => e.trim().isNotEmpty).toList(),
+        'message': message.trim(),
+        'attachments': resolvedAttachments,
+        if (userId != null && userId.isNotEmpty) 'user_id': userId,
+        if (userName.isNotEmpty) 'user_name': userName,
+      }),
+    );
+    return _handleResponse(res);
+  }
 
-      final token = await _getToken();
-      final uri = Uri.parse('$baseUrl/api/pr/$prId/send-email');
-      final res = await _post(
-        uri,
-        headers: {
-          ..._authHeaders(token),
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'to': to,
-          'cc': const [],
-          'message': (message ?? '').trim(),
-          'attachments': uploadedAttachments,
-          if (userId != null && userId.isNotEmpty) 'user_id': userId,
-          if (userName.isNotEmpty) 'user_name': userName,
-        }),
-      );
-      final result = await _handleResponse(res);
-      if (result['success'] == true) return result;
-      if (result['status'] != 404) return result;
+  static Future<Map<String, dynamic>> getPrEmailLogs(String prId) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/pr/$prId/email-logs');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> uploadPoEmailAttachments(
+    String poId,
+    List<File> files,
+  ) async {
+    if (poId.isEmpty || files.isEmpty) {
+      return {
+        'success': false,
+        'error': 'PO id and attachments are required',
+      };
+    }
+    return _multipartFilesRequest(
+      'POST',
+      '/api/po/$poId/upload-email-attachment',
+      const {},
+      files: files,
+      fileField: 'files',
+    );
+  }
+
+  static Future<Map<String, dynamic>> sendPoEmail({
+    required String poId,
+    required String to,
+    List<String> cc = const [],
+    String message = '',
+    List<dynamic> attachments = const [],
+    List<File> attachmentFiles = const [],
+  }) async {
+    if (poId.isEmpty) {
+      return {
+        'success': false,
+        'error': 'PO id is required to send email.',
+      };
     }
 
-    return sendWithLegacyEndpoint();
+    final user = await AuthStorage.getUser();
+    final userId = (user?['user_id'] ?? user?['id'] ?? user?['uid'])
+        ?.toString()
+        .trim();
+    final userName = (user?['user_name'] ??
+            user?['name'] ??
+            user?['username'] ??
+            user?['email'] ??
+            '')
+        .toString()
+        .trim();
+
+    List<dynamic> resolvedAttachments = List<dynamic>.from(attachments);
+    if (attachmentFiles.isNotEmpty) {
+      final uploadRes = await uploadPoEmailAttachments(poId, attachmentFiles);
+      if (uploadRes['success'] != true) return uploadRes;
+      final data = uploadRes['data'];
+      resolvedAttachments = (data is Map ? data['attachments'] : null)
+              as List? ??
+          [];
+    }
+
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/po/$poId/send-email');
+    final res = await _post(
+      uri,
+      headers: {
+        ..._authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'to': to.trim(),
+        'cc': cc.where((e) => e.trim().isNotEmpty).toList(),
+        'message': message.trim(),
+        'attachments': resolvedAttachments,
+        if (userId != null && userId.isNotEmpty) 'user_id': userId,
+        if (userName.isNotEmpty) 'user_name': userName,
+      }),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getPoEmailLogs(
+    String poId, {
+    String? userId,
+  }) async {
+    final token = await _getToken();
+    final query = userId == null || userId.isEmpty
+        ? ''
+        : '?user_id=${Uri.encodeQueryComponent(userId)}';
+    final uri = Uri.parse('$baseUrl/api/po/$poId/email-logs$query');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
   }
 
   // ============================================================================
@@ -1623,12 +1676,20 @@ class ApiClient {
   // Vendor Price Lists
   // ============================================================================
   static Future<Map<String, dynamic>> uploadVendorPriceListFile(
-    File file,
-  ) async {
+    File file, {
+    Map<String, dynamic>? fields,
+  }) async {
+    final payload = <String, String>{};
+    fields?.forEach((key, value) {
+      if (value == null) return;
+      final text = value.toString();
+      if (text.trim().isEmpty) return;
+      payload[key] = text;
+    });
     return _multipartRequest(
       'POST',
       '/api/vendor-price-list/upload',
-      {},
+      payload,
       files: {'file': file},
     );
   }
@@ -1777,17 +1838,22 @@ class ApiClient {
   ) async {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/inventory');
-    final payload = {
-      'brand': data['brand'],
-      'name': data['name'],
-      'quantity': data['quantity'],
-      'price': data['price'],
-      'units': data['units'],
-      'width': data['width'],
-      'height': data['height'],
-      'stockin': data['stockin'],
-      'billing': data['billing'],
-    };
+    final payload = <String, dynamic>{};
+    if (data['brand'] != null) payload['brand'] = data['brand'];
+    if (data['name'] != null) payload['name'] = data['name'];
+    if (data['quantity'] != null) payload['quantity'] = data['quantity'];
+    if (data['price'] != null) payload['price'] = data['price'];
+    if (data['units'] != null) payload['units'] = data['units'];
+    if (data['width'] != null) payload['width'] = data['width'];
+    if (data['height'] != null) payload['height'] = data['height'];
+    if (data['stockin'] != null) payload['stockin'] = data['stockin'];
+    if (data['billing'] != null) payload['billing'] = data['billing'];
+    if (data['project_id'] != null) {
+      payload['project_id'] = data['project_id'];
+    }
+    if (data['user_id'] != null) payload['user_id'] = data['user_id'];
+    if (data['user_name'] != null) payload['user_name'] = data['user_name'];
+    if (data['notes'] != null) payload['notes'] = data['notes'];
     final res = await _post(
       uri,
       headers: _authHeaders(token),
@@ -1854,6 +1920,104 @@ class ApiClient {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/inventory/$inventoryId');
     final res = await _delete(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  // ============================================================================
+  // Inventory History
+  // ============================================================================
+  static Future<Map<String, dynamic>> getInventoryHistory(
+    Map<String, dynamic> filters,
+  ) async {
+    final token = await _getToken();
+    const allowed = <String>{
+      'inventory_id',
+      'user_id',
+      'change_type',
+      'source_type',
+      'project_id',
+      'from',
+      'to',
+      'page',
+      'limit',
+      'sort',
+    };
+    final query = <String, String>{};
+    filters.forEach((key, value) {
+      if (!allowed.contains(key)) return;
+      if (value == null) return;
+      final asString = value.toString().trim();
+      if (asString.isEmpty) return;
+      query[key] = asString;
+    });
+    final uri = Uri.parse('$baseUrl/api/inventory-history')
+        .replace(queryParameters: query.isEmpty ? null : query);
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getInventoryHistorySummary({
+    String? from,
+    String? to,
+  }) async {
+    final token = await _getToken();
+    final query = <String, String>{};
+    if (from != null && from.trim().isNotEmpty) query['from'] = from.trim();
+    if (to != null && to.trim().isNotEmpty) query['to'] = to.trim();
+    final uri = Uri.parse('$baseUrl/api/inventory-history/summary')
+        .replace(queryParameters: query.isEmpty ? null : query);
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getInventoryHistoryByItem(
+    String inventoryId, {
+    Map<String, dynamic>? filters,
+  }) async {
+    final token = await _getToken();
+    const allowed = <String>{
+      'change_type',
+      'from',
+      'to',
+      'page',
+      'limit',
+      'sort',
+    };
+    final query = <String, String>{};
+    (filters ?? {}).forEach((key, value) {
+      if (!allowed.contains(key)) return;
+      if (value == null) return;
+      final asString = value.toString().trim();
+      if (asString.isEmpty) return;
+      query[key] = asString;
+    });
+    final uri = Uri.parse(
+      '$baseUrl/api/inventory-history/item/$inventoryId',
+    ).replace(queryParameters: query.isEmpty ? null : query);
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> searchInventoryTrace({
+    String? query,
+    String? projectId,
+    String? minQty,
+  }) async {
+    final token = await _getToken();
+    final params = <String, String>{};
+    if (query != null && query.trim().isNotEmpty) {
+      params['q'] = query.trim();
+    }
+    if (projectId != null && projectId.trim().isNotEmpty) {
+      params['project_id'] = projectId.trim();
+    }
+    if (minQty != null && minQty.trim().isNotEmpty) {
+      params['min_qty'] = minQty.trim();
+    }
+    final uri = Uri.parse(
+      '$baseUrl/api/inventory-trace/search',
+    ).replace(queryParameters: params.isEmpty ? null : params);
+    final res = await _get(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
 
@@ -2104,6 +2268,12 @@ class ApiClient {
   static String getApiFileUrl(String path) {
     if (path.startsWith('http')) return path;
     return '$baseUrl$path';
+  }
+
+  /// Auth headers for file requests that require a token.
+  static Future<Map<String, String>> getAuthHeadersForFile() async {
+    final token = await _getToken();
+    return _authHeaders(token);
   }
 
   // ============================================================================

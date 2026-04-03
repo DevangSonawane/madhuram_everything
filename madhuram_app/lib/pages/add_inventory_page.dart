@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart' hide Material;
+import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/inventory.dart';
 import '../services/api_client.dart';
+import '../store/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../utils/responsive.dart';
 
 class AddInventoryPage extends StatefulWidget {
-  const AddInventoryPage({super.key});
+  final bool fullScreen;
+
+  const AddInventoryPage({super.key, this.fullScreen = false});
 
   @override
   State<AddInventoryPage> createState() => _AddInventoryPageState();
@@ -24,6 +28,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
   final _unitController = TextEditingController();
   final _widthController = TextEditingController();
   final _heightController = TextEditingController();
+  final _notesController = TextEditingController();
 
   bool _stockIn = true;
   bool _billing = false;
@@ -48,6 +53,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     _unitController.dispose();
     _widthController.dispose();
     _heightController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -99,6 +105,17 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
       return false;
     }
 
+    final store = StoreProvider.of<AppState>(context);
+    final selectedProjectId = store.state.project.selectedProjectId;
+    final user = store.state.auth.user ?? <String, dynamic>{};
+    final userId =
+        (user['user_id'] ?? user['id'] ?? user['uid'])?.toString();
+    final userName = (user['user_name'] ??
+            user['name'] ??
+            user['username'] ??
+            user['full_name'])
+        ?.toString();
+
     setState(() => _saving = true);
 
     try {
@@ -112,6 +129,13 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
         'height': double.tryParse(_heightController.text.trim()),
         'stockin': _stockIn,
         'billing': _billing,
+        if (selectedProjectId != null && selectedProjectId.trim().isNotEmpty)
+          'project_id': int.tryParse(selectedProjectId) ?? selectedProjectId,
+        if (userId != null && userId.trim().isNotEmpty) 'user_id': userId,
+        if (userName != null && userName.trim().isNotEmpty)
+          'user_name': userName,
+        if (_notesController.text.trim().isNotEmpty)
+          'notes': _notesController.text.trim(),
       });
 
       if (!mounted) return false;
@@ -124,6 +148,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
         _unitController.clear();
         _widthController.clear();
         _heightController.clear();
+        _notesController.clear();
         setState(() {
           _stockIn = true;
           _billing = false;
@@ -156,6 +181,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
       context: context,
       title: 'Add Inventory Item',
       showCloseButton: true,
+      useFullScreen: true,
       content: StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           return Column(
@@ -235,8 +261,8 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                       labelText: 'Stock Status',
                       value: _stockIn ? 'in' : 'out',
                       options: const [
-                        MadSelectOption(value: 'in', label: 'In Stock'),
-                        MadSelectOption(value: 'out', label: 'Out of Stock'),
+                        MadSelectOption(value: 'in', label: 'Stock In'),
+                        MadSelectOption(value: 'out', label: 'Stock Out'),
                       ],
                       onChanged: (value) =>
                           setDialogState(() => _stockIn = value == 'in'),
@@ -246,16 +272,26 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                   Expanded(
                     child: MadSelect<String>(
                       labelText: 'Billing Status',
-                      value: _billing ? 'done' : 'pending',
+                      value: _billing ? 'billing' : 'non-billings',
                       options: const [
-                        MadSelectOption(value: 'done', label: 'Billed'),
-                        MadSelectOption(value: 'pending', label: 'Pending'),
+                        MadSelectOption(value: 'billing', label: 'Billing In'),
+                        MadSelectOption(
+                          value: 'non-billings',
+                          label: 'Billing Out',
+                        ),
                       ],
                       onChanged: (value) =>
-                          setDialogState(() => _billing = value == 'done'),
+                          setDialogState(() => _billing = value == 'billing'),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              MadInput(
+                controller: _notesController,
+                labelText: 'Notes (opening stock reason)',
+                hintText: 'Optional notes for opening stock',
+                maxLines: 3,
               ),
               const SizedBox(height: 16),
               Row(
@@ -468,8 +504,8 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                         labelText: 'Stock Status',
                         value: stockIn ? 'in' : 'out',
                         options: const [
-                          MadSelectOption(value: 'in', label: 'In Stock'),
-                          MadSelectOption(value: 'out', label: 'Out of Stock'),
+                          MadSelectOption(value: 'in', label: 'Stock In'),
+                          MadSelectOption(value: 'out', label: 'Stock Out'),
                         ],
                         onChanged: (value) =>
                             setDialogState(() => stockIn = value == 'in'),
@@ -479,13 +515,21 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                     Expanded(
                       child: MadSelect<String>(
                         labelText: 'Billing Status',
-                        value: billing ? 'done' : 'pending',
+                        value: billing ? 'billing' : 'non-billings',
                         options: const [
-                          MadSelectOption(value: 'done', label: 'Billed'),
-                          MadSelectOption(value: 'pending', label: 'Pending'),
+                          MadSelectOption(
+                            value: 'billing',
+                            label: 'Billing In',
+                          ),
+                          MadSelectOption(
+                            value: 'non-billings',
+                            label: 'Billing Out',
+                          ),
                         ],
                         onChanged: (value) =>
-                            setDialogState(() => billing = value == 'done'),
+                            setDialogState(
+                              () => billing = value == 'billing',
+                            ),
                       ),
                     ),
                   ],
@@ -623,8 +667,8 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
 
       final matchesBilling =
           _billingFilter == 'all' ||
-          (_billingFilter == 'billed' && item.billing) ||
-          (_billingFilter == 'pending' && !item.billing);
+          (_billingFilter == 'billing' && item.billing) ||
+          (_billingFilter == 'non-billings' && !item.billing);
 
       return matchesSearch && matchesStock && matchesBilling;
     }).toList();
@@ -640,6 +684,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
   Widget build(BuildContext context) {
     final responsive = Responsive(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isFullScreen = widget.fullScreen;
 
     if (!_didInitLoad) {
       _didInitLoad = true;
@@ -647,8 +692,8 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     }
 
     return ProtectedRoute(
-      title: 'Add Inventory',
-      route: '/inventory/add',
+      title: isFullScreen ? 'Inventory' : 'Add Inventory',
+      route: isFullScreen ? '/projects/inventory/full' : '/inventory/add',
       headerLeadingIcon: LucideIcons.arrowLeft,
       onHeaderLeadingPressed: () =>
           Navigator.pushReplacementNamed(context, '/projects'),
@@ -657,7 +702,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHero(isDark),
+            if (!isFullScreen) _buildHero(isDark),
             SizedBox(
               height: responsive.value(mobile: 14, tablet: 16, desktop: 20),
             ),
@@ -669,20 +714,23 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(width: 370, child: _buildForm()),
-                  SizedBox(width: responsive.spacing),
+                  if (!isFullScreen)
+                    SizedBox(width: 370, child: _buildForm()),
+                  if (!isFullScreen) SizedBox(width: responsive.spacing),
                   Expanded(child: _buildInventoryPanel(isDark, responsive)),
                 ],
               )
             else ...[
-              _buildForm(),
-              SizedBox(
-                height: responsive.value(
-                  mobile: 14,
-                  tablet: 16,
-                  desktop: 20,
+              if (!isFullScreen) ...[
+                _buildForm(),
+                SizedBox(
+                  height: responsive.value(
+                    mobile: 14,
+                    tablet: 16,
+                    desktop: 20,
+                  ),
                 ),
-              ),
+              ],
               _buildInventoryPanel(isDark, responsive),
             ],
           ],
@@ -710,30 +758,42 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const MadBadge(
-            text: 'Inventory Workspace',
-            variant: BadgeVariant.outline,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Add Inventory',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: isDark
-                  ? AppTheme.darkForeground
-                  : AppTheme.lightForeground,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Create inventory entries for your organization.',
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark
-                  ? AppTheme.darkMutedForeground
-                  : AppTheme.lightMutedForeground,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MadBadge(
+                      text: 'Inventory Workspace',
+                      variant: BadgeVariant.outline,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Add Inventory',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Create inventory entries for your organization.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -869,6 +929,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
 
   Widget _buildInventoryPanel(bool isDark, Responsive responsive) {
     final isMobile = responsive.isMobile;
+    final isFullScreen = widget.fullScreen;
 
     return MadCard(
       child: Padding(
@@ -877,9 +938,9 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isMobile)
-              _buildInventoryHeaderMobile(isDark)
+              _buildInventoryHeaderMobile(isDark, isFullScreen)
             else
-              _buildInventoryHeaderDesktop(isDark),
+              _buildInventoryHeaderDesktop(isDark, isFullScreen),
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
@@ -892,7 +953,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                   ),
                 ),
               ),
-              child: _buildInventoryCards(isDark),
+              child: _buildInventoryCards(isDark, isFullScreen),
             ),
           ],
         ),
@@ -900,12 +961,48 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     );
   }
 
-  Widget _buildInventoryHeaderMobile(bool isDark) {
+  Widget _buildInventoryHeaderMobile(bool isDark, bool isFullScreen) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _inventoryTitle(isDark),
         const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (isFullScreen)
+              MadButton(
+                text: 'Back',
+                variant: ButtonVariant.outline,
+                icon: LucideIcons.arrowLeft,
+                onPressed: () => Navigator.pushReplacementNamed(
+                  context,
+                  '/projects/inventory/add',
+                ),
+              )
+            else ...[
+              MadButton(
+                text: 'History',
+                variant: ButtonVariant.outline,
+                icon: LucideIcons.history,
+                onPressed: () => Navigator.pushNamed(
+                  context,
+                  '/projects/inventory/history',
+                ),
+              ),
+              MadButton(
+                text: 'Full screen',
+                variant: ButtonVariant.outline,
+                onPressed: () => Navigator.pushNamed(
+                  context,
+                  '/projects/inventory/full',
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
         MadInput(
           hintText: 'Search...',
           prefix: Icon(
@@ -938,8 +1035,11 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                 value: _billingFilter,
                 options: const [
                   MadSelectOption(value: 'all', label: 'All Billing'),
-                  MadSelectOption(value: 'billed', label: 'Billed'),
-                  MadSelectOption(value: 'pending', label: 'Pending'),
+                  MadSelectOption(value: 'billing', label: 'Billing'),
+                  MadSelectOption(
+                    value: 'non-billings',
+                    label: 'Non Billings',
+                  ),
                 ],
                 onChanged: (value) =>
                     setState(() => _billingFilter = value ?? 'all'),
@@ -959,7 +1059,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     );
   }
 
-  Widget _buildInventoryHeaderDesktop(bool isDark) {
+  Widget _buildInventoryHeaderDesktop(bool isDark, bool isFullScreen) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -969,6 +1069,35 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            if (isFullScreen)
+              MadButton(
+                text: 'Back',
+                variant: ButtonVariant.outline,
+                icon: LucideIcons.arrowLeft,
+                onPressed: () => Navigator.pushReplacementNamed(
+                  context,
+                  '/projects/inventory/add',
+                ),
+              )
+            else ...[
+              MadButton(
+                text: 'History',
+                variant: ButtonVariant.outline,
+                icon: LucideIcons.history,
+                onPressed: () => Navigator.pushNamed(
+                  context,
+                  '/projects/inventory/history',
+                ),
+              ),
+              MadButton(
+                text: 'Full screen',
+                variant: ButtonVariant.outline,
+                onPressed: () => Navigator.pushNamed(
+                  context,
+                  '/projects/inventory/full',
+                ),
+              ),
+            ],
             SizedBox(
               width: 220,
               child: MadInput(
@@ -1002,8 +1131,11 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                 value: _billingFilter,
                 options: const [
                   MadSelectOption(value: 'all', label: 'All Billing'),
-                  MadSelectOption(value: 'billed', label: 'Billed'),
-                  MadSelectOption(value: 'pending', label: 'Pending'),
+                  MadSelectOption(value: 'billing', label: 'Billing'),
+                  MadSelectOption(
+                    value: 'non-billings',
+                    label: 'Non Billings',
+                  ),
                 ],
                 onChanged: (value) =>
                     setState(() => _billingFilter = value ?? 'all'),
@@ -1059,7 +1191,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     );
   }
 
-  Widget _buildInventoryCards(bool isDark) {
+  Widget _buildInventoryCards(bool isDark, bool isFullScreen) {
     if (_loading && _filteredItems.isEmpty) {
       return _emptyState('Loading items...', isDark);
     }
@@ -1071,9 +1203,12 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final twoColumn = constraints.maxWidth >= 880;
+        final maxHeight = isFullScreen ? null : 720.0;
+
+        Widget content;
 
         if (!twoColumn) {
-          return Column(
+          content = Column(
             children: [
               for (var i = 0; i < _filteredItems.length; i++) ...[
                 _inventoryCard(_filteredItems[i], isDark),
@@ -1081,22 +1216,33 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
               ],
             ],
           );
+        } else {
+          content = GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _filteredItems.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 1.65,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemBuilder: (context, index) {
+              final item = _filteredItems[index];
+              return _inventoryCard(item, isDark);
+            },
+          );
         }
 
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _filteredItems.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 1.65,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
+        if (maxHeight == null) {
+          return content;
+        }
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: SingleChildScrollView(
+            child: content,
           ),
-          itemBuilder: (context, index) {
-            final item = _filteredItems[index];
-            return _inventoryCard(item, isDark);
-          },
         );
       },
     );
@@ -1158,7 +1304,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${item.brand} • #${item.id} • P${item.projectId.isEmpty ? '-' : item.projectId}',
+                      '${item.brand} • #${item.id}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1235,6 +1381,16 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
               runSpacing: 8,
               children: [
                 MadButton(
+                  text: 'Track History',
+                  size: ButtonSize.sm,
+                  variant: ButtonVariant.outline,
+                  onPressed: () => Navigator.pushNamed(
+                    context,
+                    '/projects/inventory/item-history',
+                    arguments: item.id,
+                  ),
+                ),
+                MadButton(
                   text: 'Edit',
                   size: ButtonSize.sm,
                   variant: ButtonVariant.outline,
@@ -1243,9 +1399,9 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                   onPressed: () => _openEdit(item),
                 ),
                 MadButton(
+                  text: 'Delete',
                   size: ButtonSize.sm,
-                  variant: ButtonVariant.ghost,
-                  icon: LucideIcons.trash2,
+                  variant: ButtonVariant.destructive,
                   disabled: pending,
                   onPressed: () => _removeItem(item),
                 ),
@@ -1379,7 +1535,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                 ),
               ),
               MadBadge(
-                text: item.billing ? 'Billed' : 'Pending',
+                text: item.billing ? 'Billing' : 'Non Billings',
                 variant: item.billing
                     ? BadgeVariant.primary
                     : BadgeVariant.secondary,
@@ -1392,7 +1548,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
             children: [
               Expanded(
                 child: MadButton(
-                  text: 'Billed',
+                  text: 'Billing',
                   size: ButtonSize.sm,
                   variant: item.billing
                       ? ButtonVariant.primary
@@ -1404,7 +1560,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
               const SizedBox(width: 6),
               Expanded(
                 child: MadButton(
-                  text: 'Pending',
+                  text: 'Non Billings',
                   size: ButtonSize.sm,
                   variant: !item.billing
                       ? ButtonVariant.primary

@@ -201,175 +201,364 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     _currentUserRole = vm.userRole;
     _currentUserProjectList = vm.user?['project_list'];
 
+    final mainContent = _buildMainContent(context, vm, isDark, responsive);
+    final showModuleSidebar = responsive.isDesktop;
+
     return Scaffold(
       backgroundColor: isDark
           ? AppTheme.darkBackground
           : AppTheme.lightBackground,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: EdgeInsets.all(
-                responsive.value(mobile: 16, tablet: 20, desktop: 24),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: showModuleSidebar
+            ? Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: responsive.value(
-                          mobile: 36,
-                          tablet: 38,
-                          desktop: 40,
-                        ),
-                        height: responsive.value(
-                          mobile: 36,
-                          tablet: 38,
-                          desktop: 40,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          LucideIcons.package2,
-                          color: Colors.white,
-                          size: responsive.value(
-                            mobile: 20,
-                            tablet: 22,
-                            desktop: 24,
+                  _buildModuleSidebar(context, isDark, responsive),
+                  Expanded(child: mainContent),
+                ],
+              )
+            : mainContent,
+      ),
+    );
+  }
+
+  Widget _buildMainContent(
+    BuildContext context,
+    _ProjectSelectionViewModel vm,
+    bool isDark,
+    Responsive responsive,
+  ) {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: EdgeInsets.all(
+            responsive.value(mobile: 16, tablet: 20, desktop: 24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (responsive.isMobile || responsive.screenWidth < 420)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: responsive.value(
+                            mobile: 36,
+                            tablet: 38,
+                            desktop: 40,
+                          ),
+                          height: responsive.value(
+                            mobile: 36,
+                            tablet: 38,
+                            desktop: 40,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            LucideIcons.package2,
+                            color: Colors.white,
+                            size: responsive.value(
+                              mobile: 20,
+                              tablet: 22,
+                              desktop: 24,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Madhuram',
-                        style: TextStyle(
-                          fontSize: responsive.value(
-                            mobile: 20,
-                            tablet: 22,
-                            desktop: 24,
+                        const SizedBox(width: 12),
+                        Text(
+                          'Madhuram',
+                          style: TextStyle(
+                            fontSize: responsive.value(
+                              mobile: 20,
+                              tablet: 22,
+                              desktop: 24,
+                            ),
+                            fontWeight: FontWeight.bold,
+                            color: isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground,
                           ),
-                          fontWeight: FontWeight.bold,
-                          color: isDark
-                              ? AppTheme.darkForeground
-                              : AppTheme.lightForeground,
                         ),
-                      ),
-                      const Spacer(),
-                      Row(
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.center,
+                        runAlignment: WrapAlignment.center,
                         children: [
                           MadButton(
                             icon: LucideIcons.users,
-                            text: responsive.isMobile ? null : 'Vendors',
+                            text: null,
                             onPressed: () =>
                                 Navigator.pushNamed(context, '/vendors'),
                             variant: ButtonVariant.outline,
-                            size: responsive.isMobile
-                                ? ButtonSize.icon
-                                : ButtonSize.md,
+                            size: ButtonSize.icon,
                           ),
-                          const SizedBox(width: 8),
                           MadButton(
                             icon: LucideIcons.boxes,
-                            text: responsive.isMobile ? null : 'Add Inventory',
+                            text: null,
                             onPressed: () =>
                                 Navigator.pushNamed(context, '/inventory/add'),
                             variant: ButtonVariant.outline,
-                            size: responsive.isMobile
-                                ? ButtonSize.icon
-                                : ButtonSize.md,
+                            size: ButtonSize.icon,
                           ),
-                          const SizedBox(width: 8),
+                          MadButton(
+                            icon: LucideIcons.search,
+                            text: null,
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/projects/quotes/search'),
+                            variant: ButtonVariant.outline,
+                            size: ButtonSize.icon,
+                          ),
                           MadButton(
                             icon: LucideIcons.plus,
-                            text: responsive.isMobile ? null : 'New Project',
+                            text: null,
                             onPressed: () => _showCreateProjectDialog(),
-                            size: responsive.isMobile
-                                ? ButtonSize.icon
-                                : ButtonSize.md,
+                            size: ButtonSize.icon,
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  SizedBox(
-                    height: responsive.value(
-                      mobile: 24,
-                      tablet: 28,
-                      desktop: 32,
                     ),
-                  ),
-                  Text(
-                    'Welcome, ${vm.userName}',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 24,
-                        tablet: 28,
-                        desktop: 32,
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Container(
+                      width: responsive.value(
+                        mobile: 36,
+                        tablet: 38,
+                        desktop: 40,
                       ),
-                      fontWeight: FontWeight.bold,
-                      color: isDark
-                          ? AppTheme.darkForeground
-                          : AppTheme.lightForeground,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Select a project to continue to the dashboard.',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 14,
-                        tablet: 15,
-                        desktop: 16,
+                      height: responsive.value(
+                        mobile: 36,
+                        tablet: 38,
+                        desktop: 40,
                       ),
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Upload a work order PDF to auto-fill project details.',
-                    style: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 12,
-                        tablet: 13,
-                        desktop: 13,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                      fontStyle: FontStyle.italic,
+                      child: Icon(
+                        LucideIcons.package2,
+                        color: Colors.white,
+                        size: responsive.value(
+                          mobile: 20,
+                          tablet: 22,
+                          desktop: 24,
+                        ),
+                      ),
                     ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Madhuram',
+                      style: TextStyle(
+                        fontSize: responsive.value(
+                          mobile: 20,
+                          tablet: 22,
+                          desktop: 24,
+                        ),
+                        fontWeight: FontWeight.bold,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        MadButton(
+                          icon: LucideIcons.users,
+                          text: 'Vendors',
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/vendors'),
+                          variant: ButtonVariant.outline,
+                          size: ButtonSize.md,
+                        ),
+                        const SizedBox(width: 8),
+                        MadButton(
+                          icon: LucideIcons.boxes,
+                          text: 'Add Inventory',
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/inventory/add'),
+                          variant: ButtonVariant.outline,
+                          size: ButtonSize.md,
+                        ),
+                        const SizedBox(width: 8),
+                        MadButton(
+                          icon: LucideIcons.search,
+                          text: 'Search',
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/projects/quotes/search'),
+                          variant: ButtonVariant.outline,
+                          size: ButtonSize.md,
+                        ),
+                        const SizedBox(width: 8),
+                        MadButton(
+                          icon: LucideIcons.plus,
+                          text: 'New Project',
+                          onPressed: () => _showCreateProjectDialog(),
+                          size: ButtonSize.md,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              SizedBox(
+                height: responsive.value(
+                  mobile: 24,
+                  tablet: 28,
+                  desktop: 32,
+                ),
+              ),
+              Text(
+                'Welcome, ${vm.userName}',
+                style: TextStyle(
+                  fontSize: responsive.value(
+                    mobile: 24,
+                    tablet: 28,
+                    desktop: 32,
                   ),
-                ],
+                  fontWeight: FontWeight.bold,
+                  color: isDark
+                      ? AppTheme.darkForeground
+                      : AppTheme.lightForeground,
+                ),
               ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                responsive.value(mobile: 16, tablet: 20, desktop: 24),
-                responsive.value(mobile: 8, tablet: 10, desktop: 12),
-                responsive.value(mobile: 16, tablet: 20, desktop: 24),
-                responsive.value(mobile: 12, tablet: 14, desktop: 16),
+              const SizedBox(height: 8),
+              Text(
+                'Select a project to continue to the dashboard.',
+                style: TextStyle(
+                  fontSize: responsive.value(
+                    mobile: 14,
+                    tablet: 15,
+                    desktop: 16,
+                  ),
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
+                ),
               ),
-              child: MadSearchInput(
-                controller: _searchController,
-                hintText: 'Search projects...',
-                width: double.infinity,
-                onChanged: (value) => setState(() => _searchQuery = value),
-                onClear: () => setState(() {
-                  _searchQuery = '';
-                  _searchController.clear();
-                }),
+              const SizedBox(height: 6),
+              Text(
+                'Upload a work order PDF to auto-fill project details.',
+                style: TextStyle(
+                  fontSize: responsive.value(
+                    mobile: 12,
+                    tablet: 13,
+                    desktop: 13,
+                  ),
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
-            ),
-            Expanded(child: _buildContent(isDark, responsive, vm.isAdmin)),
-          ],
+            ],
+          ),
         ),
+
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            responsive.value(mobile: 16, tablet: 20, desktop: 24),
+            responsive.value(mobile: 8, tablet: 10, desktop: 12),
+            responsive.value(mobile: 16, tablet: 20, desktop: 24),
+            responsive.value(mobile: 12, tablet: 14, desktop: 16),
+          ),
+          child: MadSearchInput(
+            controller: _searchController,
+            hintText: 'Search projects...',
+            width: double.infinity,
+            onChanged: (value) => setState(() => _searchQuery = value),
+            onClear: () => setState(() {
+              _searchQuery = '';
+              _searchController.clear();
+            }),
+          ),
+        ),
+        Expanded(child: _buildContent(isDark, responsive, vm.isAdmin)),
+      ],
+    );
+  }
+
+  Widget _buildModuleSidebar(
+    BuildContext context,
+    bool isDark,
+    Responsive responsive,
+  ) {
+    final modules = [
+      _ModuleLink(
+        label: 'Vendors',
+        icon: LucideIcons.store,
+        route: '/vendors',
+      ),
+      _ModuleLink(
+        label: 'Add Inventory',
+        icon: LucideIcons.packagePlus,
+        route: '/projects/inventory/add',
+      ),
+      _ModuleLink(
+        label: 'Search',
+        icon: LucideIcons.search,
+        route: '/projects/quotes/search',
+      ),
+    ];
+
+    return Container(
+      width: 260,
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppTheme.sidebarDarkBackground
+            : AppTheme.sidebarBackground,
+        border: Border(
+          right: BorderSide(
+            color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
+            child: Text(
+              'Modules',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.4,
+                color: (isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground)
+                    .withOpacity(0.5),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              itemCount: modules.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final module = modules[index];
+                return MadButton(
+                  text: module.label,
+                  icon: module.icon,
+                  size: ButtonSize.md,
+                  variant: ButtonVariant.ghost,
+                  onPressed: () => Navigator.pushNamed(context, module.route),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1162,5 +1351,17 @@ class _ProjectSelectionViewModel {
     required this.isAdmin,
     required this.userRole,
     required this.user,
+  });
+}
+
+class _ModuleLink {
+  final String label;
+  final IconData icon;
+  final String route;
+
+  const _ModuleLink({
+    required this.label,
+    required this.icon,
+    required this.route,
   });
 }

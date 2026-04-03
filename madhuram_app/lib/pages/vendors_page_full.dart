@@ -169,7 +169,11 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
     return value[0].toUpperCase() + value.substring(1).toLowerCase();
   }
 
-  InputDecoration _selectDecoration(bool isDark, {String? labelText}) {
+  InputDecoration _selectDecoration(
+    bool isDark, {
+    String? labelText,
+    IconData? prefixIcon,
+  }) {
     return InputDecoration(
       labelText: labelText,
       isDense: true,
@@ -178,6 +182,15 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
       fillColor: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(
         alpha: 0.5,
       ),
+      prefixIcon: prefixIcon == null
+          ? null
+          : Icon(
+              prefixIcon,
+              size: 18,
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
+            ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide.none,
@@ -640,16 +653,28 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Vendors',
-                      style: TextStyle(
-                        fontSize: isMobile ? 28 : 32,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        color: isDark
-                            ? AppTheme.darkForeground
-                            : AppTheme.lightForeground,
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          LucideIcons.building2,
+                          size: isMobile ? 22 : 26,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Vendors',
+                          style: TextStyle(
+                            fontSize: isMobile ? 28 : 32,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                            color: isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -905,7 +930,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildTableCell(
-            flex: 32,
+            flex: 28,
             child: _buildBodyCell(
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -937,14 +962,12 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  _buildStatusBadge(vendor),
                 ],
               ),
             ),
           ),
           _buildTableCell(
-            flex: 14,
+            flex: 12,
             child: _buildBodyCell(
               Text(
                 vendor.projectId?.isNotEmpty == true
@@ -954,7 +977,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
             ),
           ),
           _buildTableCell(
-            flex: 24,
+            flex: 20,
             child: _buildBodyCell(
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1013,7 +1036,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
             ),
           ),
           _buildTableCell(
-            flex: 18,
+            flex: 16,
             child: _buildBodyCell(
               Row(
                 children: [
@@ -1044,12 +1067,18 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
             ),
           ),
           _buildTableCell(
-            flex: 18,
+            flex: 10,
+            child: _buildBodyCell(
+              _buildStatusBadge(vendor),
+              alignment: Alignment.centerLeft,
+            ),
+          ),
+          _buildTableCell(
+            flex: 22,
             child: _buildBodyCell(
               LayoutBuilder(
                 builder: (context, constraints) {
-                  // Four icon buttons need ~160px. Fallback to menu if tighter.
-                  if (constraints.maxWidth < 160) {
+                  if (constraints.maxWidth < 200) {
                     return Align(
                       alignment: Alignment.centerRight,
                       child: MadDropdownMenuButton(
@@ -1060,7 +1089,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                             onTap: () => _openVendorPriceLists(vendor),
                           ),
                           MadMenuItem(
-                            label: 'View Latest',
+                            label: 'View Price',
                             icon: LucideIcons.eye,
                             onTap: () =>
                                 _openVendorPriceLists(vendor, openLatest: true),
@@ -1086,29 +1115,33 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       MadButton(
-                        variant: ButtonVariant.ghost,
-                        size: ButtonSize.icon,
+                        text: 'Price Lists',
+                        variant: ButtonVariant.outline,
+                        size: ButtonSize.sm,
                         icon: LucideIcons.fileText,
                         onPressed: () => _openVendorPriceLists(vendor),
                       ),
+                      const SizedBox(width: 8),
                       MadButton(
-                        variant: ButtonVariant.ghost,
-                        size: ButtonSize.icon,
+                        text: 'View Price',
+                        variant: ButtonVariant.outline,
+                        size: ButtonSize.sm,
                         icon: LucideIcons.eye,
                         onPressed: () =>
                             _openVendorPriceLists(vendor, openLatest: true),
                       ),
+                      const SizedBox(width: 8),
                       MadButton(
                         variant: ButtonVariant.ghost,
                         size: ButtonSize.icon,
                         icon: LucideIcons.pencil,
                         onPressed: () => _openVendorDialog(vendor: vendor),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       MadButton(
-                        variant: ButtonVariant.ghost,
-                        size: ButtonSize.icon,
-                        icon: LucideIcons.trash2,
+                        text: 'Delete',
+                        variant: ButtonVariant.destructive,
+                        size: ButtonSize.sm,
                         onPressed: () => _openDeleteDialog(vendor),
                       ),
                     ],
@@ -1162,7 +1195,11 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                   child: _buildHeaderCell('Location'),
                 ),
                 _buildTableCell(
-                  flex: 18,
+                  flex: 10,
+                  child: _buildHeaderCell('Status'),
+                ),
+                _buildTableCell(
+                  flex: 22,
                   child: _buildHeaderCell(
                     'Action',
                     alignment: Alignment.centerRight,
@@ -1456,7 +1493,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                         ),
                   child: MadSearchInput(
                     controller: _searchController,
-                    hintText: 'Search by name, company, email, phone or city',
+                    hintText: 'Search vendors...',
                     onChanged: (value) {
                       setState(() => _query = value);
                     },
@@ -1470,7 +1507,10 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                   child: DropdownButtonFormField<String>(
                     initialValue: _statusFilter,
                     isExpanded: true,
-                    decoration: _selectDecoration(isDark),
+                    decoration: _selectDecoration(
+                      isDark,
+                      prefixIcon: Icons.filter_list,
+                    ),
                     items: const [
                       DropdownMenuItem(
                         value: 'all',
@@ -1495,7 +1535,10 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                   child: DropdownButtonFormField<String>(
                     initialValue: _projectFilter,
                     isExpanded: true,
-                    decoration: _selectDecoration(isDark),
+                    decoration: _selectDecoration(
+                      isDark,
+                      prefixIcon: LucideIcons.building2,
+                    ),
                     items: [
                       const DropdownMenuItem(
                         value: 'all',

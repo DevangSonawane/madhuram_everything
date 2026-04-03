@@ -138,7 +138,8 @@ class _MIRPageFullState extends State<MIRPageFull> {
   }
 
   String _inspectionDate(MIR mir) {
-    final value = mir.inspectionDateTime ?? mir.clientSubmissionDate;
+    final value =
+        mir.inspectionDateTime ?? mir.clientSubmissionDate ?? mir.createdAt?.toIso8601String();
     if (value == null || value.trim().isEmpty) return '-';
     final parsed = DateTime.tryParse(value);
     if (parsed == null) return value;
@@ -426,248 +427,19 @@ class _MIRPageFullState extends State<MIRPageFull> {
           const SizedBox(height: 24),
           Expanded(
             child: MadCard(
-              child: Column(
-                children: [
-                  Container(
-                    padding: EdgeInsets.fromLTRB(isMobile ? 16 : 20, 18, isMobile ? 16 : 20, 14),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.55),
-                        ),
+              child: isMobile
+                  ? SingleChildScrollView(
+                      child: _buildMirCardContent(
+                        isDark: isDark,
+                        isMobile: isMobile,
+                        shrinkWrap: true,
                       ),
+                    )
+                  : _buildMirCardContent(
+                      isDark: isDark,
+                      isMobile: isMobile,
+                      shrinkWrap: false,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'MIR List',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-                              ),
-                            ),
-                            Text(
-                              '${_filteredMIRs.length} records',
-                              style: TextStyle(
-                                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _buildMetricPill(
-                              isDark: isDark,
-                              icon: LucideIcons.fileSearch,
-                              label: 'Total',
-                              value: _mirs.length.toString(),
-                            ),
-                            _buildMetricPill(
-                              isDark: isDark,
-                              icon: LucideIcons.send,
-                              label: 'Submitted',
-                              value: _mirs.where((m) => _statusLabel(m) == 'Submitted').length.toString(),
-                            ),
-                            _buildMetricPill(
-                              isDark: isDark,
-                              icon: LucideIcons.filePenLine,
-                              label: 'Draft',
-                              value: _mirs.where((m) => _statusLabel(m) == 'Draft').length.toString(),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            SizedBox(
-                              width: isMobile ? double.infinity : 360,
-                              child: MadSearchInput(
-                                controller: _searchController,
-                                hintText: 'Search by MIR no, project, material, contractor...',
-                                onChanged: (v) => setState(() {
-                                  _searchQuery = v;
-                                  _currentPage = 1;
-                                }),
-                                onClear: () => setState(() {
-                                  _searchQuery = '';
-                                  _currentPage = 1;
-                                }),
-                              ),
-                            ),
-                            MadButton(
-                              text: 'Refresh',
-                              icon: LucideIcons.refreshCw,
-                              variant: ButtonVariant.outline,
-                              onPressed: _loadMIRs,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _error != null
-                            ? _buildErrorState(isDark, _error!)
-                            : _filteredMIRs.isEmpty
-                                ? _buildEmptyState(isDark)
-                                : Column(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                                              .withValues(alpha: 0.3),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            _buildHeaderCell('MIR No', flex: 2, isDark: isDark),
-                                            if (!isMobile) _buildHeaderCell('Project', flex: 2, isDark: isDark),
-                                            _buildHeaderCell('Material', flex: 2, isDark: isDark),
-                                            if (!isMobile) _buildHeaderCell('Inspection Date', flex: 2, isDark: isDark),
-                                            _buildHeaderCell('Status', flex: 1, isDark: isDark),
-                                            SizedBox(width: isMobile ? 48 : 260),
-                                          ],
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: ListView.separated(
-                                          itemCount: _paginatedMIRs.length,
-                                          separatorBuilder: (_, index) => Divider(
-                                            height: 1,
-                                            color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
-                                                .withValues(alpha: 0.5),
-                                          ),
-                                          itemBuilder: (context, index) {
-                                            final mir = _paginatedMIRs[index];
-                                            final statusText = _statusLabel(mir);
-                                            final statusVariant = _statusVariant(mir);
-                                            final isDeleting = _deletingMirId == mir.id;
-
-                                            return Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                                              child: Row(
-                                                children: [
-                                                  Expanded(
-                                                    flex: 2,
-                                                    child: Text(
-                                                      mir.mirReferenceNo.isEmpty ? 'MIR-${mir.id}' : mir.mirReferenceNo,
-                                                      style: const TextStyle(
-                                                        fontWeight: FontWeight.w600,
-                                                        fontFamily: 'monospace',
-                                                      ),
-                                                      overflow: TextOverflow.ellipsis,
-                                                      maxLines: 1,
-                                                    ),
-                                                  ),
-                                                  if (!isMobile)
-                                                    Expanded(
-                                                      flex: 2,
-                                                      child: Text(
-                                                        mir.projectName?.isNotEmpty == true ? mir.projectName! : '-',
-                                                        overflow: TextOverflow.ellipsis,
-                                                        maxLines: 1,
-                                                      ),
-                                                    ),
-                                                  Expanded(
-                                                    flex: 2,
-                                                    child: Text(
-                                                      mir.materialCode ?? '-',
-                                                      style: const TextStyle(fontWeight: FontWeight.w500),
-                                                      overflow: TextOverflow.ellipsis,
-                                                      maxLines: 1,
-                                                    ),
-                                                  ),
-                                                  if (!isMobile)
-                                                    Expanded(
-                                                      flex: 2,
-                                                      child: Text(
-                                                        _inspectionDate(mir),
-                                                        overflow: TextOverflow.ellipsis,
-                                                        maxLines: 1,
-                                                      ),
-                                                    ),
-                                                  Expanded(
-                                                    flex: 1,
-                                                    child: MadBadge(text: statusText, variant: statusVariant),
-                                                  ),
-                                                  if (isMobile)
-                                                    MadDropdownMenuButton(
-                                                      items: [
-                                                        MadMenuItem(
-                                                          label: 'Preview',
-                                                          icon: LucideIcons.eye,
-                                                          onTap: () => _showPreview(mir),
-                                                        ),
-                                                        MadMenuItem(
-                                                          label: 'Edit',
-                                                          icon: LucideIcons.pencil,
-                                                          onTap: () => _showEditDialog(mir),
-                                                        ),
-                                                        MadMenuItem(
-                                                          label: isDeleting ? 'Deleting...' : 'Delete',
-                                                          icon: LucideIcons.trash2,
-                                                          destructive: true,
-                                                          disabled: isDeleting,
-                                                          onTap: () => _handleDelete(mir),
-                                                        ),
-                                                      ],
-                                                    )
-                                                  else
-                                                    Row(
-                                                      children: [
-                                                        MadButton(
-                                                          text: 'Preview',
-                                                          icon: LucideIcons.eye,
-                                                          size: ButtonSize.sm,
-                                                          variant: ButtonVariant.outline,
-                                                          onPressed: () => _showPreview(mir),
-                                                        ),
-                                                        const SizedBox(width: 8),
-                                                        MadButton(
-                                                          text: 'Edit',
-                                                          icon: LucideIcons.pencil,
-                                                          size: ButtonSize.sm,
-                                                          variant: ButtonVariant.outline,
-                                                          onPressed: () => _showEditDialog(mir),
-                                                        ),
-                                                        const SizedBox(width: 8),
-                                                        MadButton(
-                                                          text: isDeleting ? 'Deleting...' : 'Delete',
-                                                          icon: LucideIcons.trash2,
-                                                          size: ButtonSize.sm,
-                                                          variant: ButtonVariant.destructive,
-                                                          loading: isDeleting,
-                                                          disabled: isDeleting,
-                                                          onPressed: () => _handleDelete(mir),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                ],
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      if (_totalPages > 1) _buildPagination(isDark),
-                                    ],
-                                  ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
@@ -709,6 +481,290 @@ class _MIRPageFullState extends State<MIRPageFull> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMirCardContent({
+    required bool isDark,
+    required bool isMobile,
+    required bool shrinkWrap,
+  }) {
+    Widget buildList() {
+      if (_isLoading) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (_error != null) {
+        return _buildErrorState(isDark, _error!);
+      }
+      if (_filteredMIRs.isEmpty) {
+        return _buildEmptyState(isDark);
+      }
+
+      final listView = ListView.separated(
+        shrinkWrap: shrinkWrap,
+        physics: shrinkWrap
+            ? const NeverScrollableScrollPhysics()
+            : const AlwaysScrollableScrollPhysics(),
+        itemCount: _paginatedMIRs.length,
+        separatorBuilder: (_, __) => Divider(
+          height: 1,
+          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+              .withValues(alpha: 0.5),
+        ),
+        itemBuilder: (context, index) {
+          final mir = _paginatedMIRs[index];
+          final statusText = _statusLabel(mir);
+          final statusVariant = _statusVariant(mir);
+          final isDeleting = _deletingMirId == mir.id;
+
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    mir.mirReferenceNo.isEmpty ? 'MIR-${mir.id}' : mir.mirReferenceNo,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'monospace',
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+                if (!isMobile)
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      mir.projectName?.isNotEmpty == true ? mir.projectName! : '-',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    mir.materialCode ?? '-',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+                if (!isMobile)
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      _inspectionDate(mir),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                Expanded(
+                  flex: 1,
+                  child: MadBadge(text: statusText, variant: statusVariant),
+                ),
+                if (isMobile)
+                  MadDropdownMenuButton(
+                    items: [
+                      MadMenuItem(
+                        label: 'Preview',
+                        icon: LucideIcons.eye,
+                        onTap: () => _showPreview(mir),
+                      ),
+                      MadMenuItem(
+                        label: 'Edit',
+                        icon: LucideIcons.pencil,
+                        onTap: () => _showEditDialog(mir),
+                      ),
+                      MadMenuItem(
+                        label: isDeleting ? 'Deleting...' : 'Delete',
+                        icon: LucideIcons.trash2,
+                        destructive: true,
+                        disabled: isDeleting,
+                        onTap: () => _handleDelete(mir),
+                      ),
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      MadButton(
+                        text: 'Preview',
+                        icon: LucideIcons.eye,
+                        size: ButtonSize.sm,
+                        variant: ButtonVariant.outline,
+                        onPressed: () => _showPreview(mir),
+                      ),
+                      const SizedBox(width: 8),
+                      MadButton(
+                        text: 'Edit',
+                        icon: LucideIcons.pencil,
+                        size: ButtonSize.sm,
+                        variant: ButtonVariant.outline,
+                        onPressed: () => _showEditDialog(mir),
+                      ),
+                      const SizedBox(width: 8),
+                      MadButton(
+                        text: isDeleting ? 'Deleting...' : 'Delete',
+                        icon: LucideIcons.trash2,
+                        size: ButtonSize.sm,
+                        variant: ButtonVariant.destructive,
+                        loading: isDeleting,
+                        disabled: isDeleting,
+                        onPressed: () => _handleDelete(mir),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        },
+      );
+
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color:
+                  (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                      .withValues(alpha: 0.3),
+            ),
+            child: Row(
+              children: [
+                _buildHeaderCell('MIR No', flex: 2, isDark: isDark),
+                if (!isMobile) _buildHeaderCell('Project', flex: 2, isDark: isDark),
+                _buildHeaderCell('Material', flex: 2, isDark: isDark),
+                if (!isMobile)
+                  _buildHeaderCell('Inspection Date', flex: 2, isDark: isDark),
+                _buildHeaderCell('Status', flex: 1, isDark: isDark),
+                SizedBox(width: isMobile ? 48 : 260),
+              ],
+            ),
+          ),
+          if (shrinkWrap) listView else Expanded(child: listView),
+          if (_totalPages > 1) _buildPagination(isDark),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        Container(
+          padding:
+              EdgeInsets.fromLTRB(isMobile ? 16 : 20, 18, isMobile ? 16 : 20, 14),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+                    .withValues(alpha: 0.55),
+              ),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'MIR List',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
+                    ),
+                  ),
+                  Text(
+                    '${_filteredMIRs.length} records',
+                    style: TextStyle(
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'All MIR entries for the selected scope.',
+                style: TextStyle(
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildMetricPill(
+                    isDark: isDark,
+                    icon: LucideIcons.fileSearch,
+                    label: 'Total',
+                    value: _mirs.length.toString(),
+                  ),
+                  _buildMetricPill(
+                    isDark: isDark,
+                    icon: LucideIcons.send,
+                    label: 'Submitted',
+                    value: _mirs
+                        .where((m) => _statusLabel(m) == 'Submitted')
+                        .length
+                        .toString(),
+                  ),
+                  _buildMetricPill(
+                    isDark: isDark,
+                    icon: LucideIcons.filePenLine,
+                    label: 'Draft',
+                    value: _mirs
+                        .where((m) => _statusLabel(m) == 'Draft')
+                        .length
+                        .toString(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width: isMobile ? double.infinity : 360,
+                    child: MadSearchInput(
+                      controller: _searchController,
+                      hintText:
+                          'Search by MIR no, project, material, contractor...',
+                      onChanged: (v) => setState(() {
+                        _searchQuery = v;
+                        _currentPage = 1;
+                      }),
+                      onClear: () => setState(() {
+                        _searchQuery = '';
+                        _currentPage = 1;
+                      }),
+                    ),
+                  ),
+                  MadButton(
+                    text: 'Refresh',
+                    icon: LucideIcons.refreshCw,
+                    variant: ButtonVariant.outline,
+                    onPressed: _loadMIRs,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (shrinkWrap) buildList() else Expanded(child: buildList()),
+      ],
     );
   }
 

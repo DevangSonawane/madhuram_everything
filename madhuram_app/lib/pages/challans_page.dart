@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -18,6 +20,7 @@ class ChallansPageFull extends StatefulWidget {
 class _ChallansPageFullState extends State<ChallansPageFull> {
   bool _isLoading = false;
   List<Challan> _challans = [];
+  Set<String> _usedChallanNos = {};
   String _searchQuery = '';
   String _lastProjectId = '';
   String? _emptyReason;
@@ -46,6 +49,42 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
       }
     }
     return const [];
+  }
+
+  List<dynamic> _parseDynamicField(dynamic value) {
+    if (value == null) return const [];
+    if (value is List) return value;
+    if (value is String) {
+      try {
+        final parsed = jsonDecode(value);
+        return parsed is List ? parsed : const [];
+      } catch (_) {
+        return const [];
+      }
+    }
+    return const [];
+  }
+
+  dynamic _getDynamicValue(List<dynamic> dynamicField, String key) {
+    for (final entry in dynamicField) {
+      if (entry is Map && entry['key']?.toString() == key) {
+        final raw = entry['value'];
+        if (raw is String) {
+          try {
+            return jsonDecode(raw);
+          } catch (_) {
+            return raw;
+          }
+        }
+        return raw;
+      }
+    }
+    return null;
+  }
+
+  bool _isChallanUsed(String challanNo) {
+    if (challanNo.trim().isEmpty) return false;
+    return _usedChallanNos.contains(challanNo.trim());
   }
 
   @override
@@ -77,25 +116,47 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
     setState(() => _isLoading = true);
 
     try {
-      final result = await ApiClient.getChallansByProject(projectId);
+      final results = await Future.wait([
+        ApiClient.getChallansByProject(projectId),
+        ApiClient.getMIRsByProject(projectId),
+      ]);
+      final result = results[0];
+      final mirResult = results[1];
       if (!mounted) return;
 
       final raw = result['data'];
       final data = _extractList(raw);
+      final mirRaw = mirResult['data'];
+      final mirData = _extractList(mirRaw);
 
       if (result['success'] == true && data.isNotEmpty) {
         final loaded = data
             .whereType<Map>()
             .map((e) => Challan.fromJson(Map<String, dynamic>.from(e)))
             .toList();
+        final used = <String>{};
+        if (mirResult['success'] == true && mirData.isNotEmpty) {
+          for (final row in mirData.whereType<Map>()) {
+            final dynamicField = _parseDynamicField(row['dynamic_field']);
+            final dynamicChallanNo =
+                _getDynamicValue(dynamicField, 'challan_no');
+            final challanNo =
+                (row['challan_no'] ?? dynamicChallanNo)?.toString().trim();
+            if (challanNo != null && challanNo.isNotEmpty) {
+              used.add(challanNo);
+            }
+          }
+        }
         setState(() {
           _challans = loaded;
+          _usedChallanNos = used;
           _isLoading = false;
           _emptyReason = null;
         });
       } else {
         setState(() {
           _challans = [];
+          _usedChallanNos = {};
           _isLoading = false;
           _emptyReason = result['error']?.toString();
         });
@@ -104,6 +165,7 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
       if (!mounted) return;
       setState(() {
         _challans = [];
+        _usedChallanNos = {};
         _isLoading = false;
         _emptyReason = 'Failed to load challans';
       });
@@ -404,6 +466,8 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
               _header('Items', flex: 3, isDark: isDark),
               _header('Counts', flex: 2, isDark: isDark, align: TextAlign.right),
               _header('Status', flex: 2, isDark: isDark),
+              _header('Details', flex: 2, isDark: isDark),
+              _header('MIR', flex: 2, isDark: isDark, align: TextAlign.right),
             ],
           ),
         ),
@@ -428,6 +492,7 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                   .map((it) => it.name)
                   .where((n) => n.isNotEmpty)
                   .join(', ');
+              final used = _isChallanUsed(dc.challanNumber);
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 child: Row(
@@ -468,6 +533,49 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                         child: MadBadge(text: dc.status, variant: statusVariant),
                       ),
                     ),
+                    Expanded(
+                      flex: 2,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: MadButton(
+                          text: 'View Items',
+                          size: ButtonSize.sm,
+                          variant: ButtonVariant.outline,
+                          onPressed: dc.id.isEmpty
+                              ? null
+                              : () => Navigator.pushNamed(
+                                    context,
+                                    '/challans/detail',
+                                    arguments: dc.id,
+                                  ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: used
+                            ? const MadBadge(
+                                text: 'MIR Created',
+                                variant: BadgeVariant.secondary,
+                              )
+                            : MadButton(
+                                text: 'Create MIR',
+                                size: ButtonSize.sm,
+                                variant: ButtonVariant.outline,
+                                onPressed: dc.challanNumber.isEmpty
+                                    ? null
+                                    : () => Navigator.pushNamed(
+                                          context,
+                                          '/mir/create',
+                                          arguments: {
+                                            'challan': dc.challanNumber,
+                                          },
+                                        ),
+                              ),
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -494,6 +602,7 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
             dc.orderDate ??
             (dc.createdAt?.toIso8601String() ?? '');
         final items = dc.items.map((it) => it.name).where((n) => n.isNotEmpty).join(', ');
+        final used = _isChallanUsed(dc.challanNumber);
 
         return Container(
           decoration: BoxDecoration(
@@ -575,6 +684,47 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                           Text(items, overflow: TextOverflow.ellipsis),
                         ],
                       ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: MadButton(
+                        text: 'View Items',
+                        size: ButtonSize.sm,
+                        variant: ButtonVariant.outline,
+                        onPressed: dc.id.isEmpty
+                            ? null
+                            : () => Navigator.pushNamed(
+                                  context,
+                                  '/challans/detail',
+                                  arguments: dc.id,
+                                ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: used
+                          ? const MadBadge(
+                              text: 'MIR Created',
+                              variant: BadgeVariant.secondary,
+                            )
+                          : MadButton(
+                              text: 'Create MIR',
+                              size: ButtonSize.sm,
+                              variant: ButtonVariant.outline,
+                              onPressed: dc.challanNumber.isEmpty
+                                  ? null
+                                  : () => Navigator.pushNamed(
+                                        context,
+                                        '/mir/create',
+                                        arguments: {
+                                          'challan': dc.challanNumber,
+                                        },
+                                      ),
+                            ),
                     ),
                   ],
                 ),

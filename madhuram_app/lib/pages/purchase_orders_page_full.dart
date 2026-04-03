@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:intl/intl.dart';
@@ -109,9 +110,12 @@ Map<String, dynamic> _buildPoApiPayloadFromUi(
   final notes = poData['notes'];
   final resolvedProjectId =
       projectId ?? int.tryParse('${poData['project_id'] ?? ''}');
+  final sampleRaw = poData['sample_id'] ?? poData['sampleId'];
+  final sampleId = int.tryParse('${sampleRaw ?? ''}');
 
   return {
     'project_id': resolvedProjectId,
+    if (sampleId != null) 'sample_id': sampleId,
     'company_name': poData['companyName'] ?? poData['company_name'] ?? '',
     'company_subtitle':
         poData['companySubtitle'] ?? poData['company_subtitle'] ?? '',
@@ -804,6 +808,16 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                     onPressed: () => _openEditPOPage(order),
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: MadButton(
+                    variant: ButtonVariant.outline,
+                    size: ButtonSize.sm,
+                    icon: LucideIcons.mail,
+                    text: 'Email',
+                    onPressed: () => _openEmailDialog(order),
+                  ),
+                ),
               ],
             ),
           ],
@@ -951,6 +965,11 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                   label: 'Edit',
                   icon: LucideIcons.pencil,
                   onTap: () => _openEditPOPage(order),
+                ),
+                MadMenuItem(
+                  label: 'Email',
+                  icon: LucideIcons.mail,
+                  onTap: () => _openEmailDialog(order),
                 ),
                 MadMenuItem(
                   label: 'Download PDF',
@@ -1179,6 +1198,23 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
       ),
     );
     if (mounted) _loadOrders();
+  }
+
+  void _openEmailDialog(PurchaseOrder order) {
+    if (order.id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Save the PO before emailing.')),
+      );
+      return;
+    }
+    final projectId = _resolveCurrentProjectId();
+    showDialog(
+      context: context,
+      builder: (context) => _PurchaseOrderEmailDialog(
+        order: order,
+        projectId: projectId,
+      ),
+    );
   }
 
   void _showPOPreview(Map<String, dynamic> poData) {
@@ -1429,6 +1465,21 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                       MadButton(
                         text: 'Submit PO',
                         onPressed: () async {
+                          if ((poData['sample_id'] ?? poData['sampleId'])
+                              ?.toString()
+                              .trim()
+                              .isEmpty ??
+                              true) {
+                            if (!ctx.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Sample ID is required for purchase order.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
                           final store = StoreProvider.of<AppState>(context);
                           final projectIdRaw =
                               store.state.project.selectedProjectId ??
@@ -2038,6 +2089,13 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   final _totalAmount = TextEditingController();
 
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _sampleOptions = [];
+  List<Map<String, dynamic>> _prOptions = [];
+  bool _loadingSamples = false;
+  bool _loadingPrOptions = false;
+  bool _loadingPrItems = false;
+  String _selectedSampleId = '';
+  String _selectedPrId = '';
   static int _itemId = 0;
   bool _isSubmitting = false;
   bool _isHydratingEditData = false;
@@ -2051,6 +2109,8 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     _cgstAmount.addListener(_onCgstAmountChanged);
     _sgstPercent.addListener(_onSgstPercentChanged);
     _sgstAmount.addListener(_onSgstAmountChanged);
+    _loadSamples();
+    _loadPrOptions();
     if (widget.initialPoData != null) {
       _applyFormData(widget.initialPoData!);
     } else {
@@ -2074,8 +2134,166 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     } catch (_) {}
   }
 
+  Future<void> _loadSamples() async {
+    if (_loadingSamples) return;
+    setState(() => _loadingSamples = true);
+    try {
+      final result = widget.projectId.isNotEmpty
+          ? await ApiClient.getSamplesByProject(widget.projectId)
+          : await ApiClient.getSamples();
+      if (!mounted) return;
+      if (result['success'] == true && result['data'] is List) {
+        final list = (result['data'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        setState(() {
+          _sampleOptions = list;
+          _loadingSamples = false;
+        });
+        return;
+      }
+      setState(() {
+        _sampleOptions = [];
+        _loadingSamples = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sampleOptions = [];
+        _loadingSamples = false;
+      });
+    }
+  }
+
+  Future<void> _loadPrOptions() async {
+    if (_loadingPrOptions) return;
+    setState(() => _loadingPrOptions = true);
+    try {
+      final result = widget.projectId.isNotEmpty
+          ? await ApiClient.getPRsByProject(widget.projectId)
+          : await ApiClient.getPRs();
+      if (!mounted) return;
+      if (result['success'] == true && result['data'] is List) {
+        final list = (result['data'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        setState(() {
+          _prOptions = list;
+          _loadingPrOptions = false;
+        });
+        return;
+      }
+      setState(() {
+        _prOptions = [];
+        _loadingPrOptions = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _prOptions = [];
+        _loadingPrOptions = false;
+      });
+    }
+  }
+
+  String _formatPrNumber(Map<String, dynamic> pr) {
+    final sourceDate =
+        pr['date'] ?? pr['created_at'] ?? DateTime.now().toIso8601String();
+    final parsed = DateTime.tryParse(sourceDate.toString());
+    final datePart = parsed == null
+        ? '0000-00-00'
+        : '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+    final sequence = pr['pr_id'] ?? pr['id'] ?? '0';
+    final project = pr['project_id'] ?? pr['projectId'] ?? '0';
+    return 'PR-$datePart-$sequence-$project';
+  }
+
+  List<Map<String, dynamic>> _mapPrItemsToPoItems(List<dynamic> items) {
+    return items.asMap().entries.map((entry) {
+      final idx = entry.key;
+      final raw = entry.value is Map
+          ? Map<String, dynamic>.from(entry.value as Map)
+          : <String, dynamic>{};
+      final make = (raw['make'] ?? '').toString().trim();
+      final place = (raw['place_of_utilisation'] ?? '').toString().trim();
+      final remarks = [
+        if (make.isNotEmpty) 'Make: $make',
+        if (place.isNotEmpty) 'Place: $place',
+      ].join(' | ');
+      return {
+        '_id': ++_itemId,
+        'srNo': '${idx + 1}',
+        'hsn': '',
+        'description': (raw['material_description'] ?? '').toString(),
+        'qty': (raw['req_qty'] ?? '').toString(),
+        'uom': (raw['unit'] ?? '').toString(),
+        'rate': '',
+        'amount': '',
+        'remark': remarks,
+      };
+    }).toList();
+  }
+
+  void _applySelectedPrToPo(Map<String, dynamic> pr) {
+    final itemsRaw = pr['items'];
+    final itemsList = itemsRaw is List ? itemsRaw : const [];
+    final mappedItems = _mapPrItemsToPoItems(itemsList);
+    final sampleId = pr['sample_id']?.toString();
+    setState(() {
+      if (sampleId != null && sampleId.isNotEmpty) {
+        _selectedSampleId = sampleId;
+      }
+      _items = mappedItems;
+    });
+    _recalculateTotals();
+  }
+
+  Future<void> _handlePrSelect(String? value) async {
+    final next = value?.trim() ?? '';
+    setState(() {
+      _selectedPrId = next;
+    });
+    if (next.isEmpty) return;
+
+    final selected =
+        _prOptions.firstWhere((pr) => '${pr['pr_id'] ?? pr['id']}' == next,
+            orElse: () => {});
+    if (selected.isNotEmpty && selected['items'] is List) {
+      _applySelectedPrToPo(selected);
+      return;
+    }
+
+    setState(() => _loadingPrItems = true);
+    try {
+      final result = await ApiClient.getPRById(next);
+      if (!mounted) return;
+      if (result['success'] == true && result['data'] is Map) {
+        _applySelectedPrToPo(Map<String, dynamic>.from(result['data']));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              (result['error'] ?? 'Failed to load PR items').toString(),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load PR items')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingPrItems = false);
+    }
+  }
+
   void _applyFormData(Map<String, dynamic> data) {
     _isRecalculating = true;
+    _selectedSampleId = (data['sample_id'] ?? data['sampleId'] ?? '').toString();
+    _selectedPrId = (data['selectedPrId'] ?? '').toString();
     _companyName.text = data['companyName']?.toString() ?? '';
     _companySubtitle.text = data['companySubtitle']?.toString() ?? '';
     _companyEmail.text = data['companyEmail']?.toString() ?? '';
@@ -2467,6 +2685,11 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     final notesText = _notes.text.trim();
     return {
       if (widget.projectId.isNotEmpty) 'project_id': widget.projectId,
+      if (_selectedSampleId.trim().isNotEmpty)
+        'sample_id': _selectedSampleId.trim(),
+      if (_selectedSampleId.trim().isNotEmpty)
+        'sampleId': _selectedSampleId.trim(),
+      if (_selectedPrId.trim().isNotEmpty) 'selectedPrId': _selectedPrId.trim(),
       'companyName': _companyName.text.trim().isEmpty
           ? null
           : _companyName.text.trim(),
@@ -2558,6 +2781,38 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
     final isMobile = Responsive(context).isMobile;
+    final selectedSampleMissing =
+        _selectedSampleId.isNotEmpty &&
+        !_sampleOptions.any(
+          (s) =>
+              '${s['sample_id'] ?? s['id'] ?? ''}' == _selectedSampleId,
+        );
+    final selectedPrMissing =
+        _selectedPrId.isNotEmpty &&
+        !_prOptions.any((p) => '${p['pr_id'] ?? p['id'] ?? ''}' == _selectedPrId);
+    final sampleSelectOptions =
+        _sampleOptions.map((sample) {
+          final id = (sample['sample_id'] ?? sample['id'] ?? '').toString();
+          final label =
+              sample['work_done'] ??
+              sample['site_name'] ??
+              sample['building_name'] ??
+              'Sample #$id';
+          return MadSelectOption<String>(
+            value: id,
+            label: '#$id - $label',
+          );
+        }).toList();
+    final prSelectOptions =
+        _prOptions.map((pr) {
+          final id = (pr['pr_id'] ?? pr['id'] ?? '').toString();
+          final label =
+              pr['workorder_no'] ?? pr['project_name'] ?? 'Purchase Request';
+          return MadSelectOption<String>(
+            value: id,
+            label: '${_formatPrNumber(pr)} - $label',
+          );
+        }).toList();
     return SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 12 : 24),
       child: MadCard(
@@ -2580,6 +2835,49 @@ class _ManualPOFormState extends State<_ManualPOForm> {
               if (isMobile)
                 Column(
                   children: [
+                    MadSelect<String>(
+                      value: _selectedSampleId.isEmpty
+                          ? null
+                          : _selectedSampleId,
+                      labelText: 'Sample ID',
+                      placeholder:
+                          _loadingSamples
+                              ? 'Loading samples...'
+                              : 'Select sample (required)',
+                      clearable: true,
+                      onChanged: (value) => setState(() {
+                        _selectedSampleId = value ?? '';
+                      }),
+                      options: [
+                        if (selectedSampleMissing)
+                          MadSelectOption(
+                            value: _selectedSampleId,
+                            label: 'Sample #$_selectedSampleId (current)',
+                          ),
+                        ...sampleSelectOptions,
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    MadSelect<String>(
+                      value: _selectedPrId.isEmpty ? null : _selectedPrId,
+                      labelText: 'PR Number',
+                      placeholder: _loadingPrOptions || _loadingPrItems
+                          ? 'Loading PR...'
+                          : 'Select PR Number',
+                      clearable: true,
+                      searchable: true,
+                      searchHint: 'Search PR number...',
+                      onChanged: (value) => _handlePrSelect(value),
+                      options: [
+                        if (selectedPrMissing)
+                          MadSelectOption(
+                            value: _selectedPrId,
+                            label: 'PR #$_selectedPrId (current)',
+                          ),
+                        ...prSelectOptions,
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     MadInput(
                       labelText: 'Indent No',
                       hintText: 'Indent number',
@@ -2614,6 +2912,57 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                   ],
                 )
               else
+                Row(
+                  children: [
+                    Expanded(
+                      child: MadSelect<String>(
+                        value: _selectedSampleId.isEmpty
+                            ? null
+                            : _selectedSampleId,
+                        labelText: 'Sample ID',
+                        placeholder: _loadingSamples
+                            ? 'Loading samples...'
+                            : 'Select sample (required)',
+                        clearable: true,
+                        onChanged: (value) => setState(() {
+                          _selectedSampleId = value ?? '';
+                        }),
+                        options: [
+                          if (selectedSampleMissing)
+                            MadSelectOption(
+                              value: _selectedSampleId,
+                              label: 'Sample #$_selectedSampleId (current)',
+                            ),
+                          ...sampleSelectOptions,
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: MadSelect<String>(
+                        value: _selectedPrId.isEmpty ? null : _selectedPrId,
+                        labelText: 'PR Number',
+                        placeholder: _loadingPrOptions || _loadingPrItems
+                            ? 'Loading PR...'
+                            : 'Select PR Number',
+                        clearable: true,
+                        searchable: true,
+                        searchHint: 'Search PR number...',
+                        onChanged: (value) => _handlePrSelect(value),
+                        options: [
+                          if (selectedPrMissing)
+                            MadSelectOption(
+                              value: _selectedPrId,
+                              label: 'PR #$_selectedPrId (current)',
+                            ),
+                          ...prSelectOptions,
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              if (!isMobile) const SizedBox(height: 16),
+              if (!isMobile)
                 Row(
                   children: [
                     Expanded(
@@ -3114,6 +3463,14 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                   icon: LucideIcons.send,
                   disabled: _isSubmitting,
                   onPressed: () async {
+                    if (_selectedSampleId.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Sample ID is required for purchase order.'),
+                        ),
+                      );
+                      return;
+                    }
                     setState(() => _isSubmitting = true);
                     final data = _buildPOData();
                     final projectId = int.tryParse(widget.projectId);
@@ -3437,5 +3794,557 @@ class _POItemRowState extends State<_POItemRow> {
     widget.initialValues['rate'] = _rate.text;
     widget.initialValues['remark'] = _remark.text;
     widget.onChanged(widget.initialValues);
+  }
+}
+
+class _PurchaseOrderEmailDialog extends StatefulWidget {
+  final PurchaseOrder order;
+  final String projectId;
+
+  const _PurchaseOrderEmailDialog({
+    required this.order,
+    required this.projectId,
+  });
+
+  @override
+  State<_PurchaseOrderEmailDialog> createState() =>
+      _PurchaseOrderEmailDialogState();
+}
+
+class _PurchaseOrderEmailDialogState
+    extends State<_PurchaseOrderEmailDialog> {
+  bool _loadingVendors = false;
+  bool _sending = false;
+  bool _vendorDropdownOpen = false;
+  List<Map<String, dynamic>> _vendors = [];
+  Set<String> _selectedVendorIds = {};
+  List<File> _attachments = [];
+  final TextEditingController _remarksController = TextEditingController();
+  final TextEditingController _vendorSearchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVendors();
+  }
+
+  @override
+  void dispose() {
+    _remarksController.dispose();
+    _vendorSearchController.dispose();
+    super.dispose();
+  }
+
+  String _vendorId(Map<String, dynamic> vendor) =>
+      (vendor['vendor_id'] ?? vendor['id'] ?? '').toString();
+
+  String _vendorName(Map<String, dynamic> vendor) =>
+      (vendor['vendor_name'] ??
+              vendor['vendor_company_name'] ??
+              vendor['name'] ??
+              'Vendor')
+          .toString();
+
+  String _vendorEmail(Map<String, dynamic> vendor) =>
+      (vendor['vendor_email'] ?? vendor['email'] ?? '').toString();
+
+  Future<void> _loadVendors() async {
+    setState(() => _loadingVendors = true);
+    try {
+      final result = widget.projectId.isNotEmpty
+          ? await ApiClient.getVendorsByProject(widget.projectId)
+          : await ApiClient.getVendors();
+      if (!mounted) return;
+      if (result['success'] == true) {
+        final data = result['data'];
+        final list = data is List ? data : const [];
+        final vendors = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .where((v) => _vendorEmail(v).trim().isNotEmpty)
+            .toList();
+        setState(() {
+          _vendors = vendors;
+          _loadingVendors = false;
+        });
+        return;
+      }
+      setState(() {
+        _vendors = [];
+        _loadingVendors = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _vendors = [];
+        _loadingVendors = false;
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> get _filteredVendors {
+    final query = _vendorSearchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _vendors;
+    return _vendors.where((vendor) {
+      final name = _vendorName(vendor).toLowerCase();
+      final email = _vendorEmail(vendor).toLowerCase();
+      return name.contains(query) || email.contains(query);
+    }).toList();
+  }
+
+  void _toggleVendor(String vendorId, bool selected) {
+    setState(() {
+      final next = Set<String>.from(_selectedVendorIds);
+      if (selected) {
+        next.add(vendorId);
+      } else {
+        next.remove(vendorId);
+      }
+      _selectedVendorIds = next;
+    });
+  }
+
+  void _toggleVendorDropdown() {
+    setState(() => _vendorDropdownOpen = !_vendorDropdownOpen);
+  }
+
+  Future<void> _pickAttachments() async {
+    final files = await FileService.pickMultipleFilesWithSource(
+      context: context,
+    );
+    if (!mounted) return;
+    if (files.isEmpty) return;
+    setState(() {
+      _attachments = [..._attachments, ...files];
+    });
+  }
+
+  void _removeAttachment(File file) {
+    setState(() {
+      _attachments = _attachments.where((f) => f.path != file.path).toList();
+    });
+  }
+
+  void _clearAttachments() {
+    setState(() => _attachments = []);
+  }
+
+  Future<void> _sendEmail() async {
+    if (_sending) return;
+    final selectedVendors = _vendors
+        .where((v) => _selectedVendorIds.contains(_vendorId(v)))
+        .toList();
+    if (selectedVendors.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Select at least one vendor with a valid email.'),
+        ),
+      );
+      return;
+    }
+    setState(() => _sending = true);
+    try {
+      final to = selectedVendors
+          .map((v) => _vendorEmail(v))
+          .where((e) => e.trim().isNotEmpty)
+          .join(', ');
+      final result = await ApiClient.sendPoEmail(
+        poId: widget.order.id,
+        to: to,
+        message: _remarksController.text.trim(),
+        attachmentFiles: _attachments,
+      );
+      if (!mounted) return;
+      if (result['success'] == true) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PO email sent')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            (result['error'] ?? 'Failed to send email').toString(),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to send email')),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = isDark
+        ? AppTheme.darkMutedForeground
+        : AppTheme.lightMutedForeground;
+    final border = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
+    final maxHeight = MediaQuery.of(context).size.height * 0.85;
+    final selectedVendors = _vendors
+        .where((v) => _selectedVendorIds.contains(_vendorId(v)))
+        .toList();
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      child: Container(
+        constraints: BoxConstraints(maxWidth: 720, maxHeight: maxHeight),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Email Purchase Order',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Select vendors. The selected PO will be sent to their email addresses.',
+              style: TextStyle(color: muted),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MadCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'PO: ${widget.order.orderNo}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Vendor: ${widget.order.vendorName ?? '-'}',
+                              style: TextStyle(color: muted, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Attachment (optional)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _pickAttachments,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: border.withOpacity(0.8)),
+                          color: (isDark
+                                  ? AppTheme.darkMuted
+                                  : AppTheme.lightMuted)
+                              .withOpacity(0.15),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(LucideIcons.upload, size: 20, color: muted),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Drag and drop files here, or click to upload',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Selected files will be attached when you send the email.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: muted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_attachments.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      ..._attachments.map((file) {
+                        final name = file.path.split(RegExp(r'[/\\\\]')).last;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: border.withOpacity(0.6)),
+                            color: (isDark
+                                    ? AppTheme.darkMuted
+                                    : AppTheme.lightMuted)
+                                .withOpacity(0.25),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              MadButton(
+                                text: 'Remove',
+                                variant: ButtonVariant.ghost,
+                                size: ButtonSize.sm,
+                                onPressed: () => _removeAttachment(file),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: MadButton(
+                          text: 'Clear All',
+                          variant: ButtonVariant.outline,
+                          size: ButtonSize.sm,
+                          onPressed: _clearAttachments,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    MadTextarea(
+                      controller: _remarksController,
+                      labelText: 'Remarks (optional)',
+                      hintText: 'Add any note for vendors...',
+                      minLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Vendors',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    MadCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: _loadingVendors
+                            ? Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Loading vendors...',
+                                    style: TextStyle(color: muted),
+                                  ),
+                                ],
+                              )
+                            : _vendors.isEmpty
+                                ? Text(
+                                    'No vendors with email found for this project.',
+                                    style: TextStyle(color: muted),
+                                  )
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      InkWell(
+                                        onTap: _toggleVendorDropdown,
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 12,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color:
+                                                  border.withOpacity(0.7),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  _selectedVendorIds.isEmpty
+                                                      ? 'Select Vendors'
+                                                      : '${_selectedVendorIds.length} vendor(s) selected',
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              Icon(
+                                                _vendorDropdownOpen
+                                                    ? LucideIcons.chevronUp
+                                                    : LucideIcons.chevronDown,
+                                                size: 16,
+                                                color: muted,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      if (_vendorDropdownOpen) ...[
+                                        const SizedBox(height: 12),
+                                        MadInput(
+                                          controller: _vendorSearchController,
+                                          labelText: 'Search vendors',
+                                          hintText:
+                                              'Search vendor name or email...',
+                                        ),
+                                        const SizedBox(height: 12),
+                                        SizedBox(
+                                          height: 220,
+                                          child: ListView.separated(
+                                            itemCount: _filteredVendors.length,
+                                            separatorBuilder: (_, __) =>
+                                                const SizedBox(height: 10),
+                                            itemBuilder: (context, index) {
+                                              final vendor =
+                                                  _filteredVendors[index];
+                                              final id = _vendorId(vendor);
+                                              final checked =
+                                                  _selectedVendorIds
+                                                      .contains(id);
+                                              return MadCheckbox(
+                                                value: checked,
+                                                label: _vendorName(vendor),
+                                                description:
+                                                    _vendorEmail(vendor),
+                                                onChanged: (value) =>
+                                                    _toggleVendor(
+                                                  id,
+                                                  value,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 12),
+                                      if (selectedVendors.isNotEmpty)
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children:
+                                              selectedVendors.map((vendor) {
+                                            final id = _vendorId(vendor);
+                                            return Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                                color: (isDark
+                                                        ? AppTheme.darkMuted
+                                                        : AppTheme.lightMuted)
+                                                    .withOpacity(0.35),
+                                                border: Border.all(
+                                                  color:
+                                                      border.withOpacity(0.5),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    _vendorName(vendor),
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  InkWell(
+                                                    onTap: () =>
+                                                        _toggleVendor(
+                                                      id,
+                                                      false,
+                                                    ),
+                                                    child: const Icon(
+                                                      LucideIcons.x,
+                                                      size: 12,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                        )
+                                      else
+                                        Text(
+                                          'No vendor selected',
+                                          style: TextStyle(
+                                            color: muted,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  MadButton(
+                    text: 'Cancel',
+                    variant: ButtonVariant.outline,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  MadButton(
+                    text: _sending ? 'Sending...' : 'Send Email',
+                    icon: LucideIcons.mail,
+                    disabled:
+                        _sending || _loadingVendors || _selectedVendorIds.isEmpty,
+                    onPressed: _sendEmail,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

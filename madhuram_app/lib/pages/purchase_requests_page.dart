@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -56,6 +58,7 @@ class PurchaseRequest {
   final String projectId;
   final String projectName;
   final String? sampleId;
+  final String? poId;
   final String workorderNo;
   final String location;
   final String mirNo;
@@ -72,6 +75,7 @@ class PurchaseRequest {
     required this.projectId,
     required this.projectName,
     required this.sampleId,
+    required this.poId,
     required this.workorderNo,
     required this.location,
     required this.mirNo,
@@ -95,11 +99,23 @@ class PurchaseRequest {
               )
               .toList()
         : const [];
+    final poRaw = json['po'];
+    String? poId = (json['po_id'] ??
+            json['poId'] ??
+            json['purchase_order_id'])
+        ?.toString();
+    if ((poId ?? '').isEmpty && poRaw is Map) {
+      poId = (poRaw['po_id'] ?? poRaw['id'])?.toString();
+    }
+    if ((poId ?? '').isEmpty) {
+      poId = null;
+    }
 
     return PurchaseRequest(
       id: (json['pr_id'] ?? json['id'] ?? '').toString(),
       projectId: (json['project_id'] ?? json['projectId'] ?? '').toString(),
       sampleId: json['sample_id']?.toString(),
+      poId: poId,
       projectName: (json['project_name'] ?? '-').toString(),
       workorderNo: (json['workorder_no'] ?? '-').toString(),
       location: (json['location'] ?? '-').toString(),
@@ -3003,113 +3019,74 @@ class _PurchaseRequestEmailDialog extends StatefulWidget {
 
 class _PurchaseRequestEmailDialogState
     extends State<_PurchaseRequestEmailDialog> {
-  bool _loadingVendors = false;
   bool _sending = false;
   bool _downloading = false;
-  bool _vendorDropdownOpen = false;
-  List<Map<String, dynamic>> _vendors = [];
-  Set<String> _selectedVendorIds = {};
+  bool _loadingSignature = false;
   List<File> _attachments = [];
+  List<File> _autoAttachments = [];
+  Uint8List? _signatureBytes;
+  bool _signatureIsPdf = false;
+  String? _signatureFileName;
   final TextEditingController _remarksController = TextEditingController();
-  final TextEditingController _vendorSearchController = TextEditingController();
+  final TextEditingController _poEmailController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadVendors();
+    _loadSignatureAttachment();
   }
 
   @override
   void dispose() {
     _remarksController.dispose();
-    _vendorSearchController.dispose();
+    _poEmailController.dispose();
     super.dispose();
   }
 
-  String _vendorId(Map<String, dynamic> vendor) =>
-      (vendor['vendor_id'] ?? vendor['id'] ?? '').toString();
+  bool _isImageFile(String path) {
+    return RegExp(
+      r'\.(png|jpg|jpeg|gif|webp)$',
+      caseSensitive: false,
+    ).hasMatch(path);
+  }
 
-  String _vendorName(Map<String, dynamic> vendor) =>
-      (vendor['vendor_name'] ??
-              vendor['vendor_company_name'] ??
-              vendor['name'] ??
-              'Vendor')
-          .toString();
+  bool _isPdfFile(String path) {
+    return path.toLowerCase().endsWith('.pdf');
+  }
 
-  String _vendorEmail(Map<String, dynamic> vendor) =>
-      (vendor['vendor_email'] ?? '').toString();
-
-  Future<void> _loadVendors() async {
-    setState(() => _loadingVendors = true);
+  Future<void> _loadSignatureAttachment() async {
+    final signaturePath = widget.pr.signatureFilePath;
+    if (signaturePath.isEmpty) return;
+    setState(() => _loadingSignature = true);
     try {
-      final projectId = widget.pr.projectId;
-      final result = projectId.isNotEmpty
-          ? await ApiClient.getVendorsByProject(projectId)
-          : await ApiClient.getVendors();
-      if (!mounted) return;
-      if (result['success'] == true) {
-        final data = result['data'];
-        final list = data is List ? data : const [];
-        final vendors = list
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .where(
-              (v) => _vendorEmail(v).trim().isNotEmpty,
-            )
-            .toList();
+      final url = ApiClient.getApiFileUrl(signaturePath);
+      final headers = await ApiClient.getAuthHeadersForFile();
+      final res = await http.get(Uri.parse(url), headers: headers);
+      if (res.statusCode >= 200 &&
+          res.statusCode < 300 &&
+          res.bodyBytes.isNotEmpty) {
+        final bytes = res.bodyBytes;
+        final name = signaturePath.split(RegExp(r'[/\\]')).last;
+        final dir = await FileService.getTempDirectory();
+        final file = File('${dir.path}/$name');
+        await file.writeAsBytes(bytes, flush: true);
+        if (!mounted) return;
+        final contentType = res.headers['content-type'] ?? '';
+        final isPdf = _isPdfFile(name) || contentType.contains('pdf');
+        final isImage =
+            _isImageFile(name) || contentType.startsWith('image/');
         setState(() {
-          _vendors = vendors;
-          _loadingVendors = false;
+          _autoAttachments = [file];
+          _signatureFileName = name;
+          _signatureIsPdf = isPdf;
+          _signatureBytes = isImage ? bytes : null;
         });
-        return;
       }
-      setState(() {
-        _vendors = [];
-        _loadingVendors = false;
-      });
-      showToast(
-        context,
-        (result['error'] ?? 'Failed to load vendors').toString(),
-        variant: ToastVariant.error,
-      );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _vendors = [];
-        _loadingVendors = false;
-      });
-      showToast(
-        context,
-        'Failed to load vendors',
-        variant: ToastVariant.error,
-      );
+    } finally {
+      if (mounted) setState(() => _loadingSignature = false);
     }
-  }
-
-  List<Map<String, dynamic>> get _filteredVendors {
-    final query = _vendorSearchController.text.trim().toLowerCase();
-    if (query.isEmpty) return _vendors;
-    return _vendors.where((vendor) {
-      final name = _vendorName(vendor).toLowerCase();
-      final email = _vendorEmail(vendor).toLowerCase();
-      return name.contains(query) || email.contains(query);
-    }).toList();
-  }
-
-  void _toggleVendor(String vendorId, bool selected) {
-    setState(() {
-      final next = Set<String>.from(_selectedVendorIds);
-      if (selected) {
-        next.add(vendorId);
-      } else {
-        next.remove(vendorId);
-      }
-      _selectedVendorIds = next;
-    });
-  }
-
-  void _toggleVendorDropdown() {
-    setState(() => _vendorDropdownOpen = !_vendorDropdownOpen);
   }
 
   Future<void> _pickAttachments() async {
@@ -3185,13 +3162,11 @@ class _PurchaseRequestEmailDialogState
 
   Future<void> _sendEmail() async {
     if (_sending) return;
-    final selectedVendors = _vendors
-        .where((v) => _selectedVendorIds.contains(_vendorId(v)))
-        .toList();
-    if (selectedVendors.isEmpty) {
+    final to = _poEmailController.text.trim();
+    if (to.isEmpty) {
       showToast(
         context,
-        'Select at least one vendor with a valid email',
+        'Enter the PO officer email address',
         variant: ToastVariant.error,
       );
       return;
@@ -3200,28 +3175,32 @@ class _PurchaseRequestEmailDialogState
     setState(() => _sending = true);
     try {
       final pr = widget.pr;
-      final result = await ApiClient.sendPrEmail(
-        pr: {
-          'pr_id': pr.id,
-          'project_id': pr.projectId,
-          'sample_id': pr.sampleId,
-          'project_name': pr.projectName,
-          'workorder_no': pr.workorderNo,
-          'location': pr.location,
-          'mirno': pr.mirNo,
-          'urgency': pr.urgency,
-          'date': pr.date,
-          'approved_by': pr.approvedBy,
-          'remarks': pr.remarks,
-          'items': pr.items.map((i) => i.toJson()).toList(),
-        },
-        vendors: selectedVendors,
-        message: _remarksController.text.trim(),
-        attachments: _attachments,
-      );
+      if (pr.id.isEmpty) {
+        showToast(
+          context,
+          'Missing PR id',
+          variant: ToastVariant.error,
+        );
+        return;
+      }
+      final attachmentFiles = [..._autoAttachments, ..._attachments];
+      final poId = (pr.poId ?? '').trim();
+      final result = poId.isNotEmpty
+          ? await ApiClient.sendPoEmail(
+              poId: poId,
+              to: to,
+              message: _remarksController.text.trim(),
+              attachmentFiles: attachmentFiles,
+            )
+          : await ApiClient.sendPrEmail(
+              prId: pr.id,
+              to: to,
+              message: _remarksController.text.trim(),
+              attachmentFiles: attachmentFiles,
+            );
       if (!mounted) return;
       if (result['success'] == true) {
-        showToast(context, 'PR email sent');
+        showToast(context, 'Email sent');
         Navigator.of(context).pop();
         return;
       }
@@ -3242,19 +3221,33 @@ class _PurchaseRequestEmailDialogState
     }
   }
 
+  Future<void> _openSignature() async {
+    final signaturePath = widget.pr.signatureFilePath;
+    if (signaturePath.isEmpty) return;
+    final uri = Uri.parse(
+      signaturePath.startsWith('http')
+          ? signaturePath
+          : ApiClient.getApiFileUrl(signaturePath),
+    );
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+        mounted) {
+      showToast(
+        context,
+        'Could not open signature',
+        variant: ToastVariant.error,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final pr = widget.pr;
-    final selectedVendors = _vendors
-        .where((v) => _selectedVendorIds.contains(_vendorId(v)))
-        .toList();
     final muted = isDark
         ? AppTheme.darkMutedForeground
         : AppTheme.lightMutedForeground;
     final border = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
     final maxHeight = MediaQuery.of(context).size.height * 0.85;
-    final isMobile = Responsive(context).isMobile;
 
     return Dialog(
       insetPadding: const EdgeInsets.all(16),
@@ -3277,7 +3270,7 @@ class _PurchaseRequestEmailDialogState
             ),
             const SizedBox(height: 6),
             Text(
-              'Select vendors. The selected PR will be sent to their email addresses.',
+              'Enter the PO officer email address to send this PR.',
               style: TextStyle(color: muted),
             ),
             const SizedBox(height: 16),
@@ -3351,7 +3344,7 @@ class _PurchaseRequestEmailDialogState
                     if (_attachments.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       ..._attachments.map((file) {
-                        final name = file.path.split(RegExp(r'[/\\\\]')).last;
+                        final name = file.path.split(RegExp(r'[/\\]')).last;
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.symmetric(
@@ -3395,15 +3388,8 @@ class _PurchaseRequestEmailDialogState
                       ),
                     ],
                     const SizedBox(height: 16),
-                    MadTextarea(
-                      controller: _remarksController,
-                      labelText: 'Remarks (optional)',
-                      hintText: 'Add any note for vendors...',
-                      minLines: 3,
-                    ),
-                    const SizedBox(height: 16),
                     Text(
-                      'Vendors',
+                      'Signature',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: isDark
@@ -3412,174 +3398,110 @@ class _PurchaseRequestEmailDialogState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    MadCard(
-                      child: Padding(
+                    if (pr.signatureFilePath.isEmpty)
+                      Text(
+                        'No signature uploaded for this PR.',
+                        style: TextStyle(color: muted, fontSize: 12),
+                      )
+                    else if (_loadingSignature)
+                      Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Loading signature...',
+                            style: TextStyle(color: muted),
+                          ),
+                        ],
+                      )
+                    else if (_signatureBytes != null)
+                      Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.all(12),
-                        child: _loadingVendors
-                            ? Row(
-                                children: [
-                                  const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Loading vendors...',
-                                    style: TextStyle(color: muted),
-                                  ),
-                                ],
-                              )
-                            : _vendors.isEmpty
-                                ? Text(
-                                    'No vendors with email found for this project.',
-                                    style: TextStyle(color: muted),
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      InkWell(
-                                        onTap: _toggleVendorDropdown,
-                                        borderRadius: BorderRadius.circular(10),
-                                        child: Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 12,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color:
-                                                  border.withOpacity(0.7),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  _selectedVendorIds.isEmpty
-                                                      ? 'Select Vendors'
-                                                      : '${_selectedVendorIds.length} vendor(s) selected',
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                              Icon(
-                                                _vendorDropdownOpen
-                                                    ? LucideIcons.chevronUp
-                                                    : LucideIcons.chevronDown,
-                                                size: 16,
-                                                color: muted,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      if (_vendorDropdownOpen) ...[
-                                        const SizedBox(height: 12),
-                                        MadInput(
-                                          controller: _vendorSearchController,
-                                          labelText: 'Search vendors',
-                                          hintText:
-                                              'Search vendor name or email...',
-                                        ),
-                                        const SizedBox(height: 12),
-                                        SizedBox(
-                                          height: isMobile ? 180 : 220,
-                                          child: ListView.separated(
-                                            itemCount: _filteredVendors.length,
-                                            separatorBuilder: (_, __) =>
-                                                const SizedBox(height: 10),
-                                            itemBuilder: (context, index) {
-                                              final vendor =
-                                                  _filteredVendors[index];
-                                              final id = _vendorId(vendor);
-                                              final checked =
-                                                  _selectedVendorIds
-                                                      .contains(id);
-                                              return MadCheckbox(
-                                                value: checked,
-                                                label: _vendorName(vendor),
-                                                description:
-                                                    _vendorEmail(vendor),
-                                                onChanged: (value) =>
-                                                    _toggleVendor(
-                                                  id,
-                                                  value,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: 12),
-                                      if (selectedVendors.isNotEmpty)
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children:
-                                              selectedVendors.map((vendor) {
-                                            final id = _vendorId(vendor);
-                                            return Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 6,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                                color: (isDark
-                                                        ? AppTheme.darkMuted
-                                                        : AppTheme.lightMuted)
-                                                    .withOpacity(0.35),
-                                                border: Border.all(
-                                                  color:
-                                                      border.withOpacity(0.5),
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    _vendorName(vendor),
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  InkWell(
-                                                    onTap: () =>
-                                                        _toggleVendor(
-                                                      id,
-                                                      false,
-                                                    ),
-                                                    child: const Icon(
-                                                      LucideIcons.x,
-                                                      size: 12,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                          }).toList(),
-                                        )
-                                      else
-                                        Text(
-                                          'No vendor selected',
-                                          style: TextStyle(
-                                            color: muted,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: border.withOpacity(0.7)),
+                          color: (isDark
+                                  ? AppTheme.darkMuted
+                                  : AppTheme.lightMuted)
+                              .withOpacity(0.2),
+                        ),
+                        child: Image.memory(
+                          _signatureBytes!,
+                          height: 140,
+                          fit: BoxFit.contain,
+                        ),
+                      )
+                    else
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: MadButton(
+                          text: _signatureIsPdf
+                              ? 'View Signature'
+                              : (_signatureFileName ?? 'Open Signature'),
+                          icon: LucideIcons.fileText,
+                          variant: ButtonVariant.outline,
+                          onPressed: _openSignature,
+                        ),
                       ),
+                    if (_autoAttachments.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'Auto attached',
+                        style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._autoAttachments.map((file) {
+                        final name = file.path.split(RegExp(r'[/\\]')).last;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: border.withOpacity(0.6)),
+                            color: (isDark
+                                    ? AppTheme.darkMuted
+                                    : AppTheme.lightMuted)
+                                .withOpacity(0.2),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              MadBadge(
+                                text: 'Signature',
+                                variant: BadgeVariant.outline,
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                    const SizedBox(height: 16),
+                    MadTextarea(
+                      controller: _remarksController,
+                      labelText: 'Remarks (optional)',
+                      hintText: 'Add any note for the PO officer...',
+                      minLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    MadInput(
+                      controller: _poEmailController,
+                      labelText: 'PO Officer Email',
+                      hintText: 'po.officer@company.com',
+                      keyboardType: TextInputType.emailAddress,
+                      onChanged: (_) => setState(() {}),
                     ),
                   ],
                 ),
@@ -3607,9 +3529,7 @@ class _PurchaseRequestEmailDialogState
                   MadButton(
                     text: _sending ? 'Sending...' : 'Send Email',
                     icon: LucideIcons.mail,
-                    disabled: _sending ||
-                        _loadingVendors ||
-                        _selectedVendorIds.isEmpty,
+                    disabled: _sending || _poEmailController.text.trim().isEmpty,
                     onPressed: _sendEmail,
                   ),
                 ],
