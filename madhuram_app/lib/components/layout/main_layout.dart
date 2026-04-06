@@ -50,6 +50,83 @@ class _MainLayoutState extends State<MainLayout> {
     Navigator.pushReplacementNamed(context, route);
   }
 
+  Widget _buildScaffold({
+    required bool isDark,
+    required Responsive responsive,
+    required Widget content,
+  }) {
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor:
+          isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+      drawer: widget.showSidebar && (responsive.isMobile || responsive.isTablet)
+          ? Drawer(
+              width: responsive.isMobile
+                  ? responsive.screenWidth * 0.85
+                  : 288,
+              child: AppSidebar(
+                isCollapsed: false,
+                currentRoute: widget.currentRoute,
+                onNavigate: _navigate,
+              ),
+            )
+          : null,
+      body: Row(
+        children: [
+          // Desktop sidebar only
+          if (widget.showSidebar && responsive.isDesktop)
+            Stack(
+              children: [
+                AppSidebar(
+                  isCollapsed: _isSidebarCollapsed,
+                  currentRoute: widget.currentRoute,
+                  onNavigate: _navigate,
+                ),
+                SidebarToggleButton(
+                  isCollapsed: _isSidebarCollapsed,
+                  onToggle: _toggleSidebar,
+                ),
+              ],
+            ),
+
+          // Main content – matches React's flex-1 + overflow-y-auto layout.
+          // Each page handles its own scrolling; we just provide bounded
+          // height so Expanded widgets inside pages work correctly.
+          Expanded(
+            child: Column(
+              children: [
+                AppHeader(
+                  title: widget.title,
+                  leadingIcon: widget.headerLeadingIcon,
+                  onLeadingPressed: widget.onHeaderLeadingPressed,
+                  showMenuButton: widget.showSidebar,
+                  onMenuPressed: () {
+                    _scaffoldKey.currentState?.openDrawer();
+                  },
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: responsive.padding,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: 1400,
+                          minWidth: 0,
+                        ),
+                        child: content,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -95,107 +172,37 @@ class _MainLayoutState extends State<MainLayout> {
         }
 
         final normalizedRoute = normalizeRouteForAccess(widget.currentRoute);
-        if (!hasRouteAccess(vm.user, normalizedRoute)) {
-          return Scaffold(
-            backgroundColor: isDark
-                ? AppTheme.darkBackground
-                : AppTheme.lightBackground,
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.lock_outline, size: 56),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'You do not have permission to access this page.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pushReplacementNamed(context, '/profile');
-                      },
-                      child: const Text('Open Profile'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }
-
-        return Scaffold(
-          key: _scaffoldKey,
-          backgroundColor: isDark
-              ? AppTheme.darkBackground
-              : AppTheme.lightBackground,
-          drawer: widget.showSidebar && (responsive.isMobile || responsive.isTablet)
-              ? Drawer(
-                  width: responsive.isMobile
-                      ? responsive.screenWidth * 0.85
-                      : 288,
-                  child: AppSidebar(
-                    isCollapsed: false,
-                    currentRoute: widget.currentRoute,
-                    onNavigate: _navigate,
-                  ),
-                )
-              : null,
-          body: Row(
-            children: [
-              // Desktop sidebar only
-              if (widget.showSidebar && responsive.isDesktop)
-                Stack(
-                  children: [
-                    AppSidebar(
-                      isCollapsed: _isSidebarCollapsed,
-                      currentRoute: widget.currentRoute,
-                      onNavigate: _navigate,
-                    ),
-                    SidebarToggleButton(
-                      isCollapsed: _isSidebarCollapsed,
-                      onToggle: _toggleSidebar,
-                    ),
-                  ],
-                ),
-
-              // Main content – matches React's flex-1 + overflow-y-auto layout.
-              // Each page handles its own scrolling; we just provide bounded
-              // height so Expanded widgets inside pages work correctly.
-              Expanded(
-                child: Column(
-                  children: [
-                    AppHeader(
-                      title: widget.title,
-                      leadingIcon: widget.headerLeadingIcon,
-                      onLeadingPressed: widget.onHeaderLeadingPressed,
-                      showMenuButton: widget.showSidebar,
-                      onMenuPressed: () {
-                        _scaffoldKey.currentState?.openDrawer();
-                      },
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: responsive.padding,
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                              maxWidth: 1400,
-                              minWidth: 0,
-                            ),
-                            child: widget.child,
-                          ),
-                        ),
+        final hasAccess = hasRouteAccess(vm.user, normalizedRoute);
+        final content = hasAccess
+            ? widget.child
+            : Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lock_outline, size: 56),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'You do not have permission to access this page.',
+                        textAlign: TextAlign.center,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pushReplacementNamed(context, '/profile');
+                        },
+                        child: const Text('Open Profile'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              );
+
+        return _buildScaffold(
+          isDark: isDark,
+          responsive: responsive,
+          content: content,
         );
       },
     );
