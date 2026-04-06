@@ -15,6 +15,7 @@ import '../components/layout/main_layout.dart';
 import '../services/api_client.dart';
 import '../services/file_service.dart';
 import '../services/pdf_service.dart';
+import '../models/user.dart';
 import '../utils/responsive.dart';
 
 class PurchaseRequestItem {
@@ -3022,11 +3023,15 @@ class _PurchaseRequestEmailDialogState
   bool _sending = false;
   bool _downloading = false;
   bool _loadingSignature = false;
+  bool _loadingPoOfficers = false;
   List<File> _attachments = [];
   List<File> _autoAttachments = [];
   Uint8List? _signatureBytes;
   bool _signatureIsPdf = false;
   String? _signatureFileName;
+  String? _poOfficersError;
+  String? _selectedPoOfficerId;
+  List<User> _poOfficers = [];
   final TextEditingController _remarksController = TextEditingController();
   final TextEditingController _poEmailController = TextEditingController();
 
@@ -3034,6 +3039,7 @@ class _PurchaseRequestEmailDialogState
   void initState() {
     super.initState();
     _loadSignatureAttachment();
+    _loadPoOfficers();
   }
 
   @override
@@ -3086,6 +3092,61 @@ class _PurchaseRequestEmailDialogState
       if (!mounted) return;
     } finally {
       if (mounted) setState(() => _loadingSignature = false);
+    }
+  }
+
+  Future<void> _loadPoOfficers() async {
+    setState(() {
+      _loadingPoOfficers = true;
+      _poOfficersError = null;
+    });
+    try {
+      final result = await ApiClient.getUsers();
+      if (!mounted) return;
+      if (result['success'] == true) {
+        final data = result['data'];
+        final list = data is List ? data : const [];
+        final officers = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .map((e) => User.fromJson(e))
+            .where((u) => u.role == 'po_officer')
+            .toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+        final firstOfficer = officers.isNotEmpty ? officers.first : null;
+        setState(() {
+          _poOfficers = officers;
+          _loadingPoOfficers = false;
+          _selectedPoOfficerId ??= firstOfficer?.id;
+          if (_selectedPoOfficerId != null) {
+            final selected = officers.firstWhere(
+              (u) => u.id == _selectedPoOfficerId,
+              orElse: () => firstOfficer!,
+            );
+            _poEmailController.text = selected.email;
+          } else {
+            _poEmailController.text = '';
+          }
+        });
+      } else {
+        setState(() {
+          _poOfficers = [];
+          _loadingPoOfficers = false;
+          _poOfficersError =
+              result['error']?.toString() ?? 'Failed to load PO officers';
+          _poEmailController.text = '';
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _poOfficers = [];
+        _loadingPoOfficers = false;
+        _poOfficersError = 'Failed to load PO officers';
+        _poEmailController.text = '';
+      });
     }
   }
 
@@ -3496,12 +3557,37 @@ class _PurchaseRequestEmailDialogState
                       minLines: 3,
                     ),
                     const SizedBox(height: 16),
-                    MadInput(
-                      controller: _poEmailController,
-                      labelText: 'PO Officer Email',
-                      hintText: 'po.officer@company.com',
-                      keyboardType: TextInputType.emailAddress,
-                      onChanged: (_) => setState(() {}),
+                    MadSelect<String>(
+                      labelText: 'PO Officer',
+                      value: _selectedPoOfficerId,
+                      searchable: true,
+                      searchHint: 'Search PO officers...',
+                      placeholder: _loadingPoOfficers
+                          ? 'Loading PO officers...'
+                          : 'Select PO officer',
+                      disabled: _loadingPoOfficers || _poOfficers.isEmpty,
+                      errorText: _poOfficersError,
+                      options: _poOfficers
+                          .map(
+                            (user) => MadSelectOption<String>(
+                              value: user.id,
+                              label: user.email.isNotEmpty
+                                  ? '${user.name} • ${user.email}'
+                                  : user.name,
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        final selected = _poOfficers.firstWhere(
+                          (u) => u.id == value,
+                          orElse: () => _poOfficers.first,
+                        );
+                        setState(() {
+                          _selectedPoOfficerId = value;
+                          _poEmailController.text = selected.email;
+                        });
+                      },
                     ),
                   ],
                 ),
