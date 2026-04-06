@@ -1,6 +1,10 @@
 import '../constants/access_control_catalog.dart';
 
-const alwaysAllowedPagePaths = <String>{'/profile', '/settings'};
+const alwaysAllowedPagePaths = <String>{
+  '/profile',
+  '/settings',
+  '/attendance',
+};
 
 Map<String, dynamic> buildNoAccessControl() {
   final pages = <String, bool>{};
