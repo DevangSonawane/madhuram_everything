@@ -66,14 +66,30 @@ String normalizeRouteForAccess(String route) {
   if (accessControlPagePaths.contains(route)) return route;
 
   final segments = route.split('/').where((part) => part.isNotEmpty).toList();
-  if (segments.isEmpty) {
-    return '/dashboard';
-  }
-  final firstSegmentPath = '/${segments.first}';
-  if (accessControlPagePaths.contains(firstSegmentPath))
-    return firstSegmentPath;
+  if (segments.isEmpty) return '/dashboard';
 
-  return route;
+  final fullPath = '/${segments.join('/')}';
+  if (accessControlPagePaths.contains(fullPath)) return fullPath;
+
+  if (segments.length > 1) {
+    final twoSegmentPath = '/${segments.take(2).join('/')}';
+    if (accessControlPagePaths.contains(twoSegmentPath)) return twoSegmentPath;
+  }
+
+  if (segments.length > 2) {
+    final secondThirdPath = '/${segments[1]}/${segments[2]}';
+    if (accessControlPagePaths.contains(secondThirdPath)) return secondThirdPath;
+  }
+
+  if (segments.length > 1) {
+    final secondSegmentPath = '/${segments[1]}';
+    if (accessControlPagePaths.contains(secondSegmentPath)) return secondSegmentPath;
+  }
+
+  final firstSegmentPath = '/${segments.first}';
+  if (accessControlPagePaths.contains(firstSegmentPath)) return firstSegmentPath;
+
+  return '/dashboard';
 }
 
 bool hasPageAccess(Map<String, dynamic>? user, String? pagePath) {

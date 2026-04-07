@@ -1546,6 +1546,33 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  // Quotations
+  static Future<Map<String, dynamic>> getQuotations({
+    String? status,
+    bool? isRevisedOffer,
+  }) async {
+    final token = await _getToken();
+    final queryParams = <String, String>{};
+    if (status != null && status.trim().isNotEmpty) {
+      queryParams['status'] = status.trim();
+    }
+    if (isRevisedOffer != null) {
+      queryParams['is_revised_offer'] = isRevisedOffer.toString();
+    }
+    final uri = Uri.parse('$baseUrl/api/quotations').replace(
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    );
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getQuotationById(String id) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/quotations/$id');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
   static Future<Map<String, dynamic>> deleteAttendance(
     String id, {
     String? userId,

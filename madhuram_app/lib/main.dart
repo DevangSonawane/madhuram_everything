@@ -31,6 +31,8 @@ import 'pages/login_page.dart';
 import 'pages/project_selection_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/attendance_page.dart';
+import 'pages/my_attendance_page.dart';
+import 'pages/quotes_list_page.dart';
 import 'pages/boq_page.dart';
 import 'pages/profile_page.dart';
 // Inventory Module
@@ -87,9 +89,11 @@ final Map<String, Widget Function(BuildContext)> _appRoutes = {
   '/projects': (context) => const ProjectSelectionPage(),
   '/dashboard': (context) => const DashboardPage(),
   '/attendance': (context) => const AttendancePage(),
+  '/attendance/my': (context) => const MyAttendancePage(),
   '/boq': (context) => const BOQPage(),
   // '/mas': (context) => const MASPageFull(),
   '/samples': (context) => const SamplesPageFull(),
+  '/projects/quotes/add': (context) => const QuotesListPage(),
   '/purchase-requests': (context) => const PurchaseRequestsPageFull(),
   '/purchase-requests/create': (context) => const PurchaseRequestCreatePage(),
   '/vendor-comparison': (context) => const VendorComparisonPageFull(),

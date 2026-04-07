@@ -1211,57 +1211,110 @@ class _AttendancePageState extends State<AttendancePage> {
             ),
             const SizedBox(height: 24),
             if (_mode == _AttendanceMode.select) ...[
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: isMobile ? double.infinity : 320,
-                    child: MadCard(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(LucideIcons.logIn, size: 24),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Check In',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: [
+                      SizedBox(
+                        width: isMobile ? double.infinity : 320,
+                        child: MadCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(LucideIcons.logIn, size: 24),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Check In',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Capture selfie, site photo, and location.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isDark
+                                        ? AppTheme.darkMutedForeground
+                                        : AppTheme.lightMutedForeground,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                MadButton(
+                                  text: 'Start Check In',
+                                  icon: LucideIcons.arrowRight,
+                                  onPressed: () {
+                                    setState(() {
+                                      _mode = _AttendanceMode.checkIn;
+                                      _selfie = null;
+                                      _siteImage = null;
+                                      _position = null;
+                                      _locationName = null;
+                                      _locationCapturedAt = null;
+                                    });
+                                  },
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Capture selfie, site photo, and location.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: isDark
-                                    ? AppTheme.darkMutedForeground
-                                    : AppTheme.lightMutedForeground,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            MadButton(
-                              text: 'Start Check In',
-                              icon: LucideIcons.arrowRight,
-                              onPressed: () {
-                                setState(() {
-                                  _mode = _AttendanceMode.checkIn;
-                                  _selfie = null;
-                                  _siteImage = null;
-                                  _position = null;
-                                  _locationName = null;
-                                  _locationCapturedAt = null;
-                                });
-                              },
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
+                      SizedBox(
+                        width: isMobile ? double.infinity : 320,
+                        child: MadCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(LucideIcons.logOut, size: 24),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Check Out',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Capture selfie, site photo, and location.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: isDark
+                                        ? AppTheme.darkMutedForeground
+                                        : AppTheme.lightMutedForeground,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                MadButton(
+                                  text: 'Start Check Out',
+                                  icon: LucideIcons.arrowRight,
+                                  onPressed: () {
+                                    setState(() {
+                                      _mode = _AttendanceMode.checkOut;
+                                      _checkoutSelfie = null;
+                                      _checkoutSiteImage = null;
+                                      _checkoutPosition = null;
+                                      _checkoutLocationName = null;
+                                      _checkoutLocationCapturedAt = null;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: isMobile ? double.infinity : 320,
                     child: MadCard(
@@ -1270,10 +1323,10 @@ class _AttendancePageState extends State<AttendancePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(LucideIcons.logOut, size: 24),
+                            const Icon(LucideIcons.calendarCheck2, size: 24),
                             const SizedBox(height: 12),
                             const Text(
-                              'Check Out',
+                              'View My Attendance',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -1281,7 +1334,7 @@ class _AttendancePageState extends State<AttendancePage> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Capture selfie, site photo, and location.',
+                              'See your attendance status (present/absent) marked by admin.',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: isDark
@@ -1291,17 +1344,10 @@ class _AttendancePageState extends State<AttendancePage> {
                             ),
                             const SizedBox(height: 12),
                             MadButton(
-                              text: 'Start Check Out',
+                              text: 'View Attendance',
                               icon: LucideIcons.arrowRight,
                               onPressed: () {
-                                setState(() {
-                                  _mode = _AttendanceMode.checkOut;
-                                  _checkoutSelfie = null;
-                                  _checkoutSiteImage = null;
-                                  _checkoutPosition = null;
-                                  _checkoutLocationName = null;
-                                  _checkoutLocationCapturedAt = null;
-                                });
+                                Navigator.pushNamed(context, '/attendance/my');
                               },
                             ),
                           ],

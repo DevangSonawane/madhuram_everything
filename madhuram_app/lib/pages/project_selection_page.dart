@@ -318,6 +318,14 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                             size: ButtonSize.icon,
                           ),
                           MadButton(
+                            icon: LucideIcons.fileSpreadsheet,
+                            text: null,
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/projects/quotes/add'),
+                            variant: ButtonVariant.outline,
+                            size: ButtonSize.icon,
+                          ),
+                          MadButton(
                             icon: LucideIcons.plus,
                             text: null,
                             onPressed: () => _showCreateProjectDialog(),
@@ -397,6 +405,15 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                           text: 'Search',
                           onPressed: () =>
                               Navigator.pushNamed(context, '/projects/quotes/search'),
+                          variant: ButtonVariant.outline,
+                          size: ButtonSize.md,
+                        ),
+                        const SizedBox(width: 8),
+                        MadButton(
+                          icon: LucideIcons.fileSpreadsheet,
+                          text: 'Quotations',
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/projects/quotes/add'),
                           variant: ButtonVariant.outline,
                           size: ButtonSize.md,
                         ),
@@ -508,6 +525,11 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
         label: 'Search',
         icon: LucideIcons.search,
         route: '/projects/quotes/search',
+      ),
+      _ModuleLink(
+        label: 'Quotations',
+        icon: LucideIcons.fileSpreadsheet,
+        route: '/projects/quotes/add',
       ),
     ];
 

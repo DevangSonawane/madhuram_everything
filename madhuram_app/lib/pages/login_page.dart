@@ -20,13 +20,6 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  static const List<(String label, String email, String password)>
-  _demoAccounts = [
-    ('Admin Demo', 'admin@madhuram.com', 'admin123'),
-    ('PM Demo', 'pm@madhuram.com', 'pm123'),
-    ('Devang Demo', 'devang@gmail.com', '123456'),
-  ];
-
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
@@ -136,12 +129,6 @@ class _LoginPageState extends State<LoginPage> {
         setState(() => _isLoading = false);
       }
     }
-  }
-
-  void _fillDemoCredentials(String email, String password) {
-    _emailController.text = email;
-    _passwordController.text = password;
-    setState(() => _error = null);
   }
 
   @override
@@ -478,47 +465,6 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           const SizedBox(height: 16),
 
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? Colors.white.withOpacity(0.04)
-                                  : Colors.black.withOpacity(0.03),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: isDark
-                                    ? Colors.white.withOpacity(0.1)
-                                    : Colors.black.withOpacity(0.08),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Demo Login Credentials',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: isDark
-                                        ? AppTheme.darkForeground
-                                        : AppTheme.lightForeground,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                ..._demoAccounts.map((account) {
-                                  return _buildDemoCredentialTile(
-                                    context,
-                                    isDark: isDark,
-                                    label: account.$1,
-                                    email: account.$2,
-                                    password: account.$3,
-                                  );
-                                }),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
                           // Terms and Privacy
                           Text(
                             'By continuing, you agree to our Terms of Service and Privacy Policy.',
@@ -557,45 +503,6 @@ class _LoginPageState extends State<LoginPage> {
           color: Colors.white,
           fontSize: 14,
           fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDemoCredentialTile(
-    BuildContext context, {
-    required bool isDark,
-    required String label,
-    required String email,
-    required String password,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: _isLoading ? null : () => _fillDemoCredentials(email, password),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                '$label: $email / $password',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark
-                      ? AppTheme.darkMutedForeground
-                      : AppTheme.lightMutedForeground,
-                ),
-              ),
-            ),
-            Text(
-              'Use',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppTheme.primaryColor,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
         ),
       ),
     );

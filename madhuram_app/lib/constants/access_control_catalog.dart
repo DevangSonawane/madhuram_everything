@@ -97,6 +97,37 @@ const accessControlCatalog = <AccessControlPage>[
     ],
   ),
   AccessControlPage(
+    pagePath: '/quotes/add',
+    pageTitle: 'Quotes',
+    category: 'Procurement',
+    description: 'Review quotations and create new ones.',
+    functions: [
+      AccessControlFunction(
+        key: 'quotes.view',
+        label: 'View Quotes',
+        description: 'Open the quotations list.',
+      ),
+      AccessControlFunction(
+        key: 'quotes.create',
+        label: 'Create Quote',
+        description: 'Create new quotations.',
+      ),
+    ],
+  ),
+  AccessControlPage(
+    pagePath: '/quotes/search',
+    pageTitle: 'Search Inventory',
+    category: 'Procurement',
+    description: 'Search inventory items and review their source chain.',
+    functions: [
+      AccessControlFunction(
+        key: 'quotes.search',
+        label: 'Search Inventory',
+        description: 'Search inventory trace records.',
+      ),
+    ],
+  ),
+  AccessControlPage(
     pagePath: '/purchase-requests',
     pageTitle: 'Purchase Requests',
     category: 'Procurement',
