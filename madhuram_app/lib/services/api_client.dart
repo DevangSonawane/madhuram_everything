@@ -7,7 +7,7 @@ import 'auth_storage.dart';
 class ApiClient {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://api.festmate.in',
+    defaultValue: 'https://api.madhuram.enterprises',
   );
 
   /// Global timeout for ALL HTTP requests.

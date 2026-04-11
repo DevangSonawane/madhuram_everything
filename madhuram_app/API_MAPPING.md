@@ -1,7 +1,7 @@
 # API Mapping: React to Flutter
 
 ## Base URL
-`https://api.festmate.in`
+`https://api.madhuram.enterprises`
 
 ## Authentication
 All authenticated endpoints use: `Authorization: Bearer <token>`

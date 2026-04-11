@@ -14,7 +14,7 @@ It also contains API docs/specs, parity trackers, and migration notes to help ke
 - Stack (from `package.json`): React + Vite + Tailwind + Radix UI + Redux Toolkit + React Router
 - Central API wrapper: `Ethernet-CRM-pr-executive-management/client/src/lib/api.js`
 - Notable env vars:
-  - `VITE_API_BASE_URL` (defaults to `https://api.festmate.in`)
+  - `VITE_API_BASE_URL` (defaults to `https://api.madhuram.enterprises`)
   - `VITE_DASHBOARD_WS_URL` (optional; used to build websocket URL)
 
 ### Backend (Express + Sequelize + MySQL)
@@ -29,7 +29,7 @@ It also contains API docs/specs, parity trackers, and migration notes to help ke
 - Central API client: `madhuram_app/lib/services/api_client.dart`
 - Base URL configuration:
   - `ApiClient.baseUrl` uses a compile-time define `API_BASE_URL`
-  - Default: `https://api.festmate.in`
+  - Default: `https://api.madhuram.enterprises`
   - Example run: `flutter run --dart-define=API_BASE_URL=http://localhost:5000`
 - React↔Flutter mapping notes: `madhuram_app/API_MAPPING.md`
 
