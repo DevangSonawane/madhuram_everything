@@ -523,16 +523,53 @@ Update any property of a field. Only send the fields you want to change.
 
 ### 3.4 Deactivate a Field
 
-**`DELETE /api/quotations/fields/:id`**
+**`DELETE /api/quotations/fields/{id}`**
 
-Soft-deletes the field (sets `is_active = false`). The column disappears from `GET /api/quotations/fields` (unless `active_only=false`). Stored values on existing items are preserved in the database.
+Deactivate (soft-delete) a dynamic field definition.
+
+Sets `is_active = false`. Existing stored values are preserved. The column disappears from `GET /api/quotations/fields` (unless `active_only=false`).
+
+#### Path Parameters
+
+| Name | Type | Required | Description |
+|---|---|---:|---|
+| `id` | integer | ✅ | Dynamic field definition id |
+
+#### Example (cURL)
+
+```bash
+curl -X 'DELETE' \
+  'https://<your-server>/api/quotations/fields/3' \
+  -H 'accept: */*'
+```
 
 #### Response `200 OK`
 
 ```json
 {
   "message": "Field deactivated.",
-  "field": { ...field with is_active: false... }
+  "field": {
+    "id": 3,
+    "field_key": "unit",
+    "label": "Unit",
+    "data_type": "text",
+    "description": null,
+    "is_active": false,
+    "sort_order": 3,
+    "created_by": null,
+    "created_at": "2026-04-13T07:11:41.856Z",
+    "updated_at": "2026-04-13T09:25:18.212Z",
+    "field_role": "text",
+    "formula_description": null
+  }
+}
+```
+
+#### Response `404 Not Found`
+
+```json
+{
+  "message": "Field not found"
 }
 ```
 
