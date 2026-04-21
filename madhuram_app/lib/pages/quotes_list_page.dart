@@ -104,7 +104,8 @@ class _QuotesListPageState extends State<QuotesListPage> {
       final result = await ApiClient.getQuotations();
       if (!mounted) return;
       if (result['success'] != true) {
-        final message = result['error']?.toString() ?? 'Unable to load quotations';
+        final message =
+            result['error']?.toString() ?? 'Unable to load quotations';
         setState(() => _error = message);
         if (showToastOnError) {
           showToast(context, message, variant: ToastVariant.error);
@@ -133,10 +134,12 @@ class _QuotesListPageState extends State<QuotesListPage> {
           _resolveProjectId(store.state.project.selectedProject) ??
           store.state.project.selectedProjectId;
 
-      final filtered = (selectedProjectId == null || selectedProjectId.trim().isEmpty)
+      final filtered =
+          (selectedProjectId == null || selectedProjectId.trim().isEmpty)
           ? items
           : items.where((item) {
-              final itemProjectId = item['project_id']?.toString() ??
+              final itemProjectId =
+                  item['project_id']?.toString() ??
                   item['projectId']?.toString() ??
                   item['project_id_fk']?.toString();
               if (itemProjectId == null || itemProjectId.trim().isEmpty) {
@@ -146,10 +149,12 @@ class _QuotesListPageState extends State<QuotesListPage> {
             }).toList();
 
       filtered.sort((a, b) {
-        final aDate = _tryParseDate(a['quotation_date']) ??
+        final aDate =
+            _tryParseDate(a['quotation_date']) ??
             _tryParseDate(a['created_at']) ??
             _tryParseDate(a['updated_at']);
-        final bDate = _tryParseDate(b['quotation_date']) ??
+        final bDate =
+            _tryParseDate(b['quotation_date']) ??
             _tryParseDate(b['created_at']) ??
             _tryParseDate(b['updated_at']);
         final aMillis = aDate?.millisecondsSinceEpoch ?? 0;
@@ -216,16 +221,24 @@ class _QuotesListPageState extends State<QuotesListPage> {
                         Text(
                           'Quotations',
                           style: TextStyle(
-                            fontSize: responsive.value(mobile: 22, tablet: 26, desktop: 28),
+                            fontSize: responsive.value(
+                              mobile: 22,
+                              tablet: 26,
+                              desktop: 28,
+                            ),
                             fontWeight: FontWeight.w800,
-                            color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                            color: isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           'View quotations and open preview. (View-only on mobile)',
                           style: TextStyle(
-                            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
                           ),
                         ),
                       ],
@@ -236,7 +249,9 @@ class _QuotesListPageState extends State<QuotesListPage> {
                     icon: LucideIcons.refreshCw,
                     disabled: _loading,
                     variant: ButtonVariant.outline,
-                    onPressed: _loading ? null : () => _load(showToastOnError: true),
+                    onPressed: _loading
+                        ? null
+                        : () => _load(showToastOnError: true),
                   ),
                 ],
               ),
@@ -249,7 +264,10 @@ class _QuotesListPageState extends State<QuotesListPage> {
                     children: [
                       const Text(
                         'Search',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextField(
@@ -258,18 +276,34 @@ class _QuotesListPageState extends State<QuotesListPage> {
                         decoration: InputDecoration(
                           hintText: 'Search quotation no, project, client...',
                           prefixIcon: const Icon(LucideIcons.search, size: 18),
-                          suffixIcon: _query.trim().isEmpty
-                              ? null
-                              : IconButton(
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _query = '');
-                                  },
-                                  icon: const Icon(LucideIcons.x, size: 18),
-                                ),
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                          suffixIcon: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: _query.trim().isEmpty
+                                ? const SizedBox.shrink()
+                                : IconButton(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _query = '');
+                                    },
+                                    icon: const Icon(LucideIcons.x, size: 18),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints.tightFor(
+                                      width: 40,
+                                      height: 40,
+                                    ),
+                                  ),
+                          ),
                           filled: true,
-                          fillColor: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                              .withValues(alpha: 0.4),
+                          fillColor:
+                              (isDark
+                                      ? AppTheme.darkMuted
+                                      : AppTheme.lightMuted)
+                                  .withValues(alpha: 0.4),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -287,7 +321,10 @@ class _QuotesListPageState extends State<QuotesListPage> {
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        const Icon(LucideIcons.triangleAlert, color: Color(0xFFDC2626)),
+                        const Icon(
+                          LucideIcons.triangleAlert,
+                          color: Color(0xFFDC2626),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(child: Text(_error!)),
                       ],
@@ -304,9 +341,13 @@ class _QuotesListPageState extends State<QuotesListPage> {
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   child: Center(
                     child: Text(
-                      _quotes.isEmpty ? 'No quotations found.' : 'No matching quotations.',
+                      _quotes.isEmpty
+                          ? 'No quotations found.'
+                          : 'No matching quotations.',
                       style: TextStyle(
-                        color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
                       ),
                     ),
                   ),
@@ -320,7 +361,8 @@ class _QuotesListPageState extends State<QuotesListPage> {
                   final clientName = item['client_name']?.toString().trim();
                   final quotationDate = _formatDate(item['quotation_date']);
                   final subtitle = [
-                    if (projectName != null && projectName.isNotEmpty) projectName,
+                    if (projectName != null && projectName.isNotEmpty)
+                      projectName,
                     if (clientName != null && clientName.isNotEmpty) clientName,
                     if (quotationDate != '-') quotationDate,
                   ].join(' • ');
@@ -334,7 +376,8 @@ class _QuotesListPageState extends State<QuotesListPage> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute<void>(
-                                  builder: (_) => QuotesPreviewPage(quotationId: id),
+                                  builder: (_) =>
+                                      QuotesPreviewPage(quotationId: id),
                                 ),
                               );
                             },
@@ -349,11 +392,17 @@ class _QuotesListPageState extends State<QuotesListPage> {
                               height: 40,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
-                                color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                                    .withValues(alpha: 0.55),
+                                color:
+                                    (isDark
+                                            ? AppTheme.darkMuted
+                                            : AppTheme.lightMuted)
+                                        .withValues(alpha: 0.55),
                               ),
                               child: const Center(
-                                child: Icon(LucideIcons.fileSpreadsheet, size: 18),
+                                child: Icon(
+                                  LucideIcons.fileSpreadsheet,
+                                  size: 18,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -375,7 +424,9 @@ class _QuotesListPageState extends State<QuotesListPage> {
                                     subtitle.isEmpty ? '-' : subtitle,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                                      color: isDark
+                                          ? AppTheme.darkMutedForeground
+                                          : AppTheme.lightMutedForeground,
                                     ),
                                   ),
                                   if (!isMobile && id.trim().isNotEmpty) ...[
@@ -384,7 +435,9 @@ class _QuotesListPageState extends State<QuotesListPage> {
                                       'Tap to preview',
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                                        color: isDark
+                                            ? AppTheme.darkMutedForeground
+                                            : AppTheme.lightMutedForeground,
                                       ),
                                     ),
                                   ],

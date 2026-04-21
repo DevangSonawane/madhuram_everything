@@ -65,10 +65,11 @@ class _QuotesSearchPageState extends State<QuotesSearchPage> {
         final seen = <String, Map<String, dynamic>>{};
         for (final row in list.whereType<Map>()) {
           final map = Map<String, dynamic>.from(row);
-          final key = (map['inventory_id'] ??
-                  map['id'] ??
-                  '${map['name']}-${map['brand']}')
-              .toString();
+          final key =
+              (map['inventory_id'] ??
+                      map['id'] ??
+                      '${map['name']}-${map['brand']}')
+                  .toString();
           seen[key] = map;
         }
         setState(() {
@@ -104,7 +105,8 @@ class _QuotesSearchPageState extends State<QuotesSearchPage> {
   String _projectLabel(Map<String, dynamic> row) {
     final name = row['project_name']?.toString();
     if (name != null && name.trim().isNotEmpty) return name;
-    final sameProject = row['same_project'] == true ||
+    final sameProject =
+        row['same_project'] == true ||
         row['same_project']?.toString() == 'true';
     return sameProject ? 'Same project' : 'Other project';
   }
@@ -123,237 +125,263 @@ class _QuotesSearchPageState extends State<QuotesSearchPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Search Inventory',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Search inventory items and verify their source chain.',
+                        style: TextStyle(
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                MadButton(
+                  text: 'Back',
+                  icon: LucideIcons.arrowLeft,
+                  variant: ButtonVariant.outline,
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            MadCard(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Search Inventory',
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+                      'Search',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
-                      'Search inventory items and verify their source chain.',
+                      'Type an item name to search inventory.',
                       style: TextStyle(
                         color: isDark
                             ? AppTheme.darkMutedForeground
                             : AppTheme.lightMutedForeground,
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: 420,
+                      child: TextField(
+                        controller: _queryController,
+                        onChanged: (value) {
+                          _debounce?.cancel();
+                          _debounce = Timer(
+                            const Duration(milliseconds: 350),
+                            () => _runSearch(value),
+                          );
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Search inventory...',
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                          suffixIcon: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: _loading
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                          filled: true,
+                          fillColor:
+                              (isDark
+                                      ? AppTheme.darkMuted
+                                      : AppTheme.lightMuted)
+                                  .withValues(alpha: 0.4),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-              MadButton(
-                text: 'Back',
-                icon: LucideIcons.arrowLeft,
-                variant: ButtonVariant.outline,
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          MadCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Search',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Type an item name to search inventory.',
-                    style: TextStyle(
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: 420,
-                    child: TextField(
-                      controller: _queryController,
-                      onChanged: (value) {
-                        _debounce?.cancel();
-                        _debounce = Timer(
-                          const Duration(milliseconds: 350),
-                          () => _runSearch(value),
-                        );
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Search inventory...',
-                        prefixIcon: const Icon(Icons.search, size: 18),
-                        suffixIcon: _loading
-                            ? const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              )
-                            : null,
-                        filled: true,
-                        fillColor: (isDark
-                                ? AppTheme.darkMuted
-                                : AppTheme.lightMuted)
-                            .withValues(alpha: 0.4),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          MadCard(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 980),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            SizedBox(width: 220, child: Text('Item')),
-                            SizedBox(width: 140, child: Text('Brand')),
-                            SizedBox(width: 120, child: Text('Unit')),
-                            SizedBox(
-                              width: 90,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Text('Qty'),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 130,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Text('Price'),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 180, child: Text('Project')),
-                            SizedBox(width: 240, child: Text('Source Chain')),
-                          ],
-                        ),
-                      ),
-                      if (!_searched)
-                        const SizedBox.shrink()
-                      else if (_loading)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: Text('Searching inventory...'),
-                        )
-                      else if (_items.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: Text('No items found.'),
-                        )
-                      else
-                        ..._items.map((item) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: (isDark
-                                          ? AppTheme.darkBorder
-                                          : AppTheme.lightBorder)
-                                      .withValues(alpha: 0.3),
+            const SizedBox(height: 12),
+            MadCard(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 980),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                (isDark
+                                        ? AppTheme.darkMuted
+                                        : AppTheme.lightMuted)
+                                    .withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              SizedBox(width: 220, child: Text('Item')),
+                              SizedBox(width: 140, child: Text('Brand')),
+                              SizedBox(width: 120, child: Text('Unit')),
+                              SizedBox(
+                                width: 90,
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text('Qty'),
                                 ),
                               ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 220,
-                                  child: Text(
-                                    item['name']?.toString() ?? '-',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                              SizedBox(
+                                width: 130,
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text('Price'),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              SizedBox(width: 180, child: Text('Project')),
+                              SizedBox(width: 240, child: Text('Source Chain')),
+                            ],
+                          ),
+                        ),
+                        if (!_searched)
+                          const SizedBox.shrink()
+                        else if (_loading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Text('Searching inventory...'),
+                          )
+                        else if (_items.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Text('No items found.'),
+                          )
+                        else
+                          ..._items.map((item) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color:
+                                        (isDark
+                                                ? AppTheme.darkBorder
+                                                : AppTheme.lightBorder)
+                                            .withValues(alpha: 0.3),
                                   ),
                                 ),
-                                SizedBox(
-                                  width: 140,
-                                  child: Text(item['brand']?.toString() ?? '-'),
-                                ),
-                                SizedBox(
-                                  width: 120,
-                                  child: Text(item['units']?.toString() ?? '-'),
-                                ),
-                                SizedBox(
-                                  width: 90,
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 220,
                                     child: Text(
-                                      item['available_qty']?.toString() ?? '0',
+                                      item['name']?.toString() ?? '-',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                SizedBox(
-                                  width: 130,
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Text(_priceFor(item)),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                  width: 180,
-                                  child: Text(_projectLabel(item)),
-                                ),
-                                SizedBox(
-                                  width: 240,
-                                  child: Text(
-                                    item['source_chain_label']?.toString() ?? '-',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? AppTheme.darkMutedForeground
-                                          : AppTheme.lightMutedForeground,
+                                  SizedBox(
+                                    width: 140,
+                                    child: Text(
+                                      item['brand']?.toString() ?? '-',
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                    ],
+                                  SizedBox(
+                                    width: 120,
+                                    child: Text(
+                                      item['units']?.toString() ?? '-',
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 90,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        item['available_qty']?.toString() ??
+                                            '0',
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 130,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(_priceFor(item)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  SizedBox(
+                                    width: 180,
+                                    child: Text(_projectLabel(item)),
+                                  ),
+                                  SizedBox(
+                                    width: 240,
+                                    child: Text(
+                                      item['source_chain_label']?.toString() ??
+                                          '-',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark
+                                            ? AppTheme.darkMutedForeground
+                                            : AppTheme.lightMutedForeground,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           ],
         ),
       ),

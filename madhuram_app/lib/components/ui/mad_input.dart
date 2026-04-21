@@ -57,7 +57,9 @@ class MadInput extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+              color: isDark
+                  ? AppTheme.darkForeground
+                  : AppTheme.lightForeground,
             ),
           ),
           const SizedBox(height: 8),
@@ -84,7 +86,10 @@ class MadInput extends StatelessWidget {
             errorText: errorText,
             prefixIcon: prefix,
             suffixIcon: suffix,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
           ),
         ),
       ],
@@ -114,48 +119,86 @@ class MadSearchInput extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return SizedBox(
-      width: width ?? 320,
-      height: 40,
-      child: TextField(
+    InputDecoration decoration({
+      required bool hasText,
+      required VoidCallback? onPressedClear,
+    }) {
+      return InputDecoration(
+        hintText: hintText,
+        prefixIcon: Icon(
+          Icons.search,
+          size: 18,
+          color: isDark
+              ? AppTheme.darkMutedForeground
+              : AppTheme.lightMutedForeground,
+        ),
+        suffixIconConstraints: const BoxConstraints(
+          minWidth: 40,
+          minHeight: 40,
+        ),
+        suffixIcon: SizedBox(
+          width: 40,
+          height: 40,
+          child: hasText
+              ? IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 40,
+                    height: 40,
+                  ),
+                  onPressed: onPressedClear,
+                )
+              : const SizedBox.shrink(),
+        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 0),
+        filled: true,
+        fillColor: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+            .withValues(alpha: 0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(9999),
+          borderSide: const BorderSide(width: 1, color: Colors.transparent),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(9999),
+          borderSide: const BorderSide(width: 1, color: Colors.transparent),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(9999),
+          borderSide: BorderSide(
+            width: 1,
+            color: AppTheme.primaryColor.withValues(alpha: 0.2),
+          ),
+        ),
+      );
+    }
+
+    Widget field({required bool hasText}) {
+      return TextField(
         controller: controller,
         onChanged: onChanged,
         style: const TextStyle(fontSize: 14),
-        decoration: InputDecoration(
-          hintText: hintText,
-          prefixIcon: Icon(
-            Icons.search,
-            size: 18,
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-          ),
-          suffixIcon: controller?.text.isNotEmpty == true
-              ? IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  onPressed: () {
-                    controller?.clear();
-                    onClear?.call();
-                  },
-                )
-              : null,
-          contentPadding: const EdgeInsets.symmetric(vertical: 0),
-          filled: true,
-          fillColor: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(0.5),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(9999),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(9999),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(9999),
-            borderSide: BorderSide(
-              color: AppTheme.primaryColor.withOpacity(0.2),
-            ),
-          ),
+        decoration: decoration(
+          hasText: hasText,
+          onPressedClear: controller == null
+              ? null
+              : () {
+                  controller!.clear();
+                  onClear?.call();
+                },
         ),
-      ),
-    );
+      );
+    }
+
+    final child = controller == null
+        ? field(hasText: false)
+        : ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller!,
+            builder: (context, value, _) {
+              return field(hasText: value.text.isNotEmpty);
+            },
+          );
+
+    return SizedBox(width: width ?? 320, height: 40, child: child);
   }
 }

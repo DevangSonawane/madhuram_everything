@@ -82,8 +82,9 @@ class _LoginPageState extends State<LoginPage> {
               accessResult['data'] is Map<String, dynamic>) {
             resolvedUser = AccessControlStore.resolveUserAccessControl(
               user,
-              accessControl:
-                  Map<String, dynamic>.from(accessResult['data'] as Map),
+              accessControl: Map<String, dynamic>.from(
+                accessResult['data'] as Map,
+              ),
             );
           } else {
             resolvedUser = AccessControlStore.resolveUserAccessControl(user);
@@ -271,215 +272,219 @@ class _LoginPageState extends State<LoginPage> {
                   ? AppTheme.darkBackground
                   : AppTheme.lightBackground,
               child: SafeArea(
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.all(
-                      responsive.value(mobile: 20, tablet: 28, desktop: 32),
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: responsive.value(
-                          mobile: 360,
-                          tablet: 380,
-                          desktop: 400,
-                        ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.all(
+                        responsive.value(mobile: 20, tablet: 28, desktop: 32),
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Mobile logo
-                          if (!isWide) ...[
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: responsive.value(
+                              mobile: 360,
+                              tablet: 380,
+                              desktop: 400,
+                            ),
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Align(
+                            alignment: Alignment.center,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor,
-                                    borderRadius: BorderRadius.circular(12),
+                                if (!isWide) ...[
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primaryColor,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          LucideIcons.package2,
+                                          color: Colors.white,
+                                          size: 28,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Madhuram',
+                                        style: TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? AppTheme.darkForeground
+                                              : AppTheme.lightForeground,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  child: const Icon(
-                                    LucideIcons.package2,
-                                    color: Colors.white,
-                                    size: 28,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
+                                  const SizedBox(height: 48),
+                                ],
                                 Text(
-                                  'Madhuram',
+                                  'Welcome back',
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    fontSize: 28,
+                                    fontSize: responsive.value(
+                                      mobile: 24,
+                                      tablet: 26,
+                                      desktop: 28,
+                                    ),
                                     fontWeight: FontWeight.bold,
                                     color: isDark
                                         ? AppTheme.darkForeground
                                         : AppTheme.lightForeground,
                                   ),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 48),
-                          ],
-
-                          // Welcome text
-                          Text(
-                            'Welcome back',
-                            style: TextStyle(
-                              fontSize: responsive.value(
-                                mobile: 24,
-                                tablet: 26,
-                                desktop: 28,
-                              ),
-                              fontWeight: FontWeight.bold,
-                              color: isDark
-                                  ? AppTheme.darkForeground
-                                  : AppTheme.lightForeground,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Enter your credentials to access your account',
-                            style: TextStyle(
-                              fontSize: responsive.value(
-                                mobile: 13,
-                                tablet: 13,
-                                desktop: 14,
-                              ),
-                              color: isDark
-                                  ? AppTheme.darkMutedForeground
-                                  : AppTheme.lightMutedForeground,
-                            ),
-                          ),
-                          SizedBox(
-                            height: responsive.value(
-                              mobile: 24,
-                              tablet: 28,
-                              desktop: 32,
-                            ),
-                          ),
-
-                          // Error message
-                          if (_error != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: Colors.red.withOpacity(0.3),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.error_outline,
-                                    color: Colors.red,
-                                    size: 18,
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Enter your credentials to access your account',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: responsive.value(
+                                      mobile: 13,
+                                      tablet: 13,
+                                      desktop: 14,
+                                    ),
+                                    color: isDark
+                                        ? AppTheme.darkMutedForeground
+                                        : AppTheme.lightMutedForeground,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _error!,
-                                      style: const TextStyle(
-                                        color: Colors.red,
-                                        fontSize: 14,
+                                ),
+                                SizedBox(
+                                  height: responsive.value(
+                                    mobile: 24,
+                                    tablet: 28,
+                                    desktop: 32,
+                                  ),
+                                ),
+                                if (_error != null) ...[
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.red.withOpacity(0.3),
                                       ),
                                     ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.error_outline,
+                                          color: Colors.red,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            _error!,
+                                            style: const TextStyle(
+                                              color: Colors.red,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
+                                  const SizedBox(height: 24),
                                 ],
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                          ],
-
-                          // Email field
-                          MadInput(
-                            controller: _emailController,
-                            labelText: 'Email',
-                            hintText: 'Enter your email',
-                            keyboardType: TextInputType.emailAddress,
-                            prefix: Icon(
-                              LucideIcons.mail,
-                              size: 18,
-                              color: isDark
-                                  ? AppTheme.darkMutedForeground
-                                  : AppTheme.lightMutedForeground,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Password field
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Password',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark
-                                      ? AppTheme.darkForeground
-                                      : AppTheme.lightForeground,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: _passwordController,
-                                obscureText: !_showPassword,
-                                decoration: InputDecoration(
-                                  hintText: 'Enter your password',
-                                  prefixIcon: Icon(
-                                    LucideIcons.lock,
+                                MadInput(
+                                  controller: _emailController,
+                                  labelText: 'Email',
+                                  hintText: 'Enter your email',
+                                  keyboardType: TextInputType.emailAddress,
+                                  prefix: Icon(
+                                    LucideIcons.mail,
                                     size: 18,
                                     color: isDark
                                         ? AppTheme.darkMutedForeground
                                         : AppTheme.lightMutedForeground,
                                   ),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _showPassword
-                                          ? LucideIcons.eyeOff
-                                          : LucideIcons.eye,
-                                      size: 18,
-                                      color: isDark
-                                          ? AppTheme.darkMutedForeground
-                                          : AppTheme.lightMutedForeground,
+                                ),
+                                const SizedBox(height: 16),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Password',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: isDark
+                                            ? AppTheme.darkForeground
+                                            : AppTheme.lightForeground,
+                                      ),
                                     ),
-                                    onPressed: () => setState(
-                                      () => _showPassword = !_showPassword,
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: _passwordController,
+                                      obscureText: !_showPassword,
+                                      decoration: InputDecoration(
+                                        hintText: 'Enter your password',
+                                        prefixIcon: Icon(
+                                          LucideIcons.lock,
+                                          size: 18,
+                                          color: isDark
+                                              ? AppTheme.darkMutedForeground
+                                              : AppTheme.lightMutedForeground,
+                                        ),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(
+                                            _showPassword
+                                                ? LucideIcons.eyeOff
+                                                : LucideIcons.eye,
+                                            size: 18,
+                                            color: isDark
+                                                ? AppTheme.darkMutedForeground
+                                                : AppTheme.lightMutedForeground,
+                                          ),
+                                          onPressed: () => setState(
+                                            () =>
+                                                _showPassword = !_showPassword,
+                                          ),
+                                        ),
+                                      ),
+                                      onSubmitted: (_) => _login(),
                                     ),
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+                                MadButton(
+                                  text: 'Sign in',
+                                  onPressed: _isLoading ? null : _login,
+                                  loading: _isLoading,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'By continuing, you agree to our Terms of Service and Privacy Policy.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark
+                                        ? AppTheme.darkMutedForeground
+                                        : AppTheme.lightMutedForeground,
                                   ),
                                 ),
-                                onSubmitted: (_) => _login(),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Login button
-                          MadButton(
-                            text: 'Sign in',
-                            onPressed: _isLoading ? null : _login,
-                            loading: _isLoading,
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Terms and Privacy
-                          Text(
-                            'By continuing, you agree to our Terms of Service and Privacy Policy.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark
-                                  ? AppTheme.darkMutedForeground
-                                  : AppTheme.lightMutedForeground,
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
             ),
