@@ -65,6 +65,7 @@ const menuItems = <MenuItem>[
     route: '/boq',
     category: _projectManagement,
     icon: LucideIcons.clipboardList,
+    hidden: true,
   ),
   // MenuItem(
   //   title: 'MAS',

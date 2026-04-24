@@ -302,14 +302,6 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                             size: ButtonSize.icon,
                           ),
                           MadButton(
-                            icon: LucideIcons.boxes,
-                            text: null,
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/inventory/add'),
-                            variant: ButtonVariant.outline,
-                            size: ButtonSize.icon,
-                          ),
-                          MadButton(
                             icon: LucideIcons.search,
                             text: null,
                             onPressed: () =>
@@ -387,15 +379,6 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                           text: 'Vendors',
                           onPressed: () =>
                               Navigator.pushNamed(context, '/vendors'),
-                          variant: ButtonVariant.outline,
-                          size: ButtonSize.md,
-                        ),
-                        const SizedBox(width: 8),
-                        MadButton(
-                          icon: LucideIcons.boxes,
-                          text: 'Add Inventory',
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/inventory/add'),
                           variant: ButtonVariant.outline,
                           size: ButtonSize.md,
                         ),
@@ -515,11 +498,6 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
         label: 'Vendors',
         icon: LucideIcons.store,
         route: '/vendors',
-      ),
-      _ModuleLink(
-        label: 'Add Inventory',
-        icon: LucideIcons.packagePlus,
-        route: '/projects/inventory/add',
       ),
       _ModuleLink(
         label: 'Search',

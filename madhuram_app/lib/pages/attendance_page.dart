@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
@@ -50,21 +52,97 @@ class _AttendancePageState extends State<AttendancePage> {
     _syncUserContext();
   }
 
+  Future<XFile?> _pickCameraImage({
+    CameraDevice? preferredCameraDevice,
+    required String label,
+    bool fallbackToAnyCamera = false,
+  }) async {
+    try {
+      final cameraStatus = await Permission.camera.request();
+      if (!cameraStatus.isGranted) {
+        if (!mounted) return null;
+        showToast(
+          context,
+          'Camera permission is required to capture $label.',
+          variant: ToastVariant.error,
+          actionLabel: cameraStatus.isPermanentlyDenied ? 'Open Settings' : null,
+          action: cameraStatus.isPermanentlyDenied ? openAppSettings : null,
+        );
+        return null;
+      }
+
+      final XFile? photo;
+      if (preferredCameraDevice == null) {
+        photo = await _picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 85,
+        );
+      } else {
+        photo = await _picker.pickImage(
+          source: ImageSource.camera,
+          preferredCameraDevice: preferredCameraDevice,
+          imageQuality: 85,
+        );
+      }
+      return photo;
+    } on PlatformException catch (e) {
+      debugPrint('[Attendance] pickImage failed ($label): ${e.code} ${e.message}');
+      if (fallbackToAnyCamera && preferredCameraDevice != null) {
+        try {
+          final fallback = await _picker.pickImage(
+            source: ImageSource.camera,
+            imageQuality: 85,
+          );
+          return fallback;
+        } on PlatformException catch (fallbackError) {
+          debugPrint(
+            '[Attendance] pickImage fallback failed ($label): ${fallbackError.code} ${fallbackError.message}',
+          );
+        } catch (fallbackError) {
+          debugPrint('[Attendance] pickImage fallback failed ($label): $fallbackError');
+        }
+      }
+
+      if (!mounted) return null;
+      final message = switch (e.code) {
+        'camera_access_denied' || 'camera_access_restricted' =>
+          'Camera permission was denied.',
+        'no_available_camera' => 'No camera found on this device.',
+        _ => 'Unable to open camera. Please try again.',
+      };
+      showToast(
+        context,
+        message,
+        description: e.message,
+        variant: ToastVariant.error,
+      );
+      return null;
+    } catch (e) {
+      debugPrint('[Attendance] pickImage failed ($label): $e');
+      if (!mounted) return null;
+      showToast(
+        context,
+        'Unable to open camera. Please try again.',
+        variant: ToastVariant.error,
+      );
+      return null;
+    }
+  }
+
   Future<void> _captureSelfie() async {
-    final photo = await _picker.pickImage(
-      source: ImageSource.camera,
+    final photo = await _pickCameraImage(
       preferredCameraDevice: CameraDevice.front,
-      imageQuality: 85,
+      label: 'selfie',
+      fallbackToAnyCamera: true,
     );
     if (photo == null) return;
     setState(() => _selfie = File(photo.path));
   }
 
   Future<void> _captureSiteImage() async {
-    final photo = await _picker.pickImage(
-      source: ImageSource.camera,
+    final photo = await _pickCameraImage(
       preferredCameraDevice: CameraDevice.rear,
-      imageQuality: 85,
+      label: 'site photo',
     );
     if (photo == null) return;
     setState(() => _siteImage = File(photo.path));
@@ -583,20 +661,19 @@ class _AttendancePageState extends State<AttendancePage> {
   }
 
   Future<void> _captureCheckoutSelfie() async {
-    final photo = await _picker.pickImage(
-      source: ImageSource.camera,
+    final photo = await _pickCameraImage(
       preferredCameraDevice: CameraDevice.front,
-      imageQuality: 85,
+      label: 'checkout selfie',
+      fallbackToAnyCamera: true,
     );
     if (photo == null) return;
     setState(() => _checkoutSelfie = File(photo.path));
   }
 
   Future<void> _captureCheckoutSiteImage() async {
-    final photo = await _picker.pickImage(
-      source: ImageSource.camera,
+    final photo = await _pickCameraImage(
       preferredCameraDevice: CameraDevice.rear,
-      imageQuality: 85,
+      label: 'checkout site photo',
     );
     if (photo == null) return;
     setState(() => _checkoutSiteImage = File(photo.path));
