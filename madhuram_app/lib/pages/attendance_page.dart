@@ -1,3 +1,13 @@
+// CAMERA COMPATIBILITY NOTE:
+// Requires image_picker >= 0.8.9 for stable Android camera device selection.
+// If camera fails on any device, first check pubspec.yaml:
+//   image_picker: ^0.8.9  (or latest)
+// Known problematic devices: Motorola Edge series (MediaTek), Xiaomi MIUI 14+,
+// Realme UI 4+, some Samsung One UI 6 builds.
+// Root cause: preferredCameraDevice uses EXTRA_CAMERA_FACING which is non-standard
+// and may be ignored by manufacturer camera HALs.
+
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -24,7 +34,8 @@ class AttendancePage extends StatefulWidget {
   State<AttendancePage> createState() => _AttendancePageState();
 }
 
-class _AttendancePageState extends State<AttendancePage> {
+class _AttendancePageState extends State<AttendancePage>
+    with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   File? _selfie;
   File? _siteImage;
@@ -45,6 +56,59 @@ class _AttendancePageState extends State<AttendancePage> {
   bool _submitting = false;
   bool _checkoutSubmitting = false;
   _AttendanceMode _mode = _AttendanceMode.select;
+  PermissionStatus? _lastCameraPermissionStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshCameraPermissionStatus());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _refreshCameraPermissionStatus() async {
+    try {
+      final status = await Permission.camera.status;
+      if (!mounted) {
+        _lastCameraPermissionStatus = status;
+        return;
+      }
+      setState(() => _lastCameraPermissionStatus = status);
+    } catch (e) {
+      debugPrint('[Attendance] Failed to read camera permission status: $e');
+    }
+  }
+
+  Future<void> _handleCameraPermissionOnResume() async {
+    try {
+      final status = await Permission.camera.status;
+      final previouslyDenied =
+          _lastCameraPermissionStatus != null &&
+          !_lastCameraPermissionStatus!.isGranted;
+      if (!mounted) {
+        _lastCameraPermissionStatus = status;
+        return;
+      }
+      if (status.isGranted && previouslyDenied) {
+        setState(() => _lastCameraPermissionStatus = status);
+      } else {
+        _lastCameraPermissionStatus = status;
+      }
+    } catch (e) {
+      debugPrint('[Attendance] Failed to re-check camera permission: $e');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_handleCameraPermissionOnResume());
+  }
 
   @override
   void didChangeDependencies() {
@@ -57,13 +121,22 @@ class _AttendancePageState extends State<AttendancePage> {
     required String label,
     bool fallbackToAnyCamera = false,
   }) async {
+    PlatformException? lastPlatformError;
+    Object? lastUnknownError;
     try {
       final cameraStatus = await Permission.camera.request();
+      if (mounted) {
+        setState(() => _lastCameraPermissionStatus = cameraStatus);
+      } else {
+        _lastCameraPermissionStatus = cameraStatus;
+      }
       if (!cameraStatus.isGranted) {
         if (!mounted) return null;
         showToast(
           context,
-          'Camera permission is required to capture $label.',
+          cameraStatus.isPermanentlyDenied
+              ? "Camera permission denied. Tap 'Open Settings' to enable it."
+              : 'Camera permission is required to capture $label.',
           variant: ToastVariant.error,
           actionLabel: cameraStatus.isPermanentlyDenied ? 'Open Settings' : null,
           action: cameraStatus.isPermanentlyDenied ? openAppSettings : null,
@@ -71,62 +144,117 @@ class _AttendancePageState extends State<AttendancePage> {
         return null;
       }
 
-      final XFile? photo;
-      if (preferredCameraDevice == null) {
-        photo = await _picker.pickImage(
-          source: ImageSource.camera,
-          imageQuality: 85,
-        );
-      } else {
-        photo = await _picker.pickImage(
-          source: ImageSource.camera,
-          preferredCameraDevice: preferredCameraDevice,
-          imageQuality: 85,
-        );
-      }
-      return photo;
-    } on PlatformException catch (e) {
-      debugPrint('[Attendance] pickImage failed ($label): ${e.code} ${e.message}');
-      if (fallbackToAnyCamera && preferredCameraDevice != null) {
+      // Tier 1: Try with preferredCameraDevice (if provided).
+      if (preferredCameraDevice != null) {
         try {
-          final fallback = await _picker.pickImage(
+          return await _picker.pickImage(
             source: ImageSource.camera,
+            preferredCameraDevice: preferredCameraDevice,
             imageQuality: 85,
           );
-          return fallback;
-        } on PlatformException catch (fallbackError) {
+        } on PlatformException catch (e) {
+          lastPlatformError = e;
+          // Preserve existing logs.
+          debugPrint('[Attendance] pickImage failed ($label): ${e.code} ${e.message}');
           debugPrint(
-            '[Attendance] pickImage fallback failed ($label): ${fallbackError.code} ${fallbackError.message}',
+            '[Attendance] pickImage failed tier 1 ($label): ${e.code} ${e.message}',
           );
-        } catch (fallbackError) {
-          debugPrint('[Attendance] pickImage fallback failed ($label): $fallbackError');
+          if (!fallbackToAnyCamera) {
+            // Fall through to the final error toast below.
+          } else {
+            // Continue to Tier 2.
+          }
+        } catch (e) {
+          lastUnknownError = e;
+          debugPrint('[Attendance] pickImage failed tier 1 ($label): $e');
+          if (!fallbackToAnyCamera) {
+            // Fall through to the final error toast below.
+          } else {
+            // Continue to Tier 2.
+          }
         }
       }
 
-      if (!mounted) return null;
-      final message = switch (e.code) {
-        'camera_access_denied' || 'camera_access_restricted' =>
-          'Camera permission was denied.',
-        'no_available_camera' => 'No camera found on this device.',
-        _ => 'Unable to open camera. Please try again.',
-      };
-      showToast(
-        context,
-        message,
-        description: e.message,
-        variant: ToastVariant.error,
-      );
-      return null;
+      final shouldAttemptTier2 = preferredCameraDevice == null || fallbackToAnyCamera;
+      if (shouldAttemptTier2) {
+        // Tier 2: Retry without preferredCameraDevice.
+        try {
+          return await _picker.pickImage(
+            source: ImageSource.camera,
+            imageQuality: 85,
+          );
+        } on PlatformException catch (e) {
+          lastPlatformError = e;
+          // Preserve existing logs.
+          debugPrint('[Attendance] pickImage failed ($label): ${e.code} ${e.message}');
+          if (preferredCameraDevice != null) {
+            debugPrint(
+              '[Attendance] pickImage fallback failed ($label): ${e.code} ${e.message}',
+            );
+          }
+          debugPrint(
+            '[Attendance] pickImage failed tier 2 ($label): ${e.code} ${e.message}',
+          );
+        } catch (e) {
+          lastUnknownError = e;
+          if (preferredCameraDevice != null) {
+            // Preserve existing logs.
+            debugPrint('[Attendance] pickImage fallback failed ($label): $e');
+          }
+          debugPrint('[Attendance] pickImage failed tier 2 ($label): $e');
+        }
+      }
+
+      final shouldAttemptTier3 = preferredCameraDevice == null || fallbackToAnyCamera;
+      if (shouldAttemptTier3) {
+        // Tier 3: Bare minimum camera intent (no extra params at all).
+        try {
+          return await _picker.pickImage(source: ImageSource.camera);
+        } on PlatformException catch (e) {
+          lastPlatformError = e;
+          debugPrint(
+            '[Attendance] pickImage failed ($label): ${e.code} ${e.message}',
+          );
+          debugPrint(
+            '[Attendance] pickImage failed tier 3 ($label): ${e.code} ${e.message}',
+          );
+        } catch (e) {
+          lastUnknownError = e;
+          debugPrint('[Attendance] pickImage failed tier 3 ($label): $e');
+        }
+      }
+
+      // Fall through to error toast after all tiers fail.
     } catch (e) {
+      lastUnknownError = e;
       debugPrint('[Attendance] pickImage failed ($label): $e');
-      if (!mounted) return null;
-      showToast(
-        context,
-        'Unable to open camera. Please try again.',
-        variant: ToastVariant.error,
-      );
-      return null;
     }
+
+    if (!mounted) return null;
+    final code = lastPlatformError?.code;
+    final rawMessage = lastPlatformError?.message;
+    if (code != null) {
+      debugPrint('[Attendance] Camera open error ($label): $code $rawMessage');
+    } else if (lastUnknownError != null) {
+      debugPrint('[Attendance] Camera open error ($label): $lastUnknownError');
+    }
+    final message = switch (code) {
+      'camera_access_denied' =>
+        "Camera permission denied. Tap 'Open Settings' to enable it.",
+      'camera_access_restricted' => 'Camera access is restricted on this device.',
+      'no_available_camera' => 'No camera was found on this device.',
+      'channel_error' => 'Camera could not be opened. Please restart the app.',
+      _ => 'Camera failed to open. Please try again or restart the app.',
+    };
+    showToast(
+      context,
+      message,
+      description: rawMessage,
+      variant: ToastVariant.error,
+      actionLabel: code == 'camera_access_denied' ? 'Open Settings' : null,
+      action: code == 'camera_access_denied' ? openAppSettings : null,
+    );
+    return null;
   }
 
   Future<void> _captureSelfie() async {
@@ -143,6 +271,7 @@ class _AttendancePageState extends State<AttendancePage> {
     final photo = await _pickCameraImage(
       preferredCameraDevice: CameraDevice.rear,
       label: 'site photo',
+      fallbackToAnyCamera: true,
     );
     if (photo == null) return;
     setState(() => _siteImage = File(photo.path));
@@ -674,6 +803,7 @@ class _AttendancePageState extends State<AttendancePage> {
     final photo = await _pickCameraImage(
       preferredCameraDevice: CameraDevice.rear,
       label: 'checkout site photo',
+      fallbackToAnyCamera: true,
     );
     if (photo == null) return;
     setState(() => _checkoutSiteImage = File(photo.path));
@@ -1010,6 +1140,33 @@ class _AttendancePageState extends State<AttendancePage> {
                     ),
             ),
             const SizedBox(height: 12),
+            if (_lastCameraPermissionStatus ==
+                PermissionStatus.permanentlyDenied) ...[
+              InkWell(
+                onTap: openAppSettings,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.triangleAlert,
+                        size: 16,
+                        color: Color(0xFFF59E0B),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Camera permission denied. Tap here to open Settings.',
+                          style: TextStyle(color: muted, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             MadButton(
               text: 'Capture Photo',
               icon: LucideIcons.camera,
