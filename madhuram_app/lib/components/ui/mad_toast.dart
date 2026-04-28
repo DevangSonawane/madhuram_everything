@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import '../../theme/app_theme.dart';
 
 /// Toast variant
@@ -89,7 +90,9 @@ class _MadToastState extends State<MadToast> {
       child: FadeTransition(
         opacity: widget.animation,
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 400, minWidth: 300),
+          constraints: BoxConstraints(
+            maxWidth: math.min(400, MediaQuery.of(context).size.width - 32),
+          ),
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -311,24 +314,30 @@ class _ToastContainerState extends State<ToastContainer> with TickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final isNarrow = width < 520;
     return Stack(
       children: [
         widget.child,
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 16,
-          right: 16,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: ToastManager().toasts.map((toast) {
-              final controller = _controllers[toast.id];
-              if (controller == null) return const SizedBox.shrink();
+        SafeArea(
+          child: Align(
+            alignment: isNarrow ? Alignment.topCenter : Alignment.topRight,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
+              child: Column(
+                crossAxisAlignment: isNarrow ? CrossAxisAlignment.center : CrossAxisAlignment.end,
+                children: ToastManager().toasts.map((toast) {
+                  final controller = _controllers[toast.id];
+                  if (controller == null) return const SizedBox.shrink();
 
-              return MadToast(
-                toast: toast,
-                animation: controller,
-                onDismiss: () => _dismissToast(toast.id),
-              );
-            }).toList(),
+                  return MadToast(
+                    toast: toast,
+                    animation: controller,
+                    onDismiss: () => _dismissToast(toast.id),
+                  );
+                }).toList(),
+              ),
+            ),
           ),
         ),
       ],

@@ -9,6 +9,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,9 +22,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
+import '../models/project.dart';
 import '../services/api_client.dart';
 import '../services/auth_storage.dart';
 import '../store/app_state.dart';
+import '../store/project_actions.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 
@@ -57,6 +60,67 @@ class _AttendancePageState extends State<AttendancePage>
   bool _checkoutSubmitting = false;
   _AttendanceMode _mode = _AttendanceMode.select;
   PermissionStatus? _lastCameraPermissionStatus;
+  static const double _attendanceAllowedRadiusMeters = 100.0;
+  static const bool _debugGeoFence = true;
+  bool _hydratingProjectLocation = false;
+  String? _hydratedProjectId;
+  Future<void>? _projectHydrationFuture;
+
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return double.tryParse(text);
+  }
+
+  ({double lat, double lng})? _resolveProjectLatLng(Map<String, dynamic>? project) {
+    if (project == null) return null;
+    final locationData = project['location_data'];
+    if (locationData is Map) {
+      final lat = _asDouble(locationData['latitude']);
+      final lng = _asDouble(locationData['longitude']);
+      if (lat != null && lng != null) return (lat: lat, lng: lng);
+    }
+
+    final lat = _asDouble(project['location_latitude']);
+    final lng = _asDouble(project['location_longitude']);
+    if (lat != null && lng != null) return (lat: lat, lng: lng);
+
+    final locationText = (project['location_name'] ?? project['location'])?.toString();
+    if (locationText != null && locationText.trim().isNotEmpty) {
+      final match = RegExp(
+        r'lat\s*([+-]?\d+(?:\.\d+)?)\s*[, ]\s*lng\s*([+-]?\d+(?:\.\d+)?)',
+        caseSensitive: false,
+      ).firstMatch(locationText);
+      if (match != null) {
+        final parsedLat = _asDouble(match.group(1));
+        final parsedLng = _asDouble(match.group(2));
+        if (parsedLat != null && parsedLng != null) return (lat: parsedLat, lng: parsedLng);
+      }
+    }
+    return null;
+  }
+
+  double _haversineDistanceMeters({
+    required double lat1,
+    required double lng1,
+    required double lat2,
+    required double lng2,
+  }) {
+    const earthRadius = 6371000.0; // meters
+    final dLat = _degToRad(lat2 - lat1);
+    final dLon = _degToRad(lng2 - lng1);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_degToRad(lat1)) *
+            math.cos(_degToRad(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _degToRad(double deg) => deg * (math.pi / 180.0);
 
   @override
   void initState() {
@@ -114,6 +178,147 @@ class _AttendancePageState extends State<AttendancePage>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _syncUserContext();
+    unawaited(_ensureSelectedProjectHasLocationData());
+  }
+
+  Future<void> _ensureSelectedProjectHasLocationData() async {
+    if (_projectHydrationFuture != null) return _projectHydrationFuture;
+    final store = StoreProvider.of<AppState>(context);
+    final selected = store.state.project.selectedProject;
+    final projectId = selected?['project_id']?.toString() ?? selected?['id']?.toString();
+    if (projectId == null || projectId.trim().isEmpty) return;
+    if (_hydratedProjectId == projectId) return;
+
+    // Fast path: if the full project list is already in Redux, use it without any network call.
+    final cached = store.state.project.projects;
+    if (cached.isNotEmpty) {
+      final match = cached.firstWhere(
+        (p) => (p['project_id']?.toString() ?? p['id']?.toString() ?? '') == projectId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isNotEmpty) {
+        final hydrated = Project.fromJson(match).toMap();
+        final rawLocationData = match['location_data'];
+        if (rawLocationData is Map) {
+          hydrated['location_data'] = Map<String, dynamic>.from(rawLocationData);
+        }
+        final hydratedLatLng = _resolveProjectLatLng(hydrated);
+        if (hydratedLatLng != null) {
+          if (_debugGeoFence) {
+            debugPrint('[Attendance][GeoFence] Hydrated from cached projects projectId=$projectId '
+                'lat=${hydratedLatLng.lat} lng=${hydratedLatLng.lng}');
+          }
+          store.dispatch(SelectProject(hydrated));
+          _hydratedProjectId = projectId;
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+    }
+
+    final existing = _resolveProjectLatLng(selected);
+    if (existing != null) {
+      if (_debugGeoFence) {
+        debugPrint('[Attendance][GeoFence] Selected project already has location_data '
+            'projectId=$projectId lat=${existing.lat} lng=${existing.lng}');
+      }
+      _hydratedProjectId = projectId;
+      return;
+    }
+
+    final future = () async {
+      _hydratingProjectLocation = true;
+    if (_debugGeoFence) {
+      debugPrint('[Attendance][GeoFence] Hydrating project location from backend projectId=$projectId '
+          'selectedKeys=${selected?.keys.toList()}');
+    }
+    try {
+      final res = await ApiClient.getProject(projectId).timeout(const Duration(seconds: 6));
+      if (_debugGeoFence) {
+        debugPrint('[Attendance][GeoFence] getProject($projectId) => success=${res['success']} '
+            'dataType=${res['data']?.runtimeType}');
+        final data = res['data'];
+        if (data is Map) {
+          debugPrint('[Attendance][GeoFence] getProject($projectId) keys=${data.keys.toList()} '
+              'location_data=${data['location_data']?.runtimeType}');
+        }
+      }
+      if (res['success'] == true && res['data'] is Map<String, dynamic>) {
+        final data = Map<String, dynamic>.from(res['data'] as Map);
+        final hydrated = Project.fromJson(data).toMap();
+        final rawLocationData = data['location_data'];
+        if (rawLocationData is Map) {
+          hydrated['location_data'] = Map<String, dynamic>.from(rawLocationData);
+        }
+        if (_debugGeoFence) {
+          final hydratedLatLng = _resolveProjectLatLng(hydrated);
+          debugPrint('[Attendance][GeoFence] Hydrated project map keys=${hydrated.keys.toList()} '
+              'latLng=${hydratedLatLng == null ? 'null' : '${hydratedLatLng.lat},${hydratedLatLng.lng}'}');
+        }
+        final hydratedLatLng = _resolveProjectLatLng(hydrated);
+        if (hydratedLatLng != null) {
+          store.dispatch(SelectProject(hydrated));
+          _hydratedProjectId = projectId;
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+
+      // Fallback: some deployments return full `location_data` only in the project list.
+      // If Redux already has projects, don't refetch the whole list again.
+      if (store.state.project.projects.isNotEmpty) return;
+
+      final listRes = await ApiClient.getProjects().timeout(const Duration(seconds: 8));
+      if (_debugGeoFence) {
+        debugPrint('[Attendance][GeoFence] getProjects() fallback => success=${listRes['success']} '
+            'dataType=${listRes['data']?.runtimeType}');
+      }
+      if (listRes['success'] == true && listRes['data'] is List) {
+        final list = (listRes['data'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        // Cache for subsequent pages / fast-path hydration.
+        store.dispatch(FetchProjectsSuccess(list));
+        final match = list.firstWhere(
+          (p) =>
+              (p['project_id']?.toString() ?? p['id']?.toString() ?? '') == projectId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isNotEmpty) {
+          final hydrated = Project.fromJson(match).toMap();
+          final rawLocationData = match['location_data'];
+          if (rawLocationData is Map) {
+            hydrated['location_data'] = Map<String, dynamic>.from(rawLocationData);
+          }
+          final hydratedLatLng = _resolveProjectLatLng(hydrated);
+          if (_debugGeoFence) {
+            debugPrint('[Attendance][GeoFence] getProjects() hydrated keys=${hydrated.keys.toList()} '
+                'latLng=${hydratedLatLng == null ? 'null' : '${hydratedLatLng.lat},${hydratedLatLng.lng}'}');
+          }
+          if (hydratedLatLng != null) {
+            store.dispatch(SelectProject(hydrated));
+            _hydratedProjectId = projectId;
+            if (mounted) setState(() {});
+            return;
+          }
+        }
+      }
+      if (_debugGeoFence) {
+        debugPrint('[Attendance][GeoFence] Hydration finished but still no lat/lng for projectId=$projectId');
+      }
+    } on TimeoutException catch (e) {
+      debugPrint('[Attendance][GeoFence] Hydration timeout projectId=$projectId: $e');
+    } catch (e) {
+      debugPrint('[Attendance] Failed to hydrate project location: $e');
+    } finally {
+      _hydratingProjectLocation = false;
+      _projectHydrationFuture = null;
+    }
+    }();
+
+    _projectHydrationFuture = future;
+    return future;
   }
 
   Future<XFile?> _pickCameraImage({
@@ -319,6 +524,54 @@ class _AttendancePageState extends State<AttendancePage>
         _locationCapturedAt = DateTime.now();
         _locationName = null;
       });
+
+      final store = StoreProvider.of<AppState>(context);
+      final project = store.state.project.selectedProject;
+      final projectLatLng = _resolveProjectLatLng(project);
+      if (projectLatLng == null) {
+        unawaited(_ensureSelectedProjectHasLocationData());
+        if (!_hydratingProjectLocation) {
+          showToast(
+            context,
+            'Project location is not configured. Please contact admin.',
+            variant: ToastVariant.error,
+          );
+        }
+      } else {
+        final distanceMeters = _haversineDistanceMeters(
+          lat1: position.latitude,
+          lng1: position.longitude,
+          lat2: projectLatLng.lat,
+          lng2: projectLatLng.lng,
+        );
+        if (distanceMeters > _attendanceAllowedRadiusMeters) {
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('Outside site radius'),
+                content: Text(
+                  'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.\n\nPlease move within 100m to mark attendance.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('OK'),
+                  ),
+                ],
+              );
+            },
+          );
+        } else {
+          showToast(
+            context,
+            'You are within the site radius.',
+            description: 'Distance: ${distanceMeters.toStringAsFixed(0)}m (≤ 100m)',
+            variant: ToastVariant.success,
+          );
+        }
+      }
+
       _resolveLocationName(position);
     } catch (_) {
       if (mounted) {
@@ -620,6 +873,62 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _submitAttendance() async {
     if (_submitting) return;
 
+    if (_selfie == null || _siteImage == null) {
+      showToast(
+        context,
+        'Capture both selfie and site photo to mark attendance.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    if (_position == null) {
+      showToast(
+        context,
+        'Capture location to mark attendance.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
+    final store = StoreProvider.of<AppState>(context);
+    final project = store.state.project.selectedProject;
+    final projectLatLng = _resolveProjectLatLng(project);
+    if (_debugGeoFence) {
+      debugPrint('[Attendance][GeoFence] Check-in submit: projectId=${project?['project_id'] ?? project?['id']} '
+          'hasLatLng=${projectLatLng != null} '
+          'pos=${_position?.latitude},${_position?.longitude}');
+    }
+    if (projectLatLng == null) {
+      unawaited(_ensureSelectedProjectHasLocationData());
+      showToast(
+        context,
+        _hydratingProjectLocation
+            ? 'Fetching project location… try again in a moment.'
+            : 'Project location is not configured. Please contact admin.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    final distanceMeters = _haversineDistanceMeters(
+      lat1: _position!.latitude,
+      lng1: _position!.longitude,
+      lat2: projectLatLng.lat,
+      lng2: projectLatLng.lng,
+    );
+    if (_debugGeoFence) {
+      debugPrint('[Attendance][GeoFence] Check-in distanceMeters=${distanceMeters.toStringAsFixed(2)} '
+          'allowed=$_attendanceAllowedRadiusMeters');
+    }
+    if (distanceMeters > _attendanceAllowedRadiusMeters) {
+      showToast(
+        context,
+        'Go inside the 100m radius to mark attendance.',
+        description: 'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
     final shouldSubmit = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -644,28 +953,9 @@ class _AttendancePageState extends State<AttendancePage>
 
     if (shouldSubmit != true) return;
 
-    if (_selfie == null || _siteImage == null) {
-      showToast(
-        context,
-        'Capture both selfie and site photo to mark attendance.',
-        variant: ToastVariant.error,
-      );
-      return;
-    }
-    if (_position == null) {
-      showToast(
-        context,
-        'Capture location to mark attendance.',
-        variant: ToastVariant.error,
-      );
-      return;
-    }
-
     setState(() => _submitting = true);
     try {
-      final store = StoreProvider.of<AppState>(context);
       final user = store.state.auth.user;
-      final project = store.state.project.selectedProject;
       final userId = _resolveUserId(user);
       final userName = _resolveUserName(user);
       final userPhone = _resolveUserPhone(user);
@@ -851,6 +1141,54 @@ class _AttendancePageState extends State<AttendancePage>
         _checkoutLocationCapturedAt = DateTime.now();
         _checkoutLocationName = null;
       });
+
+      final store = StoreProvider.of<AppState>(context);
+      final project = store.state.project.selectedProject;
+      final projectLatLng = _resolveProjectLatLng(project);
+      if (projectLatLng == null) {
+        unawaited(_ensureSelectedProjectHasLocationData());
+        if (!_hydratingProjectLocation) {
+          showToast(
+            context,
+            'Project location is not configured. Please contact admin.',
+            variant: ToastVariant.error,
+          );
+        }
+      } else {
+        final distanceMeters = _haversineDistanceMeters(
+          lat1: position.latitude,
+          lng1: position.longitude,
+          lat2: projectLatLng.lat,
+          lng2: projectLatLng.lng,
+        );
+        if (distanceMeters > _attendanceAllowedRadiusMeters) {
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('Outside site radius'),
+                content: Text(
+                  'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.\n\nPlease move within 100m to check out.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('OK'),
+                  ),
+                ],
+              );
+            },
+          );
+        } else {
+          showToast(
+            context,
+            'You are within the site radius.',
+            description: 'Distance: ${distanceMeters.toStringAsFixed(0)}m (≤ 100m)',
+            variant: ToastVariant.success,
+          );
+        }
+      }
+
       _resolveCheckoutLocationName(position);
     } catch (_) {
       if (mounted) {
@@ -898,6 +1236,62 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _submitCheckout() async {
     if (_checkoutSubmitting) return;
     _syncUserContext(force: true);
+    if (_checkoutSelfie == null || _checkoutSiteImage == null) {
+      showToast(
+        context,
+        'Capture both selfie and site photo to check out.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    if (_checkoutPosition == null) {
+      showToast(
+        context,
+        'Capture location to check out.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
+    final store = StoreProvider.of<AppState>(context);
+    final project = store.state.project.selectedProject;
+    final projectLatLng = _resolveProjectLatLng(project);
+    if (_debugGeoFence) {
+      debugPrint('[Attendance][GeoFence] Checkout submit: projectId=${project?['project_id'] ?? project?['id']} '
+          'hasLatLng=${projectLatLng != null} '
+          'pos=${_checkoutPosition?.latitude},${_checkoutPosition?.longitude}');
+    }
+    if (projectLatLng == null) {
+      unawaited(_ensureSelectedProjectHasLocationData());
+      showToast(
+        context,
+        _hydratingProjectLocation
+            ? 'Fetching project location… try again in a moment.'
+            : 'Project location is not configured. Please contact admin.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    final distanceMeters = _haversineDistanceMeters(
+      lat1: _checkoutPosition!.latitude,
+      lng1: _checkoutPosition!.longitude,
+      lat2: projectLatLng.lat,
+      lng2: projectLatLng.lng,
+    );
+    if (_debugGeoFence) {
+      debugPrint('[Attendance][GeoFence] Checkout distanceMeters=${distanceMeters.toStringAsFixed(2)} '
+          'allowed=$_attendanceAllowedRadiusMeters');
+    }
+    if (distanceMeters > _attendanceAllowedRadiusMeters) {
+      showToast(
+        context,
+        'Go inside the 100m radius to check out.',
+        description: 'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+
     final shouldSubmit = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -920,22 +1314,6 @@ class _AttendancePageState extends State<AttendancePage>
       },
     );
     if (shouldSubmit != true) return;
-    if (_checkoutSelfie == null || _checkoutSiteImage == null) {
-      showToast(
-        context,
-        'Capture both selfie and site photo to check out.',
-        variant: ToastVariant.error,
-      );
-      return;
-    }
-    if (_checkoutPosition == null) {
-      showToast(
-        context,
-        'Capture location to check out.',
-        variant: ToastVariant.error,
-      );
-      return;
-    }
 
     setState(() => _checkoutSubmitting = true);
     debugPrint('[Attendance] Checkout submit started');
@@ -954,7 +1332,6 @@ class _AttendancePageState extends State<AttendancePage>
       return;
     }
     try {
-      final store = StoreProvider.of<AppState>(context);
       final user = store.state.auth.user;
       final userId = _resolveUserId(user);
       final userName = _resolveUserName(user);
@@ -1184,6 +1561,25 @@ class _AttendancePageState extends State<AttendancePage>
         ? AppTheme.darkMutedForeground
         : AppTheme.lightMutedForeground;
 
+    final store = StoreProvider.of<AppState>(context);
+    final project = store.state.project.selectedProject;
+    final projectLatLng = _resolveProjectLatLng(project);
+    final distanceMeters = (projectLatLng != null && _position != null)
+        ? _haversineDistanceMeters(
+            lat1: _position!.latitude,
+            lng1: _position!.longitude,
+            lat2: projectLatLng.lat,
+            lng2: projectLatLng.lng,
+          )
+        : null;
+    final withinRadius = distanceMeters != null &&
+        distanceMeters <= _attendanceAllowedRadiusMeters;
+    final distanceColor = distanceMeters == null
+        ? muted
+        : withinRadius
+            ? const Color(0xFF16A34A)
+            : const Color(0xFFDC2626);
+
     final lat = _position?.latitude.toStringAsFixed(6) ?? '-';
     final lng = _position?.longitude.toStringAsFixed(6) ?? '-';
     final timestamp = _locationCapturedAt == null
@@ -1252,6 +1648,17 @@ class _AttendancePageState extends State<AttendancePage>
                     'Captured at: $timestamp',
                     style: TextStyle(color: muted, fontSize: 12),
                   ),
+                  const SizedBox(height: 6),
+                  Text(
+                    distanceMeters == null
+                        ? (projectLatLng == null
+                            ? (_hydratingProjectLocation
+                                ? 'Distance: fetching project location…'
+                                : 'Distance: project location not set')
+                            : 'Distance: capture location to compute')
+                        : 'Distance from site: ${distanceMeters.toStringAsFixed(0)} m',
+                    style: TextStyle(color: distanceColor, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
                 ],
               ),
             ),
@@ -1273,6 +1680,25 @@ class _AttendancePageState extends State<AttendancePage>
     final muted = isDark
         ? AppTheme.darkMutedForeground
         : AppTheme.lightMutedForeground;
+
+    final store = StoreProvider.of<AppState>(context);
+    final project = store.state.project.selectedProject;
+    final projectLatLng = _resolveProjectLatLng(project);
+    final distanceMeters = (projectLatLng != null && _checkoutPosition != null)
+        ? _haversineDistanceMeters(
+            lat1: _checkoutPosition!.latitude,
+            lng1: _checkoutPosition!.longitude,
+            lat2: projectLatLng.lat,
+            lng2: projectLatLng.lng,
+          )
+        : null;
+    final withinRadius = distanceMeters != null &&
+        distanceMeters <= _attendanceAllowedRadiusMeters;
+    final distanceColor = distanceMeters == null
+        ? muted
+        : withinRadius
+            ? const Color(0xFF16A34A)
+            : const Color(0xFFDC2626);
 
     final lat = _checkoutPosition?.latitude.toStringAsFixed(6) ?? '-';
     final lng = _checkoutPosition?.longitude.toStringAsFixed(6) ?? '-';
@@ -1343,6 +1769,17 @@ class _AttendancePageState extends State<AttendancePage>
                     'Captured at: $timestamp',
                     style: TextStyle(color: muted, fontSize: 12),
                   ),
+                  const SizedBox(height: 6),
+                  Text(
+                    distanceMeters == null
+                        ? (projectLatLng == null
+                            ? (_hydratingProjectLocation
+                                ? 'Distance: fetching project location…'
+                                : 'Distance: project location not set')
+                            : 'Distance: capture location to compute')
+                        : 'Distance from site: ${distanceMeters.toStringAsFixed(0)} m',
+                    style: TextStyle(color: distanceColor, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
                 ],
               ),
             ),
@@ -1364,6 +1801,37 @@ class _AttendancePageState extends State<AttendancePage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
+
+    final store = StoreProvider.of<AppState>(context);
+    final selectedProject = store.state.project.selectedProject;
+    final projectLatLng = _resolveProjectLatLng(selectedProject);
+    if (projectLatLng == null) {
+      unawaited(_ensureSelectedProjectHasLocationData());
+    }
+    final canSubmitCheckIn = () {
+      if (_submitting) return false;
+      if (_selfie == null || _siteImage == null || _position == null) return false;
+      if (projectLatLng == null) return false;
+      final d = _haversineDistanceMeters(
+        lat1: _position!.latitude,
+        lng1: _position!.longitude,
+        lat2: projectLatLng.lat,
+        lng2: projectLatLng.lng,
+      );
+      return d <= _attendanceAllowedRadiusMeters;
+    }();
+    final canSubmitCheckOut = () {
+      if (_checkoutSubmitting) return false;
+      if (_checkoutSelfie == null || _checkoutSiteImage == null || _checkoutPosition == null) return false;
+      if (projectLatLng == null) return false;
+      final d = _haversineDistanceMeters(
+        lat1: _checkoutPosition!.latitude,
+        lng1: _checkoutPosition!.longitude,
+        lat2: projectLatLng.lat,
+        lng2: projectLatLng.lng,
+      );
+      return d <= _attendanceAllowedRadiusMeters;
+    }();
 
     return ProtectedRoute(
       title: 'Attendance',
@@ -1553,12 +2021,16 @@ class _AttendancePageState extends State<AttendancePage>
                     width: isMobile ? double.infinity : 320,
                     child: MadCard(
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(LucideIcons.calendarCheck2, size: 24),
-                            const SizedBox(height: 12),
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Icon(
+                              LucideIcons.calendarCheck2,
+                              size: 24,
+                              color: AppTheme.primaryColor,
+                            ),
+                                const SizedBox(height: 12),
                             const Text(
                               'View My Attendance',
                               style: TextStyle(
@@ -1649,7 +2121,7 @@ class _AttendancePageState extends State<AttendancePage>
                       MadButton(
                         text: _checkoutSubmitting ? 'Submitting...' : 'Submit to Admin',
                         icon: LucideIcons.send,
-                        disabled: _checkoutSubmitting,
+                        disabled: !canSubmitCheckOut,
                         onPressed: _submitCheckout,
                       ),
                     ],
@@ -1714,7 +2186,7 @@ class _AttendancePageState extends State<AttendancePage>
                       MadButton(
                         text: _submitting ? 'Submitting...' : 'Submit to Admin',
                         icon: LucideIcons.send,
-                        disabled: _submitting,
+                        disabled: !canSubmitCheckIn,
                         onPressed: _submitAttendance,
                       ),
                     ],

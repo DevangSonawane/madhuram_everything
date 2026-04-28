@@ -26,6 +26,9 @@ import 'theme/app_theme.dart';
 // Animations
 import 'utils/animations.dart';
 
+// UI
+import 'components/ui/components.dart';
+
 // Pages
 import 'pages/login_page.dart';
 import 'pages/project_selection_page.dart';
@@ -266,9 +269,11 @@ class MyApp extends StatelessWidget {
               final mq = MediaQuery.of(context);
               final double current = mq.textScaler.scale(1.0);
               final double clamped = current.clamp(0.85, 1.15);
-              return MediaQuery(
-                data: mq.copyWith(textScaler: TextScaler.linear(clamped)),
-                child: child ?? const SizedBox.shrink(),
+              return ToastContainer(
+                child: MediaQuery(
+                  data: mq.copyWith(textScaler: TextScaler.linear(clamped)),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               );
             },
             home: const AppRouter(),

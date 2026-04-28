@@ -53,6 +53,7 @@ class Project {
   }
 
   Map<String, dynamic> toJson() {
+    final locationData = rawData?['location_data'];
     return {
       'id': id,
       'project_id': id,
@@ -68,6 +69,7 @@ class Project {
       'estimate_value': estimateValue,
       'value': estimateValue,
       'description': description,
+      if (locationData is Map) 'location_data': Map<String, dynamic>.from(locationData),
     };
   }
 
