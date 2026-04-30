@@ -35,6 +35,7 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   bool _isSidebarCollapsed = false;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _redirectInProgress = false;
 
   void _toggleSidebar() {
     setState(() {
@@ -134,40 +135,48 @@ class _MainLayoutState extends State<MainLayout> {
     final responsive = Responsive(context);
 
     return StoreConnector<AppState, _MainLayoutViewModel>(
+      distinct: true,
       converter: (store) => _MainLayoutViewModel(
         isAuthenticated: store.state.auth.isAuthenticated,
         hasSelectedProject: store.state.project.selectedProject != null,
         projectName: store.state.project.selectedProjectName,
         user: store.state.auth.user,
       ),
-      builder: (context, vm) {
-        // Auth check - redirect if not authenticated
+      onInitialBuild: (vm) {
+        if (!mounted) return;
+        if (_redirectInProgress) return;
         if (!vm.isAuthenticated) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              Navigator.pushReplacementNamed(context, '/login');
-            }
-          });
-          return Scaffold(
-            backgroundColor: isDark
-                ? AppTheme.darkBackground
-                : AppTheme.lightBackground,
-            body: const Center(child: CircularProgressIndicator()),
-          );
+          _redirectInProgress = true;
+          Navigator.pushReplacementNamed(context, '/login');
+          return;
+        }
+        if (widget.requireProject && !vm.hasSelectedProject) {
+          _redirectInProgress = true;
+          Navigator.pushReplacementNamed(context, '/projects');
+        }
+      },
+      onWillChange: (prev, next) {
+        if (!mounted) return;
+        if (_redirectInProgress) return;
+
+        if (!next.isAuthenticated) {
+          _redirectInProgress = true;
+          Navigator.pushReplacementNamed(context, '/login');
+          return;
         }
 
-        // Project check - redirect if no project selected
-        if (widget.requireProject && !vm.hasSelectedProject) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              Navigator.pushReplacementNamed(context, '/projects');
-            }
-          });
+        if (widget.requireProject && !next.hasSelectedProject) {
+          _redirectInProgress = true;
+          Navigator.pushReplacementNamed(context, '/projects');
+        }
+      },
+      builder: (context, vm) {
+        if (!vm.isAuthenticated || (widget.requireProject && !vm.hasSelectedProject)) {
           return Scaffold(
             backgroundColor: isDark
                 ? AppTheme.darkBackground
                 : AppTheme.lightBackground,
-            body: const Center(child: CircularProgressIndicator()),
+            body: const SizedBox.shrink(),
           );
         }
 
@@ -221,6 +230,24 @@ class _MainLayoutViewModel {
     this.projectName,
     this.user,
   });
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _MainLayoutViewModel &&
+            isAuthenticated == other.isAuthenticated &&
+            hasSelectedProject == other.hasSelectedProject &&
+            projectName == other.projectName &&
+            user == other.user;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        isAuthenticated,
+        hasSelectedProject,
+        projectName,
+        user,
+      );
 }
 
 /// Protected route wrapper - wraps pages with MainLayout

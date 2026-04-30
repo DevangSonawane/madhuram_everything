@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -1087,11 +1088,19 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
   }
 
   Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(48),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final paddingValue = (constraints.maxHeight.isFinite
+                ? constraints.maxHeight * 0.15
+                : 48.0)
+            .clamp(16.0, 48.0);
+        final smallLayout = constraints.maxHeight.isFinite &&
+            constraints.maxHeight < 260;
+        final gapLg = smallLayout ? 16.0 : 24.0;
+        final gapSm = smallLayout ? 6.0 : 8.0;
+
+        final content = Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               LucideIcons.fileText,
@@ -1102,11 +1111,12 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                           : AppTheme.lightMutedForeground)
                       .withOpacity(0.3),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: gapLg),
             Text(
               _searchQuery.isEmpty
                   ? 'No purchase requests yet'
                   : 'No requests found',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -1115,11 +1125,12 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                     : AppTheme.lightForeground,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: gapSm),
             Text(
               _searchQuery.isEmpty
                   ? 'Create a purchase request to get started'
                   : 'Try a different search term',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: isDark
                     ? AppTheme.darkMutedForeground
@@ -1127,7 +1138,7 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
               ),
             ),
             if (_searchQuery.isEmpty) ...[
-              const SizedBox(height: 24),
+              SizedBox(height: gapLg),
               MadButton(
                 text: 'New Request',
                 icon: LucideIcons.plus,
@@ -1143,26 +1154,49 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
               ),
             ],
           ],
-        ),
-      ),
+        );
+
+        final minHeight = constraints.maxHeight.isFinite
+            ? math.max(0.0, constraints.maxHeight - paddingValue * 2)
+            : 0.0;
+
+        return Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(paddingValue),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(child: content),
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildErrorState(bool isDark, String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(48),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final paddingValue = (constraints.maxHeight.isFinite
+                ? constraints.maxHeight * 0.15
+                : 48.0)
+            .clamp(16.0, 48.0);
+        final smallLayout = constraints.maxHeight.isFinite &&
+            constraints.maxHeight < 260;
+        final gapLg = smallLayout ? 16.0 : 24.0;
+        final gapSm = smallLayout ? 6.0 : 8.0;
+
+        final content = Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.error_outline,
               size: 64,
               color: Colors.red.withOpacity(0.5),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: gapLg),
             Text(
               'Failed to load purchase requests',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -1171,7 +1205,7 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                     : AppTheme.lightForeground,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: gapSm),
             Text(
               message,
               style: TextStyle(
@@ -1181,15 +1215,29 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: gapLg),
             MadButton(
               text: 'Retry',
               icon: LucideIcons.refreshCw,
               onPressed: _loadRequests,
             ),
           ],
-        ),
-      ),
+        );
+
+        final minHeight = constraints.maxHeight.isFinite
+            ? math.max(0.0, constraints.maxHeight - paddingValue * 2)
+            : 0.0;
+
+        return Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(paddingValue),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Center(child: content),
+            ),
+          ),
+        );
+      },
     );
   }
 

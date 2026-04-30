@@ -605,6 +605,7 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, _SamplesViewModel>(
+      distinct: true,
       converter: (store) => _SamplesViewModel.fromStore(store),
       onInit: (store) {
         final vm = _SamplesViewModel.fromStore(store);
@@ -1923,4 +1924,13 @@ class _SamplesViewModel {
         '';
     return _SamplesViewModel(projectId: projectId);
   }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _SamplesViewModel && projectId == other.projectId;
+  }
+
+  @override
+  int get hashCode => projectId.hashCode;
 }

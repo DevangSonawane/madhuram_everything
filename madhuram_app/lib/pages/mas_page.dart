@@ -72,6 +72,7 @@ class _MASPageFullState extends State<MASPageFull> {
     final isMobile = responsive.isMobile;
 
     return StoreConnector<AppState, _MASViewModel>(
+      distinct: true,
       converter: (store) => _MASViewModel(
         projects: store.state.project.projects,
         selectedProjectId: store.state.project.selectedProjectId,
@@ -536,4 +537,15 @@ class _MASViewModel {
     required this.projects,
     required this.selectedProjectId,
   });
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _MASViewModel &&
+            projects == other.projects &&
+            selectedProjectId == other.selectedProjectId;
+  }
+
+  @override
+  int get hashCode => Object.hash(projects, selectedProjectId);
 }

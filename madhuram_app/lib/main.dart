@@ -245,17 +245,18 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return StoreProvider<AppState>(
       store: store,
-      child: StoreConnector<AppState, ThemeState>(
-        converter: (store) => store.state.theme,
-        builder: (context, themeState) {
+      child: StoreConnector<AppState, AppThemeMode>(
+        distinct: true,
+        converter: (store) => store.state.theme.mode,
+        builder: (context, themeMode) {
           // Determine actual theme mode
           final platformBrightness =
               WidgetsBinding.instance.platformDispatcher.platformBrightness;
-          final effectiveTheme = themeState.mode == AppThemeMode.system
+          final effectiveTheme = themeMode == AppThemeMode.system
               ? (platformBrightness == Brightness.dark
                     ? AppThemeMode.dark
                     : AppThemeMode.light)
-              : themeState.mode;
+              : themeMode;
 
           return MaterialApp(
             title: 'Madhuram',
@@ -522,6 +523,7 @@ class AppRouter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, _AppRouterViewModel>(
+      distinct: true,
       converter: (store) => _AppRouterViewModel(
         isAuthenticated: store.state.auth.isAuthenticated,
         hasSelectedProject: store.state.project.selectedProject != null,
@@ -549,4 +551,15 @@ class _AppRouterViewModel {
     required this.isAuthenticated,
     required this.hasSelectedProject,
   });
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _AppRouterViewModel &&
+            isAuthenticated == other.isAuthenticated &&
+            hasSelectedProject == other.hasSelectedProject;
+  }
+
+  @override
+  int get hashCode => Object.hash(isAuthenticated, hasSelectedProject);
 }

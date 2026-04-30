@@ -1574,6 +1574,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
     final responsive = Responsive(context);
 
     return StoreConnector<AppState, _VendorsViewModel>(
+      distinct: true,
       converter: (store) =>
           _VendorsViewModel(projectId: store.state.project.selectedProjectId),
       builder: (context, vm) {
@@ -1620,4 +1621,13 @@ class _VendorsViewModel {
   final String? projectId;
 
   const _VendorsViewModel({required this.projectId});
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _VendorsViewModel && projectId == other.projectId;
+  }
+
+  @override
+  int get hashCode => projectId.hashCode;
 }

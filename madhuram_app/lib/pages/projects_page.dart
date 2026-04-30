@@ -116,6 +116,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
     final isMobile = responsive.isMobile;
 
     return StoreConnector<AppState, _ProjectsViewModel>(
+      distinct: true,
       converter: (store) => _ProjectsViewModel(
         isAdmin: store.state.auth.isAdmin,
         userRole: store.state.auth.userRole,
@@ -568,4 +569,15 @@ class _ProjectsViewModel {
   _ProjectsViewModel({required this.isAdmin, this.userRole});
 
   bool get canDelete => isAdmin || userRole == 'project_manager';
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _ProjectsViewModel &&
+            isAdmin == other.isAdmin &&
+            userRole == other.userRole;
+  }
+
+  @override
+  int get hashCode => Object.hash(isAdmin, userRole);
 }

@@ -25,6 +25,7 @@ import '../components/ui/components.dart';
 import '../models/project.dart';
 import '../services/api_client.dart';
 import '../services/auth_storage.dart';
+import '../services/file_service.dart';
 import '../store/app_state.dart';
 import '../store/project_actions.dart';
 import '../theme/app_theme.dart';
@@ -352,11 +353,25 @@ class _AttendancePageState extends State<AttendancePage>
       // Tier 1: Try with preferredCameraDevice (if provided).
       if (preferredCameraDevice != null) {
         try {
-          return await _picker.pickImage(
+          final startedAt = DateTime.now();
+          final picked = await _picker.pickImage(
             source: ImageSource.camera,
             preferredCameraDevice: preferredCameraDevice,
             imageQuality: 85,
           );
+          if (picked != null) return picked;
+
+          // Some OEM camera apps return `null` even after taking a photo when
+          // non-standard extras (like preferredCameraDevice) are provided.
+          // Only fall back automatically when it looks like the user actually
+          // spent time in the camera UI (avoid re-opening camera on cancel).
+          final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+          debugPrint(
+            '[Attendance] pickImage returned null (tier 1, $label) elapsedMs=$elapsedMs preferred=$preferredCameraDevice',
+          );
+          if (!fallbackToAnyCamera || elapsedMs < 1200) {
+            return null;
+          }
         } on PlatformException catch (e) {
           lastPlatformError = e;
           // Preserve existing logs.
@@ -384,10 +399,20 @@ class _AttendancePageState extends State<AttendancePage>
       if (shouldAttemptTier2) {
         // Tier 2: Retry without preferredCameraDevice.
         try {
-          return await _picker.pickImage(
+          final startedAt = DateTime.now();
+          final picked = await _picker.pickImage(
             source: ImageSource.camera,
             imageQuality: 85,
           );
+          if (picked != null) return picked;
+
+          final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+          debugPrint(
+            '[Attendance] pickImage returned null (tier 2, $label) elapsedMs=$elapsedMs',
+          );
+          if (elapsedMs < 1200) {
+            return null;
+          }
         } on PlatformException catch (e) {
           lastPlatformError = e;
           // Preserve existing logs.
@@ -414,7 +439,14 @@ class _AttendancePageState extends State<AttendancePage>
       if (shouldAttemptTier3) {
         // Tier 3: Bare minimum camera intent (no extra params at all).
         try {
-          return await _picker.pickImage(source: ImageSource.camera);
+          final startedAt = DateTime.now();
+          final picked = await _picker.pickImage(source: ImageSource.camera);
+          if (picked != null) return picked;
+          final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+          debugPrint(
+            '[Attendance] pickImage returned null (tier 3, $label) elapsedMs=$elapsedMs',
+          );
+          return null;
         } on PlatformException catch (e) {
           lastPlatformError = e;
           debugPrint(
@@ -462,6 +494,33 @@ class _AttendancePageState extends State<AttendancePage>
     return null;
   }
 
+  Future<File?> _materializePickedImage(XFile picked, {required String label}) async {
+    final rawPath = picked.path.trim();
+    if (rawPath.isNotEmpty && !rawPath.startsWith('content://')) {
+      final file = File(rawPath);
+      try {
+        if (await file.exists()) return file;
+      } catch (_) {
+        // Fall back to byte copy below.
+      }
+    }
+
+    try {
+      final bytes = await picked.readAsBytes();
+      final dir = await FileService.getTempDirectory();
+      final extMatch = RegExp(r'\.([a-zA-Z0-9]{3,4})$').firstMatch(rawPath);
+      final ext = (extMatch?.group(1) ?? 'jpg').toLowerCase();
+      final filename =
+          'attendance_${label.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final out = File('${dir.path}/$filename');
+      await out.writeAsBytes(bytes, flush: true);
+      return out;
+    } catch (e) {
+      debugPrint('[Attendance] Failed to materialize picked image ($label): $e');
+      return null;
+    }
+  }
+
   Future<void> _captureSelfie() async {
     final photo = await _pickCameraImage(
       preferredCameraDevice: CameraDevice.front,
@@ -469,7 +528,17 @@ class _AttendancePageState extends State<AttendancePage>
       fallbackToAnyCamera: true,
     );
     if (photo == null) return;
-    setState(() => _selfie = File(photo.path));
+    final file = await _materializePickedImage(photo, label: 'selfie');
+    if (!mounted) return;
+    if (file == null) {
+      showToast(
+        context,
+        'Could not read the captured selfie on this device. Please try again.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    setState(() => _selfie = file);
   }
 
   Future<void> _captureSiteImage() async {
@@ -479,7 +548,17 @@ class _AttendancePageState extends State<AttendancePage>
       fallbackToAnyCamera: true,
     );
     if (photo == null) return;
-    setState(() => _siteImage = File(photo.path));
+    final file = await _materializePickedImage(photo, label: 'site_photo');
+    if (!mounted) return;
+    if (file == null) {
+      showToast(
+        context,
+        'Could not read the captured site photo on this device. Please try again.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    setState(() => _siteImage = file);
   }
 
   Future<void> _captureLocation() async {
@@ -1086,7 +1165,17 @@ class _AttendancePageState extends State<AttendancePage>
       fallbackToAnyCamera: true,
     );
     if (photo == null) return;
-    setState(() => _checkoutSelfie = File(photo.path));
+    final file = await _materializePickedImage(photo, label: 'checkout_selfie');
+    if (!mounted) return;
+    if (file == null) {
+      showToast(
+        context,
+        'Could not read the captured selfie on this device. Please try again.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    setState(() => _checkoutSelfie = file);
   }
 
   Future<void> _captureCheckoutSiteImage() async {
@@ -1096,7 +1185,20 @@ class _AttendancePageState extends State<AttendancePage>
       fallbackToAnyCamera: true,
     );
     if (photo == null) return;
-    setState(() => _checkoutSiteImage = File(photo.path));
+    final file = await _materializePickedImage(
+      photo,
+      label: 'checkout_site_photo',
+    );
+    if (!mounted) return;
+    if (file == null) {
+      showToast(
+        context,
+        'Could not read the captured site photo on this device. Please try again.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    setState(() => _checkoutSiteImage = file);
   }
 
   Future<void> _captureCheckoutLocation() async {

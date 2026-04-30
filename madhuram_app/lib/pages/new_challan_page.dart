@@ -314,6 +314,7 @@ class _NewChallanPageState extends State<NewChallanPage> {
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, String>(
+      distinct: true,
       converter: (store) => store.state.project.selectedProjectId ?? '',
       onInit: (store) {
         _projectId = store.state.project.selectedProjectId ?? '';

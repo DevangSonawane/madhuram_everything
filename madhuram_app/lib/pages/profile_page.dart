@@ -170,6 +170,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
     return StoreConnector<AppState, _ProfilePermissionsViewModel>(
+      distinct: true,
       converter: (store) {
         final user = store.state.auth.user;
         final role = (user?['role'] ?? '').toString();
@@ -303,13 +304,19 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildProfileTab(bool isDark, Responsive responsive) {
-    return StoreConnector<AppState, AuthState>(
-      converter: (store) => store.state.auth,
+    return StoreConnector<AppState, _ProfileAuthViewModel>(
+      distinct: true,
+      converter: (store) => _ProfileAuthViewModel(
+        userName: store.state.auth.userName ?? '—',
+        userEmail: store.state.auth.userEmail ?? '—',
+        userPhone: store.state.auth.userPhone ?? '—',
+        userRole: store.state.auth.userRole ?? '',
+      ),
       builder: (context, auth) {
-        final userName = auth.userName ?? '—';
-        final userEmail = auth.userEmail ?? '—';
-        final userPhone = auth.userPhone ?? '—';
-        final userRole = auth.userRole ?? '';
+        final userName = auth.userName;
+        final userEmail = auth.userEmail;
+        final userPhone = auth.userPhone;
+        final userRole = auth.userRole;
 
         return SingleChildScrollView(
           child: Column(
@@ -440,8 +447,15 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildAvatar(AuthState auth, Responsive responsive) {
+  Widget _buildAvatar(_ProfileAuthViewModel auth, Responsive responsive) {
     final size = responsive.value(mobile: 64.0, tablet: 72.0, desktop: 80.0);
+    final initials = auth.userName
+        .split(' ')
+        .where((part) => part.trim().isNotEmpty)
+        .map((e) => e.trim()[0])
+        .take(2)
+        .join()
+        .toUpperCase();
     return Container(
       width: size,
       height: size,
@@ -455,13 +469,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       child: Center(
         child: Text(
-          auth.userName
-                  ?.split(' ')
-                  .map((e) => e.isNotEmpty ? e[0] : '')
-                  .take(2)
-                  .join()
-                  .toUpperCase() ??
-              'U',
+          initials.isNotEmpty ? initials : 'U',
           style: TextStyle(
             fontSize: responsive.value(mobile: 22, tablet: 26, desktop: 28),
             fontWeight: FontWeight.bold,
@@ -473,7 +481,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildProfileInfo(
-    AuthState auth,
+    _ProfileAuthViewModel auth,
     bool isDark,
     Responsive responsive, {
     bool centered = false,
@@ -484,7 +492,7 @@ class _ProfilePageState extends State<ProfilePage> {
           : CrossAxisAlignment.start,
       children: [
         Text(
-          auth.userName ?? 'User',
+          auth.userName,
           style: TextStyle(
             fontSize: responsive.value(mobile: 20, tablet: 22, desktop: 24),
             fontWeight: FontWeight.bold,
@@ -493,7 +501,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 4),
         Text(
-          auth.userEmail ?? '',
+          auth.userEmail,
           style: TextStyle(
             fontSize: responsive.value(mobile: 13, tablet: 14, desktop: 14),
             color: isDark
@@ -504,7 +512,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 8),
         MadBadge(
-          text: _getRoleName(auth.userRole ?? ''),
+          text: _getRoleName(auth.userRole),
           variant: BadgeVariant.secondary,
         ),
       ],
@@ -516,9 +524,10 @@ class _ProfilePageState extends State<ProfilePage> {
     Responsive responsive,
     bool isOperationalManager,
   ) {
-    return StoreConnector<AppState, ThemeState>(
-      converter: (store) => store.state.theme,
-      builder: (context, themeState) {
+    return StoreConnector<AppState, AppThemeMode>(
+      distinct: true,
+      converter: (store) => store.state.theme.mode,
+      builder: (context, themeMode) {
         return SingleChildScrollView(
           child: Column(
             children: [
@@ -571,7 +580,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             _buildThemeOption(
                               icon: LucideIcons.sun,
                               label: 'Light',
-                              isSelected: themeState.mode == AppThemeMode.light,
+                              isSelected: themeMode == AppThemeMode.light,
                               onTap: () => _setTheme(AppThemeMode.light),
                               isDark: isDark,
                               responsive: responsive,
@@ -580,7 +589,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             _buildThemeOption(
                               icon: LucideIcons.moon,
                               label: 'Dark',
-                              isSelected: themeState.mode == AppThemeMode.dark,
+                              isSelected: themeMode == AppThemeMode.dark,
                               onTap: () => _setTheme(AppThemeMode.dark),
                               isDark: isDark,
                               responsive: responsive,
@@ -590,7 +599,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               icon: LucideIcons.laptop,
                               label: 'System',
                               isSelected:
-                                  themeState.mode == AppThemeMode.system,
+                                  themeMode == AppThemeMode.system,
                               onTap: () => _setTheme(AppThemeMode.system),
                               isDark: isDark,
                               responsive: responsive,
@@ -605,7 +614,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 icon: LucideIcons.sun,
                                 label: 'Light',
                                 isSelected:
-                                    themeState.mode == AppThemeMode.light,
+                                    themeMode == AppThemeMode.light,
                                 onTap: () => _setTheme(AppThemeMode.light),
                                 isDark: isDark,
                                 responsive: responsive,
@@ -617,7 +626,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 icon: LucideIcons.moon,
                                 label: 'Dark',
                                 isSelected:
-                                    themeState.mode == AppThemeMode.dark,
+                                    themeMode == AppThemeMode.dark,
                                 onTap: () => _setTheme(AppThemeMode.dark),
                                 isDark: isDark,
                                 responsive: responsive,
@@ -629,7 +638,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 icon: LucideIcons.laptop,
                                 label: 'System',
                                 isSelected:
-                                    themeState.mode == AppThemeMode.system,
+                                    themeMode == AppThemeMode.system,
                                 onTap: () => _setTheme(AppThemeMode.system),
                                 isDark: isDark,
                                 responsive: responsive,
@@ -1790,6 +1799,51 @@ class _ProfilePermissionsViewModel {
     required this.canViewUserManagementTab,
     required this.canViewAccessControlTab,
   });
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _ProfilePermissionsViewModel &&
+            isAdmin == other.isAdmin &&
+            isOperationalManager == other.isOperationalManager &&
+            canViewUserManagementTab == other.canViewUserManagementTab &&
+            canViewAccessControlTab == other.canViewAccessControlTab;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        isAdmin,
+        isOperationalManager,
+        canViewUserManagementTab,
+        canViewAccessControlTab,
+      );
+}
+
+class _ProfileAuthViewModel {
+  final String userName;
+  final String userEmail;
+  final String userPhone;
+  final String userRole;
+
+  const _ProfileAuthViewModel({
+    required this.userName,
+    required this.userEmail,
+    required this.userPhone,
+    required this.userRole,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _ProfileAuthViewModel &&
+            userName == other.userName &&
+            userEmail == other.userEmail &&
+            userPhone == other.userPhone &&
+            userRole == other.userRole;
+  }
+
+  @override
+  int get hashCode => Object.hash(userName, userEmail, userPhone, userRole);
 }
 
 /// Form content for Add User dialog (stateful for controllers and role)

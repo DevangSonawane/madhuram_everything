@@ -29,13 +29,12 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
   String _searchQuery = '';
   List<Project> _projects = [];
   final _searchController = TextEditingController();
+  bool _redirectingToLogin = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAuthAndLoadProjects();
-    });
+    _checkAuthAndLoadProjects();
   }
 
   @override
@@ -47,11 +46,15 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
   Future<void> _checkAuthAndLoadProjects() async {
     if (!mounted) return;
 
-    final store = StoreProvider.of<AppState>(context);
+    final store = StoreProvider.of<AppState>(context, listen: false);
 
     // Check if authenticated
     if (!store.state.auth.isAuthenticated) {
-      Navigator.pushReplacementNamed(context, '/login');
+      _redirectingToLogin = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/login');
+      });
       return;
     }
 
@@ -61,7 +64,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
   Future<void> _loadProjects() async {
     if (!mounted) return;
 
-    final store = StoreProvider.of<AppState>(context);
+    final store = StoreProvider.of<AppState>(context, listen: false);
     store.dispatch(FetchProjectsStart());
     setState(() {
       _isLoading = true;
@@ -119,7 +122,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
       return;
     }
 
-    final store = StoreProvider.of<AppState>(context);
+    final store = StoreProvider.of<AppState>(context, listen: false);
     // Convert Project to Map for Redux state storage
     store.dispatch(SelectProject(project.toMap()));
 
@@ -171,22 +174,24 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, _ProjectSelectionViewModel>(
+      distinct: true,
       converter: (store) => _ProjectSelectionViewModel(
         isAuthenticated: store.state.auth.isAuthenticated,
         userName: store.state.auth.userName ?? 'User',
         isAdmin: store.state.auth.isAdmin,
         userRole: store.state.auth.userRole,
-        user: store.state.auth.user,
+        projectListRef: store.state.auth.user?['project_list'],
       ),
+      onWillChange: (prev, next) {
+        if (!mounted) return;
+        if (prev?.isAuthenticated == true && !next.isAuthenticated) {
+          _redirectingToLogin = true;
+          Navigator.pushReplacementNamed(context, '/login');
+        }
+      },
       builder: (context, vm) {
-        // Check auth
-        if (!vm.isAuthenticated) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.pushReplacementNamed(context, '/login');
-          });
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+        if (!vm.isAuthenticated || _redirectingToLogin) {
+          return const Scaffold(body: SizedBox.shrink());
         }
 
         return _buildPage(context, vm);
@@ -199,7 +204,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     final isDark = theme.brightness == Brightness.dark;
     final responsive = Responsive(context);
     _currentUserRole = vm.userRole;
-    _currentUserProjectList = vm.user?['project_list'];
+    _currentUserProjectList = vm.projectListRef;
 
     final mainContent = _buildMainContent(context, vm, isDark, responsive);
     final showModuleSidebar = responsive.isDesktop;
@@ -1343,15 +1348,35 @@ class _ProjectSelectionViewModel {
   final String userName;
   final bool isAdmin;
   final String? userRole;
-  final Map<String, dynamic>? user;
+  final Object? projectListRef;
 
   _ProjectSelectionViewModel({
     required this.isAuthenticated,
     required this.userName,
     required this.isAdmin,
     required this.userRole,
-    required this.user,
+    required this.projectListRef,
   });
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _ProjectSelectionViewModel &&
+            isAuthenticated == other.isAuthenticated &&
+            userName == other.userName &&
+            isAdmin == other.isAdmin &&
+            userRole == other.userRole &&
+            projectListRef == other.projectListRef;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        isAuthenticated,
+        userName,
+        isAdmin,
+        userRole,
+        projectListRef,
+      );
 }
 
 class _ModuleLink {

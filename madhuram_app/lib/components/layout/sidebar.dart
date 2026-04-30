@@ -34,6 +34,7 @@ class AppSidebar extends StatelessWidget {
     final effectiveCollapsed = isInDrawer ? false : isCollapsed;
 
     return StoreConnector<AppState, Map<String, dynamic>?>(
+      distinct: true,
       converter: (store) => store.state.auth.user,
       builder: (context, user) {
         final categories = getMenuCategories(user: user);

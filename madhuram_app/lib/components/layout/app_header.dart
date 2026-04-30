@@ -189,6 +189,7 @@ class AppHeader extends StatelessWidget {
     Responsive responsive,
   ) {
     return StoreConnector<AppState, int>(
+      distinct: true,
       converter: (store) => store.state.notification.unreadCount,
       builder: (context, unreadCount) {
         return IconButton(
@@ -239,10 +240,14 @@ class AppHeader extends StatelessWidget {
     bool isDark,
     Responsive responsive,
   ) {
-    return StoreConnector<AppState, AuthState>(
-      converter: (store) => store.state.auth,
-      builder: (context, auth) {
-        final userName = auth.userName ?? 'User';
+    return StoreConnector<AppState, _HeaderUserViewModel>(
+      distinct: true,
+      converter: (store) => _HeaderUserViewModel(
+        userName: store.state.auth.userName ?? 'User',
+        userEmail: store.state.auth.userEmail ?? '',
+      ),
+      builder: (context, vm) {
+        final userName = vm.userName;
         final initials = userName
             .split(' ')
             .map((e) => e.isNotEmpty ? e[0] : '')
@@ -296,7 +301,7 @@ class AppHeader extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   Text(
-                    auth.userEmail ?? '',
+                    vm.userEmail,
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark
@@ -398,6 +403,7 @@ class AppHeader extends StatelessWidget {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
 
         return StoreConnector<AppState, NotificationState>(
+          distinct: true,
           converter: (s) => s.state.notification,
           builder: (ctx, notifState) {
             final notifications = notifState.notifications;
@@ -544,4 +550,22 @@ class AppHeader extends StatelessWidget {
       },
     );
   }
+}
+
+class _HeaderUserViewModel {
+  final String userName;
+  final String userEmail;
+
+  const _HeaderUserViewModel({required this.userName, required this.userEmail});
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _HeaderUserViewModel &&
+            userName == other.userName &&
+            userEmail == other.userEmail;
+  }
+
+  @override
+  int get hashCode => Object.hash(userName, userEmail);
 }

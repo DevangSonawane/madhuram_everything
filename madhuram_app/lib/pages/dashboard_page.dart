@@ -557,6 +557,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return StoreConnector<AppState, _DashboardViewModel>(
+      distinct: true,
       converter: (store) => _DashboardViewModel(
         isAuthenticated: store.state.auth.isAuthenticated,
         user: store.state.auth.user,
@@ -1411,4 +1412,16 @@ class _DashboardViewModel {
       selectedProject?['name']?.toString() ??
       selectedProject?['project_name']?.toString() ??
       'selected project';
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is _DashboardViewModel &&
+            isAuthenticated == other.isAuthenticated &&
+            user == other.user &&
+            selectedProject == other.selectedProject;
+  }
+
+  @override
+  int get hashCode => Object.hash(isAuthenticated, user, selectedProject);
 }

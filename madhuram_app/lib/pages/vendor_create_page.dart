@@ -114,6 +114,7 @@ class _VendorCreatePageState extends State<VendorCreatePage> {
     final isMobile = responsive.isMobile;
 
     return StoreConnector<AppState, String?>(
+      distinct: true,
       converter: (store) => store.state.project.selectedProjectId,
       builder: (context, selectedProjectId) {
         if (_projectController.text.isEmpty && (selectedProjectId?.isNotEmpty ?? false)) {

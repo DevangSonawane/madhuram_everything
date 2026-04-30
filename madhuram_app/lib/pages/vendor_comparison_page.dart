@@ -198,6 +198,7 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return StoreConnector<AppState, String?>(
+      distinct: true,
       converter: (store) => store.state.project.selectedProjectId,
       builder: (context, projectId) {
         _selectedProjectId = projectId;

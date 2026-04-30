@@ -371,6 +371,7 @@ class _ITRPageFullState extends State<ITRPageFull> {
     }
 
     return StoreConnector<AppState, String?>(
+      distinct: true,
       converter: (store) =>
           store.state.project.selectedProject?['project_id']?.toString() ??
           store.state.project.selectedProjectId,
