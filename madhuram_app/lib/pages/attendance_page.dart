@@ -61,7 +61,7 @@ class _AttendancePageState extends State<AttendancePage>
   bool _checkoutSubmitting = false;
   _AttendanceMode _mode = _AttendanceMode.select;
   PermissionStatus? _lastCameraPermissionStatus;
-  static const double _attendanceAllowedRadiusMeters = 100.0;
+  static const double _attendanceAllowedRadiusMeters = 300.0;
   static const bool _debugGeoFence = true;
   bool _hydratingProjectLocation = false;
   String? _hydratedProjectId;
@@ -630,7 +630,7 @@ class _AttendancePageState extends State<AttendancePage>
               return AlertDialog(
                 title: const Text('Outside site radius'),
                 content: Text(
-                  'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.\n\nPlease move within 100m to mark attendance.',
+                  'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.\n\nPlease move within ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m to mark attendance.',
                 ),
                 actions: [
                   TextButton(
@@ -645,7 +645,8 @@ class _AttendancePageState extends State<AttendancePage>
           showToast(
             context,
             'You are within the site radius.',
-            description: 'Distance: ${distanceMeters.toStringAsFixed(0)}m (≤ 100m)',
+            description:
+                'Distance: ${distanceMeters.toStringAsFixed(0)}m (≤ ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m)',
             variant: ToastVariant.success,
           );
         }
@@ -1001,7 +1002,7 @@ class _AttendancePageState extends State<AttendancePage>
     if (distanceMeters > _attendanceAllowedRadiusMeters) {
       showToast(
         context,
-        'Go inside the 100m radius to mark attendance.',
+        'Go inside the ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m radius to mark attendance.',
         description: 'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
         variant: ToastVariant.error,
       );
@@ -1270,7 +1271,7 @@ class _AttendancePageState extends State<AttendancePage>
               return AlertDialog(
                 title: const Text('Outside site radius'),
                 content: Text(
-                  'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.\n\nPlease move within 100m to check out.',
+                  'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.\n\nPlease move within ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m to check out.',
                 ),
                 actions: [
                   TextButton(
@@ -1285,7 +1286,8 @@ class _AttendancePageState extends State<AttendancePage>
           showToast(
             context,
             'You are within the site radius.',
-            description: 'Distance: ${distanceMeters.toStringAsFixed(0)}m (≤ 100m)',
+            description:
+                'Distance: ${distanceMeters.toStringAsFixed(0)}m (≤ ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m)',
             variant: ToastVariant.success,
           );
         }
@@ -1387,7 +1389,7 @@ class _AttendancePageState extends State<AttendancePage>
     if (distanceMeters > _attendanceAllowedRadiusMeters) {
       showToast(
         context,
-        'Go inside the 100m radius to check out.',
+        'Go inside the ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m radius to check out.',
         description: 'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
         variant: ToastVariant.error,
       );
