@@ -8,6 +8,7 @@ class AuthStorage {
   static const _lastAttendanceDateKey = 'last_attendance_date';
   static const _lastAttendanceUserKey = 'last_attendance_user';
   static const _lastAttendanceProjectKey = 'last_attendance_project';
+  static const _leaveBannerKey = 'leave_granted_banner';
 
   static Future<Map<String, dynamic>?> getUser() async {
     final prefs = await SharedPreferences.getInstance();
@@ -33,11 +34,21 @@ class AuthStorage {
     await prefs.remove(_lastAttendanceDateKey);
     await prefs.remove(_lastAttendanceUserKey);
     await prefs.remove(_lastAttendanceProjectKey);
+    await prefs.remove(_leaveBannerKey);
   }
 
   static Future<String?> getToken() async {
     final user = await getUser();
-    return user?['token'] as String?;
+    if (user == null) return null;
+    final direct = user['token'] ?? user['access_token'] ?? user['accessToken'];
+    if (direct is String && direct.trim().isNotEmpty) return direct;
+    final nested = user['data'];
+    if (nested is Map) {
+      final dataToken =
+          nested['token'] ?? nested['access_token'] ?? nested['accessToken'];
+      if (dataToken is String && dataToken.trim().isNotEmpty) return dataToken;
+    }
+    return null;
   }
 
   static Future<bool> hasUser() async {
@@ -103,5 +114,23 @@ class AuthStorage {
     await prefs.remove(_lastAttendanceDateKey);
     await prefs.remove(_lastAttendanceUserKey);
     await prefs.remove(_lastAttendanceProjectKey);
+  }
+
+  // ============================================================================
+  // Leave Banner Persistence
+  // ============================================================================
+  static Future<void> setLeaveGrantedBanner(String message) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_leaveBannerKey, message);
+  }
+
+  static Future<String?> getLeaveGrantedBanner() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_leaveBannerKey);
+  }
+
+  static Future<void> clearLeaveGrantedBanner() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_leaveBannerKey);
   }
 }

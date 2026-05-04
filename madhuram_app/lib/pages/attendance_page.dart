@@ -66,6 +66,11 @@ class _AttendancePageState extends State<AttendancePage>
   bool _hydratingProjectLocation = false;
   String? _hydratedProjectId;
   Future<void>? _projectHydrationFuture;
+  String? _activeLeaveBanner;
+  bool _leaveLoading = false;
+  List<Map<String, dynamic>> _leaveRequests = const [];
+  bool _absentCountLoading = false;
+  int _yearAbsentCount = 0;
 
   double? _asDouble(dynamic value) {
     if (value == null) return null;
@@ -75,7 +80,9 @@ class _AttendancePageState extends State<AttendancePage>
     return double.tryParse(text);
   }
 
-  ({double lat, double lng})? _resolveProjectLatLng(Map<String, dynamic>? project) {
+  ({double lat, double lng})? _resolveProjectLatLng(
+    Map<String, dynamic>? project,
+  ) {
     if (project == null) return null;
     final locationData = project['location_data'];
     if (locationData is Map) {
@@ -88,7 +95,8 @@ class _AttendancePageState extends State<AttendancePage>
     final lng = _asDouble(project['location_longitude']);
     if (lat != null && lng != null) return (lat: lat, lng: lng);
 
-    final locationText = (project['location_name'] ?? project['location'])?.toString();
+    final locationText = (project['location_name'] ?? project['location'])
+        ?.toString();
     if (locationText != null && locationText.trim().isNotEmpty) {
       final match = RegExp(
         r'lat\s*([+-]?\d+(?:\.\d+)?)\s*[, ]\s*lng\s*([+-]?\d+(?:\.\d+)?)',
@@ -97,7 +105,8 @@ class _AttendancePageState extends State<AttendancePage>
       if (match != null) {
         final parsedLat = _asDouble(match.group(1));
         final parsedLng = _asDouble(match.group(2));
-        if (parsedLat != null && parsedLng != null) return (lat: parsedLat, lng: parsedLng);
+        if (parsedLat != null && parsedLng != null)
+          return (lat: parsedLat, lng: parsedLng);
       }
     }
     return null;
@@ -112,7 +121,8 @@ class _AttendancePageState extends State<AttendancePage>
     const earthRadius = 6371000.0; // meters
     final dLat = _degToRad(lat2 - lat1);
     final dLon = _degToRad(lng2 - lng1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(_degToRad(lat1)) *
             math.cos(_degToRad(lat2)) *
             math.sin(dLon / 2) *
@@ -128,6 +138,7 @@ class _AttendancePageState extends State<AttendancePage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshCameraPermissionStatus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshLeaveStatus());
   }
 
   @override
@@ -173,6 +184,7 @@ class _AttendancePageState extends State<AttendancePage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     unawaited(_handleCameraPermissionOnResume());
+    unawaited(_refreshLeaveStatus());
   }
 
   @override
@@ -180,13 +192,125 @@ class _AttendancePageState extends State<AttendancePage>
     super.didChangeDependencies();
     _syncUserContext();
     unawaited(_ensureSelectedProjectHasLocationData());
+    unawaited(_refreshLeaveStatus());
+    unawaited(_refreshYearlyAbsentCount());
+  }
+
+  DateTime? _tryParseDateOnly(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return DateTime(value.year, value.month, value.day);
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      final parsed = DateTime.tryParse(trimmed);
+      if (parsed != null)
+        return DateTime(parsed.year, parsed.month, parsed.day);
+    }
+    return null;
+  }
+
+  bool _dateInRange(DateTime day, DateTime from, DateTime to) {
+    final d = DateTime(day.year, day.month, day.day);
+    final f = DateTime(from.year, from.month, from.day);
+    final t = DateTime(to.year, to.month, to.day);
+    return !d.isBefore(f) && !d.isAfter(t);
+  }
+
+  String? _buildActiveLeaveBanner() {
+    if (_leaveRequests.isEmpty) return null;
+    final today = DateTime.now();
+    final fmt = DateFormat('yyyy-MM-dd');
+    for (final item in _leaveRequests) {
+      final status = item['status']?.toString().toLowerCase() ?? '';
+      if (status != 'approved') continue;
+      final from = _tryParseDateOnly(item['from_date']);
+      final to = _tryParseDateOnly(item['to_date']);
+      if (from == null || to == null) continue;
+      if (!_dateInRange(today, from, to)) continue;
+      final reason = item['reason']?.toString();
+      final reasonPart = (reason != null && reason.trim().isNotEmpty)
+          ? ' • ${reason.trim()}'
+          : '';
+      return 'Leave granted: ${fmt.format(from)} → ${fmt.format(to)}$reasonPart';
+    }
+    return null;
+  }
+
+  Future<void> _refreshLeaveStatus() async {
+    if (_leaveLoading) return;
+    if (_userId == null || _userId!.trim().isEmpty) return;
+    _leaveLoading = true;
+    try {
+      final res = await ApiClient.getLeavesByUser(_userId!);
+      if (!mounted) return;
+      if (res['success'] == true) {
+        final data = res['data'];
+        final list = data is List ? data : const [];
+        final items = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        final banner = () {
+          _leaveRequests = items;
+          return _buildActiveLeaveBanner();
+        }();
+        setState(() {
+          _activeLeaveBanner = banner;
+        });
+      }
+    } catch (_) {
+      // non-blocking
+    } finally {
+      _leaveLoading = false;
+    }
+  }
+
+  Future<void> _refreshYearlyAbsentCount() async {
+    if (_absentCountLoading) return;
+    if (_userId == null || _userId!.trim().isEmpty) return;
+    _absentCountLoading = true;
+    try {
+      final res = await ApiClient.getAttendanceByUser(_userId!);
+      if (!mounted) return;
+      if (res['success'] == true) {
+        final data = res['data'];
+        final list = data is List ? data : const [];
+        final items = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        final now = DateTime.now();
+        final yearStart = DateTime(now.year, 1, 1);
+        final yearEnd = DateTime(now.year, 12, 31);
+        var absentCount = 0;
+        for (final item in items) {
+          final status = (item['status'] ?? item['attendance_status'] ?? '')
+              .toString()
+              .toLowerCase();
+          if (status != 'absent') continue;
+          final date =
+              _tryParseDateOnly(item['date']) ??
+              _tryParseDateOnly(item['created_at']) ??
+              _tryParseDateOnly(item['updated_at']);
+          if (date == null) continue;
+          if (date.isBefore(yearStart) || date.isAfter(yearEnd)) continue;
+          absentCount += 1;
+        }
+        setState(() => _yearAbsentCount = absentCount);
+      }
+    } catch (_) {
+      // non-blocking
+    } finally {
+      _absentCountLoading = false;
+    }
   }
 
   Future<void> _ensureSelectedProjectHasLocationData() async {
     if (_projectHydrationFuture != null) return _projectHydrationFuture;
     final store = StoreProvider.of<AppState>(context);
     final selected = store.state.project.selectedProject;
-    final projectId = selected?['project_id']?.toString() ?? selected?['id']?.toString();
+    final projectId =
+        selected?['project_id']?.toString() ?? selected?['id']?.toString();
     if (projectId == null || projectId.trim().isEmpty) return;
     if (_hydratedProjectId == projectId) return;
 
@@ -194,20 +318,26 @@ class _AttendancePageState extends State<AttendancePage>
     final cached = store.state.project.projects;
     if (cached.isNotEmpty) {
       final match = cached.firstWhere(
-        (p) => (p['project_id']?.toString() ?? p['id']?.toString() ?? '') == projectId,
+        (p) =>
+            (p['project_id']?.toString() ?? p['id']?.toString() ?? '') ==
+            projectId,
         orElse: () => <String, dynamic>{},
       );
       if (match.isNotEmpty) {
         final hydrated = Project.fromJson(match).toMap();
         final rawLocationData = match['location_data'];
         if (rawLocationData is Map) {
-          hydrated['location_data'] = Map<String, dynamic>.from(rawLocationData);
+          hydrated['location_data'] = Map<String, dynamic>.from(
+            rawLocationData,
+          );
         }
         final hydratedLatLng = _resolveProjectLatLng(hydrated);
         if (hydratedLatLng != null) {
           if (_debugGeoFence) {
-            debugPrint('[Attendance][GeoFence] Hydrated from cached projects projectId=$projectId '
-                'lat=${hydratedLatLng.lat} lng=${hydratedLatLng.lng}');
+            debugPrint(
+              '[Attendance][GeoFence] Hydrated from cached projects projectId=$projectId '
+              'lat=${hydratedLatLng.lat} lng=${hydratedLatLng.lng}',
+            );
           }
           store.dispatch(SelectProject(hydrated));
           _hydratedProjectId = projectId;
@@ -220,8 +350,10 @@ class _AttendancePageState extends State<AttendancePage>
     final existing = _resolveProjectLatLng(selected);
     if (existing != null) {
       if (_debugGeoFence) {
-        debugPrint('[Attendance][GeoFence] Selected project already has location_data '
-            'projectId=$projectId lat=${existing.lat} lng=${existing.lng}');
+        debugPrint(
+          '[Attendance][GeoFence] Selected project already has location_data '
+          'projectId=$projectId lat=${existing.lat} lng=${existing.lng}',
+        );
       }
       _hydratedProjectId = projectId;
       return;
@@ -229,74 +361,46 @@ class _AttendancePageState extends State<AttendancePage>
 
     final future = () async {
       _hydratingProjectLocation = true;
-    if (_debugGeoFence) {
-      debugPrint('[Attendance][GeoFence] Hydrating project location from backend projectId=$projectId '
-          'selectedKeys=${selected?.keys.toList()}');
-    }
-    try {
-      final res = await ApiClient.getProject(projectId).timeout(const Duration(seconds: 6));
       if (_debugGeoFence) {
-        debugPrint('[Attendance][GeoFence] getProject($projectId) => success=${res['success']} '
-            'dataType=${res['data']?.runtimeType}');
-        final data = res['data'];
-        if (data is Map) {
-          debugPrint('[Attendance][GeoFence] getProject($projectId) keys=${data.keys.toList()} '
-              'location_data=${data['location_data']?.runtimeType}');
-        }
-      }
-      if (res['success'] == true && res['data'] is Map<String, dynamic>) {
-        final data = Map<String, dynamic>.from(res['data'] as Map);
-        final hydrated = Project.fromJson(data).toMap();
-        final rawLocationData = data['location_data'];
-        if (rawLocationData is Map) {
-          hydrated['location_data'] = Map<String, dynamic>.from(rawLocationData);
-        }
-        if (_debugGeoFence) {
-          final hydratedLatLng = _resolveProjectLatLng(hydrated);
-          debugPrint('[Attendance][GeoFence] Hydrated project map keys=${hydrated.keys.toList()} '
-              'latLng=${hydratedLatLng == null ? 'null' : '${hydratedLatLng.lat},${hydratedLatLng.lng}'}');
-        }
-        final hydratedLatLng = _resolveProjectLatLng(hydrated);
-        if (hydratedLatLng != null) {
-          store.dispatch(SelectProject(hydrated));
-          _hydratedProjectId = projectId;
-          if (mounted) setState(() {});
-          return;
-        }
-      }
-
-      // Fallback: some deployments return full `location_data` only in the project list.
-      // If Redux already has projects, don't refetch the whole list again.
-      if (store.state.project.projects.isNotEmpty) return;
-
-      final listRes = await ApiClient.getProjects().timeout(const Duration(seconds: 8));
-      if (_debugGeoFence) {
-        debugPrint('[Attendance][GeoFence] getProjects() fallback => success=${listRes['success']} '
-            'dataType=${listRes['data']?.runtimeType}');
-      }
-      if (listRes['success'] == true && listRes['data'] is List) {
-        final list = (listRes['data'] as List)
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        // Cache for subsequent pages / fast-path hydration.
-        store.dispatch(FetchProjectsSuccess(list));
-        final match = list.firstWhere(
-          (p) =>
-              (p['project_id']?.toString() ?? p['id']?.toString() ?? '') == projectId,
-          orElse: () => <String, dynamic>{},
+        debugPrint(
+          '[Attendance][GeoFence] Hydrating project location from backend projectId=$projectId '
+          'selectedKeys=${selected?.keys.toList()}',
         );
-        if (match.isNotEmpty) {
-          final hydrated = Project.fromJson(match).toMap();
-          final rawLocationData = match['location_data'];
+      }
+      try {
+        final res = await ApiClient.getProject(
+          projectId,
+        ).timeout(const Duration(seconds: 6));
+        if (_debugGeoFence) {
+          debugPrint(
+            '[Attendance][GeoFence] getProject($projectId) => success=${res['success']} '
+            'dataType=${res['data']?.runtimeType}',
+          );
+          final data = res['data'];
+          if (data is Map) {
+            debugPrint(
+              '[Attendance][GeoFence] getProject($projectId) keys=${data.keys.toList()} '
+              'location_data=${data['location_data']?.runtimeType}',
+            );
+          }
+        }
+        if (res['success'] == true && res['data'] is Map<String, dynamic>) {
+          final data = Map<String, dynamic>.from(res['data'] as Map);
+          final hydrated = Project.fromJson(data).toMap();
+          final rawLocationData = data['location_data'];
           if (rawLocationData is Map) {
-            hydrated['location_data'] = Map<String, dynamic>.from(rawLocationData);
+            hydrated['location_data'] = Map<String, dynamic>.from(
+              rawLocationData,
+            );
+          }
+          if (_debugGeoFence) {
+            final hydratedLatLng = _resolveProjectLatLng(hydrated);
+            debugPrint(
+              '[Attendance][GeoFence] Hydrated project map keys=${hydrated.keys.toList()} '
+              'latLng=${hydratedLatLng == null ? 'null' : '${hydratedLatLng.lat},${hydratedLatLng.lng}'}',
+            );
           }
           final hydratedLatLng = _resolveProjectLatLng(hydrated);
-          if (_debugGeoFence) {
-            debugPrint('[Attendance][GeoFence] getProjects() hydrated keys=${hydrated.keys.toList()} '
-                'latLng=${hydratedLatLng == null ? 'null' : '${hydratedLatLng.lat},${hydratedLatLng.lng}'}');
-          }
           if (hydratedLatLng != null) {
             store.dispatch(SelectProject(hydrated));
             _hydratedProjectId = projectId;
@@ -304,18 +408,71 @@ class _AttendancePageState extends State<AttendancePage>
             return;
           }
         }
+
+        // Fallback: some deployments return full `location_data` only in the project list.
+        // If Redux already has projects, don't refetch the whole list again.
+        if (store.state.project.projects.isNotEmpty) return;
+
+        final listRes = await ApiClient.getProjects().timeout(
+          const Duration(seconds: 8),
+        );
+        if (_debugGeoFence) {
+          debugPrint(
+            '[Attendance][GeoFence] getProjects() fallback => success=${listRes['success']} '
+            'dataType=${listRes['data']?.runtimeType}',
+          );
+        }
+        if (listRes['success'] == true && listRes['data'] is List) {
+          final list = (listRes['data'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+          // Cache for subsequent pages / fast-path hydration.
+          store.dispatch(FetchProjectsSuccess(list));
+          final match = list.firstWhere(
+            (p) =>
+                (p['project_id']?.toString() ?? p['id']?.toString() ?? '') ==
+                projectId,
+            orElse: () => <String, dynamic>{},
+          );
+          if (match.isNotEmpty) {
+            final hydrated = Project.fromJson(match).toMap();
+            final rawLocationData = match['location_data'];
+            if (rawLocationData is Map) {
+              hydrated['location_data'] = Map<String, dynamic>.from(
+                rawLocationData,
+              );
+            }
+            final hydratedLatLng = _resolveProjectLatLng(hydrated);
+            if (_debugGeoFence) {
+              debugPrint(
+                '[Attendance][GeoFence] getProjects() hydrated keys=${hydrated.keys.toList()} '
+                'latLng=${hydratedLatLng == null ? 'null' : '${hydratedLatLng.lat},${hydratedLatLng.lng}'}',
+              );
+            }
+            if (hydratedLatLng != null) {
+              store.dispatch(SelectProject(hydrated));
+              _hydratedProjectId = projectId;
+              if (mounted) setState(() {});
+              return;
+            }
+          }
+        }
+        if (_debugGeoFence) {
+          debugPrint(
+            '[Attendance][GeoFence] Hydration finished but still no lat/lng for projectId=$projectId',
+          );
+        }
+      } on TimeoutException catch (e) {
+        debugPrint(
+          '[Attendance][GeoFence] Hydration timeout projectId=$projectId: $e',
+        );
+      } catch (e) {
+        debugPrint('[Attendance] Failed to hydrate project location: $e');
+      } finally {
+        _hydratingProjectLocation = false;
+        _projectHydrationFuture = null;
       }
-      if (_debugGeoFence) {
-        debugPrint('[Attendance][GeoFence] Hydration finished but still no lat/lng for projectId=$projectId');
-      }
-    } on TimeoutException catch (e) {
-      debugPrint('[Attendance][GeoFence] Hydration timeout projectId=$projectId: $e');
-    } catch (e) {
-      debugPrint('[Attendance] Failed to hydrate project location: $e');
-    } finally {
-      _hydratingProjectLocation = false;
-      _projectHydrationFuture = null;
-    }
     }();
 
     _projectHydrationFuture = future;
@@ -344,7 +501,9 @@ class _AttendancePageState extends State<AttendancePage>
               ? "Camera permission denied. Tap 'Open Settings' to enable it."
               : 'Camera permission is required to capture $label.',
           variant: ToastVariant.error,
-          actionLabel: cameraStatus.isPermanentlyDenied ? 'Open Settings' : null,
+          actionLabel: cameraStatus.isPermanentlyDenied
+              ? 'Open Settings'
+              : null,
           action: cameraStatus.isPermanentlyDenied ? openAppSettings : null,
         );
         return null;
@@ -375,7 +534,9 @@ class _AttendancePageState extends State<AttendancePage>
         } on PlatformException catch (e) {
           lastPlatformError = e;
           // Preserve existing logs.
-          debugPrint('[Attendance] pickImage failed ($label): ${e.code} ${e.message}');
+          debugPrint(
+            '[Attendance] pickImage failed ($label): ${e.code} ${e.message}',
+          );
           debugPrint(
             '[Attendance] pickImage failed tier 1 ($label): ${e.code} ${e.message}',
           );
@@ -395,7 +556,8 @@ class _AttendancePageState extends State<AttendancePage>
         }
       }
 
-      final shouldAttemptTier2 = preferredCameraDevice == null || fallbackToAnyCamera;
+      final shouldAttemptTier2 =
+          preferredCameraDevice == null || fallbackToAnyCamera;
       if (shouldAttemptTier2) {
         // Tier 2: Retry without preferredCameraDevice.
         try {
@@ -416,7 +578,9 @@ class _AttendancePageState extends State<AttendancePage>
         } on PlatformException catch (e) {
           lastPlatformError = e;
           // Preserve existing logs.
-          debugPrint('[Attendance] pickImage failed ($label): ${e.code} ${e.message}');
+          debugPrint(
+            '[Attendance] pickImage failed ($label): ${e.code} ${e.message}',
+          );
           if (preferredCameraDevice != null) {
             debugPrint(
               '[Attendance] pickImage fallback failed ($label): ${e.code} ${e.message}',
@@ -435,7 +599,8 @@ class _AttendancePageState extends State<AttendancePage>
         }
       }
 
-      final shouldAttemptTier3 = preferredCameraDevice == null || fallbackToAnyCamera;
+      final shouldAttemptTier3 =
+          preferredCameraDevice == null || fallbackToAnyCamera;
       if (shouldAttemptTier3) {
         // Tier 3: Bare minimum camera intent (no extra params at all).
         try {
@@ -478,7 +643,8 @@ class _AttendancePageState extends State<AttendancePage>
     final message = switch (code) {
       'camera_access_denied' =>
         "Camera permission denied. Tap 'Open Settings' to enable it.",
-      'camera_access_restricted' => 'Camera access is restricted on this device.',
+      'camera_access_restricted' =>
+        'Camera access is restricted on this device.',
       'no_available_camera' => 'No camera was found on this device.',
       'channel_error' => 'Camera could not be opened. Please restart the app.',
       _ => 'Camera failed to open. Please try again or restart the app.',
@@ -494,7 +660,10 @@ class _AttendancePageState extends State<AttendancePage>
     return null;
   }
 
-  Future<File?> _materializePickedImage(XFile picked, {required String label}) async {
+  Future<File?> _materializePickedImage(
+    XFile picked, {
+    required String label,
+  }) async {
     final rawPath = picked.path.trim();
     if (rawPath.isNotEmpty && !rawPath.startsWith('content://')) {
       final file = File(rawPath);
@@ -516,7 +685,9 @@ class _AttendancePageState extends State<AttendancePage>
       await out.writeAsBytes(bytes, flush: true);
       return out;
     } catch (e) {
-      debugPrint('[Attendance] Failed to materialize picked image ($label): $e');
+      debugPrint(
+        '[Attendance] Failed to materialize picked image ($label): $e',
+      );
       return null;
     }
   }
@@ -717,13 +888,7 @@ class _AttendancePageState extends State<AttendancePage>
         final minutes = int.tryParse(match.group(2) ?? '');
         if (hours != null && minutes != null) {
           final now = DateTime.now();
-          return DateTime(
-            now.year,
-            now.month,
-            now.day,
-            hours,
-            minutes,
-          );
+          return DateTime(now.year, now.month, now.day, hours, minutes);
         }
       }
     }
@@ -877,8 +1042,7 @@ class _AttendancePageState extends State<AttendancePage>
   }
 
   String? _resolveUserName(Map<String, dynamic>? user) {
-    final name =
-        user?['name']?.toString() ?? user?['user_name']?.toString();
+    final name = user?['name']?.toString() ?? user?['user_name']?.toString();
     if (name == null) return null;
     final trimmed = name.trim();
     return trimmed.isEmpty ? null : trimmed;
@@ -893,22 +1057,20 @@ class _AttendancePageState extends State<AttendancePage>
   }
 
   String? _resolveProjectId(Map<String, dynamic>? project) {
-    return project?['id']?.toString() ??
-        project?['project_id']?.toString();
+    return project?['id']?.toString() ?? project?['project_id']?.toString();
   }
 
   String? _resolveFilePath(dynamic data) {
     if (data is Map<String, dynamic>) {
-      final direct = data['filePath'] ??
-          data['file_path'] ??
-          data['path'] ??
-          data['url'];
+      final direct =
+          data['filePath'] ?? data['file_path'] ?? data['path'] ?? data['url'];
       if (direct != null && direct.toString().trim().isNotEmpty) {
         return direct.toString();
       }
       final nested = data['data'];
       if (nested is Map<String, dynamic>) {
-        final nestedPath = nested['filePath'] ??
+        final nestedPath =
+            nested['filePath'] ??
             nested['file_path'] ??
             nested['path'] ??
             nested['url'];
@@ -974,9 +1136,11 @@ class _AttendancePageState extends State<AttendancePage>
     final project = store.state.project.selectedProject;
     final projectLatLng = _resolveProjectLatLng(project);
     if (_debugGeoFence) {
-      debugPrint('[Attendance][GeoFence] Check-in submit: projectId=${project?['project_id'] ?? project?['id']} '
-          'hasLatLng=${projectLatLng != null} '
-          'pos=${_position?.latitude},${_position?.longitude}');
+      debugPrint(
+        '[Attendance][GeoFence] Check-in submit: projectId=${project?['project_id'] ?? project?['id']} '
+        'hasLatLng=${projectLatLng != null} '
+        'pos=${_position?.latitude},${_position?.longitude}',
+      );
     }
     if (projectLatLng == null) {
       unawaited(_ensureSelectedProjectHasLocationData());
@@ -996,14 +1160,17 @@ class _AttendancePageState extends State<AttendancePage>
       lng2: projectLatLng.lng,
     );
     if (_debugGeoFence) {
-      debugPrint('[Attendance][GeoFence] Check-in distanceMeters=${distanceMeters.toStringAsFixed(2)} '
-          'allowed=$_attendanceAllowedRadiusMeters');
+      debugPrint(
+        '[Attendance][GeoFence] Check-in distanceMeters=${distanceMeters.toStringAsFixed(2)} '
+        'allowed=$_attendanceAllowedRadiusMeters',
+      );
     }
     if (distanceMeters > _attendanceAllowedRadiusMeters) {
       showToast(
         context,
         'Go inside the ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m radius to mark attendance.',
-        description: 'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
+        description:
+            'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
         variant: ToastVariant.error,
       );
       return;
@@ -1361,9 +1528,11 @@ class _AttendancePageState extends State<AttendancePage>
     final project = store.state.project.selectedProject;
     final projectLatLng = _resolveProjectLatLng(project);
     if (_debugGeoFence) {
-      debugPrint('[Attendance][GeoFence] Checkout submit: projectId=${project?['project_id'] ?? project?['id']} '
-          'hasLatLng=${projectLatLng != null} '
-          'pos=${_checkoutPosition?.latitude},${_checkoutPosition?.longitude}');
+      debugPrint(
+        '[Attendance][GeoFence] Checkout submit: projectId=${project?['project_id'] ?? project?['id']} '
+        'hasLatLng=${projectLatLng != null} '
+        'pos=${_checkoutPosition?.latitude},${_checkoutPosition?.longitude}',
+      );
     }
     if (projectLatLng == null) {
       unawaited(_ensureSelectedProjectHasLocationData());
@@ -1383,14 +1552,17 @@ class _AttendancePageState extends State<AttendancePage>
       lng2: projectLatLng.lng,
     );
     if (_debugGeoFence) {
-      debugPrint('[Attendance][GeoFence] Checkout distanceMeters=${distanceMeters.toStringAsFixed(2)} '
-          'allowed=$_attendanceAllowedRadiusMeters');
+      debugPrint(
+        '[Attendance][GeoFence] Checkout distanceMeters=${distanceMeters.toStringAsFixed(2)} '
+        'allowed=$_attendanceAllowedRadiusMeters',
+      );
     }
     if (distanceMeters > _attendanceAllowedRadiusMeters) {
       showToast(
         context,
         'Go inside the ${_attendanceAllowedRadiusMeters.toStringAsFixed(0)}m radius to check out.',
-        description: 'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
+        description:
+            'You are ~${distanceMeters.toStringAsFixed(0)}m away from the site.',
         variant: ToastVariant.error,
       );
       return;
@@ -1440,7 +1612,9 @@ class _AttendancePageState extends State<AttendancePage>
       final userId = _resolveUserId(user);
       final userName = _resolveUserName(user);
       final userIdValue = userId;
-      debugPrint('[Attendance] Checkout payload userId=$userIdValue name=$userName');
+      debugPrint(
+        '[Attendance] Checkout payload userId=$userIdValue name=$userName',
+      );
 
       final selfieUpload = await ApiClient.uploadAttendanceImage(
         _checkoutSelfie!,
@@ -1504,8 +1678,10 @@ class _AttendancePageState extends State<AttendancePage>
       );
 
       debugPrint('[Attendance] Checkout request payload: $payload');
-      final createResult =
-          await ApiClient.checkoutAttendance(attendanceId, payload);
+      final createResult = await ApiClient.checkoutAttendance(
+        attendanceId,
+        payload,
+      );
       debugPrint('[Attendance] Checkout response: $createResult');
       if (createResult['success'] == true) {
         await _cacheLastAttendanceId(
@@ -1543,8 +1719,7 @@ class _AttendancePageState extends State<AttendancePage>
       } else {
         showToast(
           context,
-          createResult['error']?.toString() ??
-              'Failed to submit checkout.',
+          createResult['error']?.toString() ?? 'Failed to submit checkout.',
           variant: ToastVariant.error,
         );
       }
@@ -1597,9 +1772,8 @@ class _AttendancePageState extends State<AttendancePage>
                 border: Border.all(
                   color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
                 ),
-                color:
-                    (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                        .withValues(alpha: 0.12),
+                color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                    .withValues(alpha: 0.12),
               ),
               child: photo == null
                   ? Center(
@@ -1676,13 +1850,14 @@ class _AttendancePageState extends State<AttendancePage>
             lng2: projectLatLng.lng,
           )
         : null;
-    final withinRadius = distanceMeters != null &&
+    final withinRadius =
+        distanceMeters != null &&
         distanceMeters <= _attendanceAllowedRadiusMeters;
     final distanceColor = distanceMeters == null
         ? muted
         : withinRadius
-            ? const Color(0xFF16A34A)
-            : const Color(0xFFDC2626);
+        ? const Color(0xFF16A34A)
+        : const Color(0xFFDC2626);
 
     final lat = _position?.latitude.toStringAsFixed(6) ?? '-';
     final lng = _position?.longitude.toStringAsFixed(6) ?? '-';
@@ -1727,9 +1902,8 @@ class _AttendancePageState extends State<AttendancePage>
                 border: Border.all(
                   color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
                 ),
-                color:
-                    (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                        .withValues(alpha: 0.12),
+                color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                    .withValues(alpha: 0.12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1756,12 +1930,16 @@ class _AttendancePageState extends State<AttendancePage>
                   Text(
                     distanceMeters == null
                         ? (projectLatLng == null
-                            ? (_hydratingProjectLocation
-                                ? 'Distance: fetching project location…'
-                                : 'Distance: project location not set')
-                            : 'Distance: capture location to compute')
+                              ? (_hydratingProjectLocation
+                                    ? 'Distance: fetching project location…'
+                                    : 'Distance: project location not set')
+                              : 'Distance: capture location to compute')
                         : 'Distance from site: ${distanceMeters.toStringAsFixed(0)} m',
-                    style: TextStyle(color: distanceColor, fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: distanceColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -1796,20 +1974,22 @@ class _AttendancePageState extends State<AttendancePage>
             lng2: projectLatLng.lng,
           )
         : null;
-    final withinRadius = distanceMeters != null &&
+    final withinRadius =
+        distanceMeters != null &&
         distanceMeters <= _attendanceAllowedRadiusMeters;
     final distanceColor = distanceMeters == null
         ? muted
         : withinRadius
-            ? const Color(0xFF16A34A)
-            : const Color(0xFFDC2626);
+        ? const Color(0xFF16A34A)
+        : const Color(0xFFDC2626);
 
     final lat = _checkoutPosition?.latitude.toStringAsFixed(6) ?? '-';
     final lng = _checkoutPosition?.longitude.toStringAsFixed(6) ?? '-';
     final timestamp = _checkoutLocationCapturedAt == null
         ? '-'
-        : DateFormat('dd MMM yyyy, hh:mm a')
-            .format(_checkoutLocationCapturedAt!);
+        : DateFormat(
+            'dd MMM yyyy, hh:mm a',
+          ).format(_checkoutLocationCapturedAt!);
     final locationLabel = _checkoutLocationName ?? '-';
     final userLabel = _userName ?? '-';
 
@@ -1848,9 +2028,8 @@ class _AttendancePageState extends State<AttendancePage>
                 border: Border.all(
                   color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
                 ),
-                color:
-                    (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                        .withValues(alpha: 0.12),
+                color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                    .withValues(alpha: 0.12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1877,12 +2056,16 @@ class _AttendancePageState extends State<AttendancePage>
                   Text(
                     distanceMeters == null
                         ? (projectLatLng == null
-                            ? (_hydratingProjectLocation
-                                ? 'Distance: fetching project location…'
-                                : 'Distance: project location not set')
-                            : 'Distance: capture location to compute')
+                              ? (_hydratingProjectLocation
+                                    ? 'Distance: fetching project location…'
+                                    : 'Distance: project location not set')
+                              : 'Distance: capture location to compute')
                         : 'Distance from site: ${distanceMeters.toStringAsFixed(0)} m',
-                    style: TextStyle(color: distanceColor, fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: distanceColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -1914,7 +2097,8 @@ class _AttendancePageState extends State<AttendancePage>
     }
     final canSubmitCheckIn = () {
       if (_submitting) return false;
-      if (_selfie == null || _siteImage == null || _position == null) return false;
+      if (_selfie == null || _siteImage == null || _position == null)
+        return false;
       if (projectLatLng == null) return false;
       final d = _haversineDistanceMeters(
         lat1: _position!.latitude,
@@ -1926,7 +2110,10 @@ class _AttendancePageState extends State<AttendancePage>
     }();
     final canSubmitCheckOut = () {
       if (_checkoutSubmitting) return false;
-      if (_checkoutSelfie == null || _checkoutSiteImage == null || _checkoutPosition == null) return false;
+      if (_checkoutSelfie == null ||
+          _checkoutSiteImage == null ||
+          _checkoutPosition == null)
+        return false;
       if (projectLatLng == null) return false;
       final d = _haversineDistanceMeters(
         lat1: _checkoutPosition!.latitude,
@@ -1936,6 +2123,7 @@ class _AttendancePageState extends State<AttendancePage>
       );
       return d <= _attendanceAllowedRadiusMeters;
     }();
+    final isAttendanceBlocked = _yearAbsentCount >= 15;
 
     return ProtectedRoute(
       title: 'Attendance',
@@ -1954,8 +2142,16 @@ class _AttendancePageState extends State<AttendancePage>
                 ),
                 gradient: LinearGradient(
                   colors: isDark
-                      ? const [Color(0xFF0F172A), Color(0xFF111827), Color(0xFF1F2937)]
-                      : const [Color(0xFFE0F2FE), Color(0xFFECFEFF), Colors.white],
+                      ? const [
+                          Color(0xFF0F172A),
+                          Color(0xFF111827),
+                          Color(0xFF1F2937),
+                        ]
+                      : const [
+                          Color(0xFFE0F2FE),
+                          Color(0xFFECFEFF),
+                          Colors.white,
+                        ],
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 ),
@@ -1971,8 +2167,8 @@ class _AttendancePageState extends State<AttendancePage>
                           _mode == _AttendanceMode.select
                               ? 'Attendance'
                               : _mode == _AttendanceMode.checkIn
-                                  ? 'Check In'
-                                  : 'Check Out',
+                              ? 'Check In'
+                              : 'Check Out',
                           style: TextStyle(
                             fontSize: responsive.value(
                               mobile: 22,
@@ -1990,8 +2186,8 @@ class _AttendancePageState extends State<AttendancePage>
                           _mode == _AttendanceMode.checkIn
                               ? 'Capture selfie, site photo, and location to mark attendance.'
                               : _mode == _AttendanceMode.checkOut
-                                  ? 'Capture selfie, site photo, and location to check out.'
-                                  : 'Choose an action to continue.',
+                              ? 'Capture selfie, site photo, and location to check out.'
+                              : 'Choose an action to continue.',
                           style: TextStyle(
                             color: isDark
                                 ? AppTheme.darkMutedForeground
@@ -2016,6 +2212,73 @@ class _AttendancePageState extends State<AttendancePage>
               ),
             ),
             const SizedBox(height: 24),
+            if (_activeLeaveBanner != null &&
+                _activeLeaveBanner!.trim().isNotEmpty) ...[
+              MadCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.badgeCheck,
+                        color: Color(0xFFF59E0B),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _activeLeaveBanner!,
+                          style: TextStyle(
+                            color: isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            setState(() => _activeLeaveBanner = null),
+                        icon: Icon(
+                          LucideIcons.x,
+                          size: 18,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+            if (isAttendanceBlocked) ...[
+              MadCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.shieldAlert,
+                        color: Color(0xFFDC2626),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Check In / Check Out will be blocked, please contact the admin.\n'
+                          '(Absent this year: $_yearAbsentCount)',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
             if (_mode == _AttendanceMode.select) ...[
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2055,16 +2318,19 @@ class _AttendancePageState extends State<AttendancePage>
                                 MadButton(
                                   text: 'Start Check In',
                                   icon: LucideIcons.arrowRight,
-                                  onPressed: () {
-                                    setState(() {
-                                      _mode = _AttendanceMode.checkIn;
-                                      _selfie = null;
-                                      _siteImage = null;
-                                      _position = null;
-                                      _locationName = null;
-                                      _locationCapturedAt = null;
-                                    });
-                                  },
+                                  disabled: isAttendanceBlocked,
+                                  onPressed: isAttendanceBlocked
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            _mode = _AttendanceMode.checkIn;
+                                            _selfie = null;
+                                            _siteImage = null;
+                                            _position = null;
+                                            _locationName = null;
+                                            _locationCapturedAt = null;
+                                          });
+                                        },
                                 ),
                               ],
                             ),
@@ -2102,16 +2368,19 @@ class _AttendancePageState extends State<AttendancePage>
                                 MadButton(
                                   text: 'Start Check Out',
                                   icon: LucideIcons.arrowRight,
-                                  onPressed: () {
-                                    setState(() {
-                                      _mode = _AttendanceMode.checkOut;
-                                      _checkoutSelfie = null;
-                                      _checkoutSiteImage = null;
-                                      _checkoutPosition = null;
-                                      _checkoutLocationName = null;
-                                      _checkoutLocationCapturedAt = null;
-                                    });
-                                  },
+                                  disabled: isAttendanceBlocked,
+                                  onPressed: isAttendanceBlocked
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            _mode = _AttendanceMode.checkOut;
+                                            _checkoutSelfie = null;
+                                            _checkoutSiteImage = null;
+                                            _checkoutPosition = null;
+                                            _checkoutLocationName = null;
+                                            _checkoutLocationCapturedAt = null;
+                                          });
+                                        },
                                 ),
                               ],
                             ),
@@ -2125,16 +2394,16 @@ class _AttendancePageState extends State<AttendancePage>
                     width: isMobile ? double.infinity : 320,
                     child: MadCard(
                       child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Icon(
                               LucideIcons.calendarCheck2,
                               size: 24,
                               color: AppTheme.primaryColor,
                             ),
-                                const SizedBox(height: 12),
+                            const SizedBox(height: 12),
                             const Text(
                               'View My Attendance',
                               style: TextStyle(
@@ -2223,7 +2492,9 @@ class _AttendancePageState extends State<AttendancePage>
                       ),
                       const SizedBox(height: 12),
                       MadButton(
-                        text: _checkoutSubmitting ? 'Submitting...' : 'Submit to Admin',
+                        text: _checkoutSubmitting
+                            ? 'Submitting...'
+                            : 'Submit to Admin',
                         icon: LucideIcons.send,
                         disabled: !canSubmitCheckOut,
                         onPressed: _submitCheckout,
