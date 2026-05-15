@@ -71,6 +71,25 @@ class _AttendancePageState extends State<AttendancePage>
   List<Map<String, dynamic>> _leaveRequests = const [];
   bool _absentCountLoading = false;
   int _yearAbsentCount = 0;
+  bool _todayAttendanceLoading = false;
+  bool _todayCheckedIn = false;
+  bool _todayCheckedOut = false;
+  String? _todayAttendanceId;
+
+  String _todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+  bool _hasCheckoutField(Map<String, dynamic> item) {
+    final value =
+        item['check_out_time'] ??
+        item['checkout_time'] ??
+        item['check_out_at'] ??
+        item['checkout_at'] ??
+        item['checkout'] ??
+        item['checked_out_at'];
+    if (value == null) return false;
+    final text = value.toString().trim();
+    return text.isNotEmpty;
+  }
 
   double? _asDouble(dynamic value) {
     if (value == null) return null;
@@ -192,6 +211,7 @@ class _AttendancePageState extends State<AttendancePage>
     super.didChangeDependencies();
     _syncUserContext();
     unawaited(_ensureSelectedProjectHasLocationData());
+    unawaited(_refreshTodayAttendanceStatus());
     unawaited(_refreshLeaveStatus());
     unawaited(_refreshYearlyAbsentCount());
   }
@@ -909,6 +929,122 @@ class _AttendancePageState extends State<AttendancePage>
     return null;
   }
 
+  Future<void> _refreshTodayAttendanceStatus({bool silent = true}) async {
+    final userId = _userId;
+    final projectId = _projectId;
+    if (userId == null ||
+        userId.trim().isEmpty ||
+        projectId == null ||
+        projectId.trim().isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _todayCheckedIn = false;
+        _todayCheckedOut = false;
+        _todayAttendanceId = null;
+      });
+      return;
+    }
+
+    if (!silent && mounted) {
+      setState(() => _todayAttendanceLoading = true);
+    } else {
+      _todayAttendanceLoading = true;
+    }
+
+    final todayKey = _todayKey();
+    try {
+      final stored = await AuthStorage.getDailyAttendanceEntry(
+        userId: userId,
+        date: todayKey,
+        projectId: projectId,
+      );
+      if (stored != null) {
+        final storedId = stored['attendance_id']?.toString();
+        final storedCheckedOut = stored['checked_out'] == true;
+        if (!mounted) return;
+        setState(() {
+          _todayCheckedIn = storedId != null && storedId.trim().isNotEmpty;
+          _todayCheckedOut = storedCheckedOut;
+          _todayAttendanceId = storedId;
+        });
+        return;
+      }
+
+      final res = await ApiClient.getAttendanceByUser(userId);
+      if (res['success'] != true) return;
+      final data = res['data'];
+      if (data is! List) return;
+
+      Map<String, dynamic>? latest;
+      for (final item in data) {
+        if (item is! Map) continue;
+        final row = Map<String, dynamic>.from(item);
+        final dateKey = _resolveAttendanceDate(row);
+        if (dateKey != todayKey) continue;
+        final itemProjectId =
+            row['project_id']?.toString() ?? row['projectId']?.toString();
+        if (itemProjectId == null ||
+            itemProjectId.trim().isEmpty ||
+            itemProjectId.trim() != projectId) {
+          continue;
+        }
+        if (latest == null) {
+          latest = row;
+          continue;
+        }
+        final aTime = _tryParseDateTime(
+          row['check_out_time'] ??
+              row['checkout_time'] ??
+              row['check_in_time'] ??
+              row['created_at'] ??
+              row['updated_at'],
+        );
+        final bTime = _tryParseDateTime(
+          latest['check_out_time'] ??
+              latest['checkout_time'] ??
+              latest['check_in_time'] ??
+              latest['created_at'] ??
+              latest['updated_at'],
+        );
+        final aMillis = aTime?.millisecondsSinceEpoch ?? 0;
+        final bMillis = bTime?.millisecondsSinceEpoch ?? 0;
+        if (aMillis > bMillis) latest = row;
+      }
+
+      if (latest == null) {
+        if (!mounted) return;
+        setState(() {
+          _todayCheckedIn = false;
+          _todayCheckedOut = false;
+          _todayAttendanceId = null;
+        });
+        return;
+      }
+
+      final attendanceId = _resolveAttendanceId(latest);
+      if (attendanceId == null || attendanceId.trim().isEmpty) return;
+      final checkedOut = _hasCheckoutField(latest);
+
+      await AuthStorage.setDailyAttendanceEntry(
+        userId: userId,
+        date: todayKey,
+        projectId: projectId,
+        attendanceId: attendanceId,
+        checkedOut: checkedOut,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _todayCheckedIn = true;
+        _todayCheckedOut = checkedOut;
+        _todayAttendanceId = attendanceId;
+      });
+    } finally {
+      if (mounted) setState(() => _todayAttendanceLoading = false);
+      _todayAttendanceLoading = false;
+    }
+  }
+
   Future<void> _cacheLastAttendanceId(
     String attendanceId, {
     String? userId,
@@ -921,15 +1057,50 @@ class _AttendancePageState extends State<AttendancePage>
       userId: userId,
       projectId: projectId,
     );
+    if (userId != null &&
+        userId.trim().isNotEmpty &&
+        projectId != null &&
+        projectId.trim().isNotEmpty) {
+      await AuthStorage.setDailyAttendanceEntry(
+        userId: userId,
+        date: todayKey,
+        projectId: projectId,
+        attendanceId: attendanceId,
+        checkedOut: false,
+      );
+    }
     _lastAttendanceId = attendanceId;
   }
 
   Future<String?> _resolveCheckoutAttendanceId() async {
+    final todayKey = _todayKey();
+    final userId = _userId;
+    final projectId = _projectId;
+
+    if (userId != null &&
+        userId.trim().isNotEmpty &&
+        projectId != null &&
+        projectId.trim().isNotEmpty) {
+      final entry = await AuthStorage.getDailyAttendanceEntry(
+        userId: userId,
+        date: todayKey,
+        projectId: projectId,
+      );
+      final storedId = entry?['attendance_id']?.toString();
+      final storedCheckedOut = entry?['checked_out'] == true;
+      if (storedId != null && storedId.trim().isNotEmpty && !storedCheckedOut) {
+        _lastAttendanceId = storedId;
+        return storedId;
+      }
+      if (storedId != null && storedId.trim().isNotEmpty && storedCheckedOut) {
+        return null;
+      }
+    }
+
     if (_lastAttendanceId != null && _lastAttendanceId!.trim().isNotEmpty) {
       return _lastAttendanceId;
     }
 
-    final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final stored = await AuthStorage.getLastAttendanceContext();
     final storedId = stored['attendance_id'];
     final storedDate = stored['date'];
@@ -948,7 +1119,6 @@ class _AttendancePageState extends State<AttendancePage>
       return storedId;
     }
 
-    final userId = _userId;
     if (userId == null || userId.trim().isEmpty) {
       return null;
     }
@@ -961,7 +1131,6 @@ class _AttendancePageState extends State<AttendancePage>
     final data = result['data'];
     if (data is! List) return null;
 
-    final projectId = _projectId;
     final matches = <Map<String, dynamic>>[];
     final recent = <Map<String, dynamic>>[];
     final now = DateTime.now();
@@ -1114,6 +1283,26 @@ class _AttendancePageState extends State<AttendancePage>
 
   Future<void> _submitAttendance() async {
     if (_submitting) return;
+    _syncUserContext(force: true);
+    await _refreshTodayAttendanceStatus(silent: true);
+
+    if (_todayCheckedIn) {
+      if (_todayCheckedOut) {
+        showToast(
+          context,
+          'Already checked in and checked out for this project today.',
+          variant: ToastVariant.error,
+        );
+        return;
+      }
+      showToast(
+        context,
+        'Already checked in for this project today. Please check out.',
+        variant: ToastVariant.error,
+      );
+      if (mounted) setState(() => _mode = _AttendanceMode.checkOut);
+      return;
+    }
 
     if (_selfie == null || _siteImage == null) {
       showToast(
@@ -1285,6 +1474,7 @@ class _AttendancePageState extends State<AttendancePage>
         } else {
           await _resolveCheckoutAttendanceId();
         }
+        await _refreshTodayAttendanceStatus(silent: true);
         if (mounted) {
           await showDialog<void>(
             context: context,
@@ -1507,6 +1697,23 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _submitCheckout() async {
     if (_checkoutSubmitting) return;
     _syncUserContext(force: true);
+    await _refreshTodayAttendanceStatus(silent: true);
+    if (_todayCheckedOut) {
+      showToast(
+        context,
+        'Already checked out for this project today.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
+    if (!_todayCheckedIn) {
+      showToast(
+        context,
+        'No check-in found for this project today. Please check in first.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
     if (_checkoutSelfie == null || _checkoutSiteImage == null) {
       showToast(
         context,
@@ -1689,6 +1896,21 @@ class _AttendancePageState extends State<AttendancePage>
           userId: userIdValue,
           projectId: _projectId,
         );
+        final todayKey = _todayKey();
+        final pid = _projectId;
+        if (userIdValue != null &&
+            userIdValue.trim().isNotEmpty &&
+            pid != null &&
+            pid.trim().isNotEmpty) {
+          await AuthStorage.setDailyAttendanceEntry(
+            userId: userIdValue,
+            date: todayKey,
+            projectId: pid,
+            attendanceId: attendanceId,
+            checkedOut: true,
+          );
+        }
+        await _refreshTodayAttendanceStatus(silent: true);
         if (mounted) {
           await showDialog<void>(
             context: context,
@@ -2124,6 +2346,10 @@ class _AttendancePageState extends State<AttendancePage>
       return d <= _attendanceAllowedRadiusMeters;
     }();
     final isAttendanceBlocked = _yearAbsentCount >= 15;
+    final checkInLockedForProject =
+        _todayAttendanceLoading || _todayCheckedIn || _todayCheckedOut;
+    final checkOutLockedForProject =
+        _todayAttendanceLoading || !_todayCheckedIn || _todayCheckedOut;
 
     return ProtectedRoute(
       title: 'Attendance',
@@ -2318,10 +2544,12 @@ class _AttendancePageState extends State<AttendancePage>
                                 MadButton(
                                   text: 'Start Check In',
                                   icon: LucideIcons.arrowRight,
-                                  disabled: isAttendanceBlocked,
-                                  onPressed: isAttendanceBlocked
-                                      ? null
-                                      : () {
+                                  disabled:
+                                      isAttendanceBlocked || checkInLockedForProject,
+                                  onPressed:
+                                      (isAttendanceBlocked || checkInLockedForProject)
+                                          ? null
+                                          : () {
                                           setState(() {
                                             _mode = _AttendanceMode.checkIn;
                                             _selfie = null;
@@ -2368,10 +2596,12 @@ class _AttendancePageState extends State<AttendancePage>
                                 MadButton(
                                   text: 'Start Check Out',
                                   icon: LucideIcons.arrowRight,
-                                  disabled: isAttendanceBlocked,
-                                  onPressed: isAttendanceBlocked
-                                      ? null
-                                      : () {
+                                  disabled:
+                                      isAttendanceBlocked || checkOutLockedForProject,
+                                  onPressed:
+                                      (isAttendanceBlocked || checkOutLockedForProject)
+                                          ? null
+                                          : () {
                                           setState(() {
                                             _mode = _AttendanceMode.checkOut;
                                             _checkoutSelfie = null;
@@ -2389,6 +2619,40 @@ class _AttendancePageState extends State<AttendancePage>
                       ),
                     ],
                   ),
+                  if (_todayAttendanceLoading) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Checking today’s attendance status…',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                  ] else if (_todayCheckedOut) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'You have already checked in and checked out for this project today.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                  ] else if (_todayCheckedIn) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'You are checked in for this project today. Please check out.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: isMobile ? double.infinity : 320,

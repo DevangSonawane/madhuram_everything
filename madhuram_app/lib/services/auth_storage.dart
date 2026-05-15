@@ -8,6 +8,7 @@ class AuthStorage {
   static const _lastAttendanceDateKey = 'last_attendance_date';
   static const _lastAttendanceUserKey = 'last_attendance_user';
   static const _lastAttendanceProjectKey = 'last_attendance_project';
+  static const _dailyAttendanceByProjectKey = 'daily_attendance_by_project_v1';
   static const _leaveBannerKey = 'leave_granted_banner';
 
   static Future<Map<String, dynamic>?> getUser() async {
@@ -34,6 +35,7 @@ class AuthStorage {
     await prefs.remove(_lastAttendanceDateKey);
     await prefs.remove(_lastAttendanceUserKey);
     await prefs.remove(_lastAttendanceProjectKey);
+    await prefs.remove(_dailyAttendanceByProjectKey);
     await prefs.remove(_leaveBannerKey);
   }
 
@@ -114,6 +116,95 @@ class AuthStorage {
     await prefs.remove(_lastAttendanceDateKey);
     await prefs.remove(_lastAttendanceUserKey);
     await prefs.remove(_lastAttendanceProjectKey);
+  }
+
+  // ============================================================================
+  // Attendance Persistence (Per Project, Per Day)
+  // ============================================================================
+  // Shape:
+  // {
+  //   "<userId>": {
+  //     "<yyyy-MM-dd>": {
+  //       "<projectId>": { "attendance_id": "...", "checked_out": true/false }
+  //     }
+  //   }
+  // }
+  static Future<Map<String, dynamic>> _getDailyAttendanceMap() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_dailyAttendanceByProjectKey);
+    if (raw == null || raw.trim().isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      // ignore
+    }
+    return {};
+  }
+
+  static Future<void> _setDailyAttendanceMap(Map<String, dynamic> value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_dailyAttendanceByProjectKey, jsonEncode(value));
+  }
+
+  static Future<Map<String, dynamic>?> getDailyAttendanceEntry({
+    required String userId,
+    required String date,
+    required String projectId,
+  }) async {
+    if (userId.trim().isEmpty || date.trim().isEmpty || projectId.trim().isEmpty)
+      return null;
+    final map = await _getDailyAttendanceMap();
+    final userNode = map[userId];
+    if (userNode is! Map) return null;
+    final dateNode = userNode[date];
+    if (dateNode is! Map) return null;
+    final projectNode = dateNode[projectId];
+    if (projectNode is! Map) return null;
+    return Map<String, dynamic>.from(projectNode);
+  }
+
+  static Future<void> setDailyAttendanceEntry({
+    required String userId,
+    required String date,
+    required String projectId,
+    required String attendanceId,
+    bool checkedOut = false,
+  }) async {
+    if (userId.trim().isEmpty ||
+        date.trim().isEmpty ||
+        projectId.trim().isEmpty ||
+        attendanceId.trim().isEmpty) {
+      return;
+    }
+    final map = await _getDailyAttendanceMap();
+    final userNode = (map[userId] is Map)
+        ? Map<String, dynamic>.from(map[userId] as Map)
+        : <String, dynamic>{};
+    final dateNode = (userNode[date] is Map)
+        ? Map<String, dynamic>.from(userNode[date] as Map)
+        : <String, dynamic>{};
+    dateNode[projectId] = {
+      'attendance_id': attendanceId,
+      'checked_out': checkedOut,
+    };
+    userNode[date] = dateNode;
+    map[userId] = userNode;
+    await _setDailyAttendanceMap(map);
+  }
+
+  static Future<void> clearDailyAttendanceForDate({
+    required String userId,
+    required String date,
+  }) async {
+    if (userId.trim().isEmpty || date.trim().isEmpty) return;
+    final map = await _getDailyAttendanceMap();
+    final userNode = map[userId];
+    if (userNode is! Map) return;
+    final nextUserNode = Map<String, dynamic>.from(userNode);
+    nextUserNode.remove(date);
+    map[userId] = nextUserNode;
+    await _setDailyAttendanceMap(map);
   }
 
   // ============================================================================
