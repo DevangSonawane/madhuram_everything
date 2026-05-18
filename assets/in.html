@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOQ Parser</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Courier New', monospace;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+  }
+
+  header {
+    background: #1a1a1a;
+    border-bottom: 2px solid #f0a500;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  header h1 {
+    font-size: 1.1rem;
+    letter-spacing: 0.2em;
+    color: #f0a500;
+    text-transform: uppercase;
+  }
+
+  header .badge {
+    font-size: 0.65rem;
+    background: #f0a500;
+    color: #0f0f0f;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+  }
+
+  .upload-zone {
+    margin: 40px auto;
+    max-width: 600px;
+    border: 2px dashed #333;
+    border-radius: 6px;
+    padding: 60px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: #f0a500;
+    background: #1a1a1a;
+  }
+
+  .upload-zone input { display: none; }
+
+  .upload-icon {
+    font-size: 2.5rem;
+    margin-bottom: 16px;
+    opacity: 0.6;
+  }
+
+  .upload-zone p {
+    color: #888;
+    font-size: 0.85rem;
+    line-height: 1.8;
+  }
+
+  .upload-zone .hint {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    color: #555;
+  }
+
+  #status {
+    text-align: center;
+    padding: 12px;
+    font-size: 0.8rem;
+    color: #f0a500;
+    letter-spacing: 0.1em;
+    min-height: 36px;
+  }
+
+  #meta {
+    display: none;
+    max-width: 1400px;
+    margin: 0 auto 20px;
+    padding: 0 24px;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .meta-card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-left: 3px solid #f0a500;
+    padding: 12px 16px;
+  }
+
+  .meta-card .label {
+    font-size: 0.65rem;
+    color: #666;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .meta-card .value {
+    font-size: 0.95rem;
+    color: #e0e0e0;
+    font-weight: bold;
+  }
+
+  #table-wrap {
+    display: none;
+    max-width: 1400px;
+    margin: 0 auto 40px;
+    padding: 0 24px;
+    overflow-x: auto;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar input[type="text"] {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 7px 12px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    border-radius: 3px;
+    width: 220px;
+    outline: none;
+  }
+
+  .toolbar input[type="text"]:focus { border-color: #f0a500; }
+
+  .toolbar select {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 7px 10px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .toolbar select:focus { border-color: #f0a500; }
+
+  .toolbar .spacer { flex: 1; }
+
+  .btn {
+    background: #f0a500;
+    color: #0f0f0f;
+    border: none;
+    padding: 7px 16px;
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn:hover { background: #d49400; }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid #333;
+    color: #888;
+    padding: 7px 14px;
+    font-family: inherit;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .btn-ghost:hover { border-color: #f0a500; color: #f0a500; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    table-layout: fixed;
+  }
+
+  colgroup col:nth-child(1) { width: 80px; }
+  colgroup col:nth-child(2) { width: 60px; }
+  colgroup col:nth-child(3) { width: 340px; }
+  colgroup col:nth-child(4) { width: 90px; }
+  colgroup col:nth-child(5) { width: 60px; }
+  colgroup col:nth-child(6) { width: 90px; }
+  colgroup col:nth-child(7) { width: 100px; }
+  colgroup col:nth-child(8) { width: 110px; }
+
+  thead th {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-bottom: 2px solid #f0a500;
+    padding: 10px 12px;
+    text-align: left;
+    color: #f0a500;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  thead th:hover { background: #222; }
+  thead th.sort-asc::after { content: ' ↑'; }
+  thead th.sort-desc::after { content: ' ↓'; }
+
+  tbody tr {
+    border-bottom: 1px solid #1e1e1e;
+    transition: background 0.1s;
+  }
+
+  tbody tr:hover { background: #1a1a1a; }
+
+  tbody tr.section-row {
+    background: #141414;
+  }
+
+  tbody tr.section-row td {
+    color: #f0a500;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-top: 1px solid #2a2a2a;
+  }
+
+  tbody td {
+    padding: 8px 12px;
+    border: 1px solid #1e1e1e;
+    vertical-align: top;
+    word-break: break-word;
+  }
+
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.center { text-align: center; }
+
+  td.amount { color: #7ecf8e; font-weight: bold; }
+  td.rate { color: #a0c4f1; }
+
+  .row-no {
+    color: #555;
+    font-size: 0.7rem;
+  }
+
+  tfoot td {
+    background: #1a1a1a;
+    border-top: 2px solid #f0a500;
+    padding: 10px 12px;
+    font-weight: bold;
+    color: #f0a500;
+    font-size: 0.82rem;
+  }
+
+  tfoot td.num { text-align: right; }
+
+  #raw-toggle {
+    display: none;
+    max-width: 1400px;
+    margin: 0 auto 40px;
+    padding: 0 24px;
+  }
+
+  #raw-text {
+    background: #111;
+    border: 1px solid #222;
+    padding: 16px;
+    font-size: 0.7rem;
+    color: #666;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+    border-radius: 4px;
+  }
+
+  .count-badge {
+    font-size: 0.7rem;
+    background: #222;
+    color: #888;
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BOQ Parser</h1>
+  <span class="badge">Lodha · Hiranandani · Oakwood</span>
+</header>
+
+<div class="upload-zone" id="dropZone">
+  <input type="file" id="fileInput" accept=".pdf">
+  <div class="upload-icon">📄</div>
+  <p>Drop a BOQ PDF here<br>or click to browse</p>
+  <p class="hint">Supported: Lodha Work Order · Hiranandani BOQ · Oakwood PHE BOQ</p>
+</div>
+
+<div id="status"></div>
+
+<div id="meta">
+  <div class="meta-grid">
+    <div class="meta-card"><div class="label">Project</div><div class="value" id="m-project">—</div></div>
+    <div class="meta-card"><div class="label">Parser Used</div><div class="value" id="m-parser">—</div></div>
+    <div class="meta-card"><div class="label">Total Items</div><div class="value" id="m-items">—</div></div>
+    <div class="meta-card"><div class="label">Total Amount</div><div class="value" id="m-amount">—</div></div>
+  </div>
+</div>
+
+<div id="table-wrap">
+  <div class="toolbar">
+    <input type="text" id="searchBox" placeholder="Search description…">
+    <select id="sectionFilter"><option value="">All Sections</option></select>
+    <span class="count-badge" id="rowCount"></span>
+    <div class="spacer"></div>
+    <button class="btn-ghost" id="rawToggleBtn" onclick="toggleRaw()">Show Raw Text</button>
+    <button class="btn" onclick="exportCSV()">Export CSV</button>
+  </div>
+  <table id="boqTable">
+    <colgroup>
+      <col><col><col><col><col><col><col><col>
+    </colgroup>
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">SR No</th>
+        <th onclick="sortTable(1)">Item No</th>
+        <th onclick="sortTable(2)">Description</th>
+        <th onclick="sortTable(3)">HSN/SAC</th>
+        <th onclick="sortTable(4)" style="text-align:center">Unit</th>
+        <th onclick="sortTable(5)" style="text-align:right">Qty</th>
+        <th onclick="sortTable(6)" style="text-align:right">Rate</th>
+        <th onclick="sortTable(7)" style="text-align:right">Amount</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5">TOTAL</td>
+        <td></td>
+        <td></td>
+        <td class="num" id="totalAmount"></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<div id="raw-toggle">
+  <pre id="raw-text"></pre>
+</div>
+
+<script>
+// ─── pdf.js setup ─────────────────────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let allItems = [];
+let rawTextGlobal = '';
+let sortCol = -1;
+let sortDir = 1;
+
+// ─── Upload / Drop ────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+async function handleFile(file) {
+  if (!file || file.type !== 'application/pdf') { setStatus('Please upload a PDF file.'); return; }
+  setStatus('Reading PDF…');
+  try {
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    setStatus(`Extracting text from ${pdf.numPages} pages…`);
+    let fullText = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const items = content.items.slice().sort((a, b) => {
+        const ay = Math.round(a.transform[5] / 2) * 2;
+        const by = Math.round(b.transform[5] / 2) * 2;
+        if (ay !== by) return by - ay;
+        return a.transform[4] - b.transform[4];
+      });
+      let lastY = null;
+      for (const item of items) {
+        const y = Math.round(item.transform[5] / 2) * 2;
+        if (lastY !== null && Math.abs(y - lastY) > 3) fullText += '\n';
+        fullText += item.str + ' ';
+        lastY = y;
+      }
+      fullText += '\n';
+    }
+    rawTextGlobal = fullText;
+    document.getElementById('raw-text').textContent = fullText;
+    setStatus('Parsing BOQ…');
+    parseAndRender(fullText, file.name);
+  } catch (err) {
+    setStatus('Error: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ─── UTILITIES ────────────────────────────────────────────────────────────────
+const normalizeSpaces = v => String(v || '').replace(/\s+/g, ' ').trim();
+
+const toNumber = v => {
+  if (v == null) return NaN;
+  const cleaned = String(v).replace(/,/g, '').trim();
+  const m = cleaned.match(/-?\d+(?:\.\d+)?/);
+  if (!m) return NaN;
+  const n = parseFloat(m[0]);
+  return isFinite(n) ? n : NaN;
+};
+
+const isLikelyFooterOrHeader = line => {
+  const t = normalizeSpaces(line).toUpperCase();
+  if (!t) return true;
+  if (t.includes('SR.NO') && t.includes('ITEM') && t.includes('DESCRIPTION')) return true;
+  if (t.includes('HSN') && t.includes('SAC') && t.includes('UNIT')) return true;
+  if (t.includes('COMPANY') && t.includes('CONTRACTOR')) return true;
+  if (t.includes('TOTAL OF AMOUNT')) return true;
+  if (t.includes('CONTRACT AMOUNT')) return true;
+  if (t === 'PAGE' || t.startsWith('PAGE ')) return true;
+  // Lodha footer lines that bleed into descriptions
+  if (/\(SIGN\s*[&]\s*STAMP\)/.test(t)) return true;
+  if (/WORK ORDER\s*:\s*\d+/.test(t)) return true;
+  if (/VERSION NO\s*:\s*\d+/.test(t)) return true;
+  if (/^NO\.\s*CODE/.test(t)) return true;
+  return false;
+};
+
+const splitLines = rawText =>
+  String(rawText || '').split(/\r?\n/).map(l => normalizeSpaces(l)).filter(Boolean);
+
+const findAllMatches = (str, regex) => {
+  const matches = [];
+  let m;
+  const r = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`);
+  while ((m = r.exec(str)) !== null) matches.push(m);
+  return matches;
+};
+
+// ─── LODHA PARSER ─────────────────────────────────────────────────────────────
+function parseLodhaBoq(rawText) {
+  const lines = splitLines(rawText).filter(l => !isLikelyFooterOrHeader(l));
+  const sections = [];
+  const items = [];
+  const itemStartAt = []; // line index where each item began
+  let currentSection = '';
+
+  const sectionRe = /^\d+\.\d+\s+[A-Z]/;
+  const itemNoRe  = /^(?:\d+\.\d+\.\d+|\d+\.\d+|\d+)\b/;
+  const hsnRe     = /\b(\d{6})\b/;
+  const tailRe    = /\b([A-Za-z]{1,10})\s+(-?\d[\d,]*\.?\d*)\s+(-?\d[\d,]*\.?\d*)\s+(-?\d[\d,]*\.?\d*)\s*$/;
+
+  const pushSection = name => {
+    const n = normalizeSpaces(name);
+    if (!n || (sections.length && sections[sections.length - 1] === n)) return;
+    sections.push(n);
+  };
+
+  // ── Pass 1: parse items, record start line index for each ────────────────
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (sectionRe.test(line)) {
+      currentSection = normalizeSpaces(line.replace(/^\d+\.\d+\s+/, ''));
+      pushSection(currentSection);
+      continue;
+    }
+
+    if (!itemNoRe.test(line)) continue;
+
+    const itemNo = normalizeSpaces((line.match(itemNoRe) || [''])[0]);
+    const startLineIdx = i; // record NOW, before i is mutated by accumulation
+    let buffer = line.slice(itemNo.length).trim();
+
+    let consumed = 0;
+    let hsnMatch = buffer.match(hsnRe);
+    let tailOk   = tailRe.test(buffer);
+
+    while ((!hsnMatch || !tailOk) && i + 1 < lines.length && consumed < 40) {
+      const next = lines[i + 1];
+      if (sectionRe.test(next)) break;
+      if (itemNoRe.test(next) && (next.match(itemNoRe) || [''])[0] !== itemNo) break;
+      if (isLikelyFooterOrHeader(next)) { i++; consumed++; continue; }
+      buffer = `${buffer} ${next}`.trim();
+      i++; consumed++;
+      hsnMatch = buffer.match(hsnRe);
+      tailOk   = tailRe.test(buffer);
+    }
+
+    if (!hsnMatch) continue;
+    const hsn = hsnMatch[1];
+    const tailMatch = buffer.match(tailRe);
+    if (!tailMatch) continue;
+
+    const [, unit, qtyRaw, rateRaw, amountRaw] = tailMatch;
+    const qty    = toNumber(qtyRaw);
+    const rate   = toNumber(rateRaw);
+    const amount = toNumber(amountRaw);
+
+    const beforeTail = buffer.slice(0, tailMatch.index).trim();
+    const hsnIndex   = beforeTail.indexOf(hsn);
+    let description  = normalizeSpaces(
+      hsnIndex >= 0 ? beforeTail.slice(0, hsnIndex) : beforeTail.replace(hsnRe, '')
+    );
+    if (!description) continue;
+
+    itemStartAt.push(startLineIdx);
+    items.push({
+      item_no: itemNo,
+      section: currentSection,
+      description,
+      hsn,
+      unit:   normalizeSpaces(unit),
+      qty:    isFinite(qty)    ? qty    : 0,
+      rate:   isFinite(rate)   ? rate   : 0,
+      amount: isFinite(amount) ? amount : 0,
+    });
+  }
+
+  // ── Pass 2: attach dangling lines to the correct item ────────────────────
+  // pdf.js column extraction causes second description lines to appear in raw
+  // text AFTER the next row's content. Example:
+  //
+  //   li=10: 1.01.1 ... 998322 RMT 990 696 689040   → items[0], startAt=10
+  //   li=11: 1.01.2 b) Waste Pipe 998322 RMT ...    → items[1], startAt=11
+  //   li=12: 110 mm dia                             → dangling (no HSN, no item no)
+  //   li=13: 1.01.3 c) Rain Water Pipe 998322 ...   → items[2], startAt=13
+  //   li=14: 75 mm dia                              → dangling
+  //
+  // For dangling at li=12: first item starting after li=12 is items[2] (startAt=13).
+  // So append to items[2-1] = items[1]. ✓
+  // For dangling at li=14: first item starting after li=14 → none → append to last item.
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    if (!line) continue;
+    if (isLikelyFooterOrHeader(line)) continue;
+    if (sectionRe.test(line)) continue;
+    // Use stricter check: real Lodha item numbers have at least one dot (1.01.1)
+    // "110 mm dia" starts with digits but has no dot in the item-number position
+    if (/^\d+\.\d+/.test(line)) continue;  // has an item number — not dangling
+    if (hsnRe.test(line)) continue;     // has HSN — belongs to a full item row
+    if (tailRe.test(line)) continue;    // has unit+qty+rate+amount tail
+
+    // This is a dangling line. Find first item that starts strictly after li.
+    let nextK = -1;
+    for (let k = 0; k < itemStartAt.length; k++) {
+      if (itemStartAt[k] > li) { nextK = k; break; }
+    }
+
+    // Target item is the one just before nextK
+    const target = nextK > 0           ? nextK - 1
+                 : nextK === -1 && items.length > 0 ? items.length - 1
+                 : -1;
+
+    if (target >= 0) {
+      items[target].description = normalizeSpaces(
+        items[target].description + ' ' + line
+      );
+    }
+  }
+
+  return { items, sections, name: 'Lodha' };
+}
+
+
+// ─── HIRANANDANI PARSER ───────────────────────────────────────────────────────
+function parseHiranandaniBoqRowWise(rawText) {
+  const lines = splitLines(rawText);
+  const sections = [];
+  const items = [];
+  let currentSection = '';
+
+  const sectionRe = /^\d+\s+[A-Za-z].+/;
+  const itemStartRe = /^(?:\(\s*\d+\s*\)|\d+\))/;
+  const lumpSumAuRe = /^\d+\s+AU\s+[\d,]+(\.\d+)?\b/i;
+
+  const pushSection = name => {
+    const n = normalizeSpaces(name);
+    if (!n || (sections.length && sections[sections.length - 1] === n)) return;
+    sections.push(n);
+  };
+
+  const normalizeItemText = value =>
+    normalizeSpaces(value)
+      .replace(/\(\s*(\d+)\s*\)/g, '($1)')
+      .replace(/^(\d+)\)/, '($1)')
+      .replace(/\bSAC\b/g, 'Sac')
+      .replace(/\bS\.?A\.?C\.?\b/gi, 'Sac');
+
+  const extractItem = (joinedRaw, itemNo) => {
+    const joined = normalizeItemText(joinedRaw);
+    // CGST/SGST lines are now skipped during accumulation, so no need to reject here
+
+    const sacMatch = joined.match(/Sac\s*:\s*(\d[\d\s]{5,10})\s*(?:-\s*)?/i);
+    const sac_code = sacMatch ? String(sacMatch[1] || '').replace(/\s+/g, '') : '';
+    const afterSac = sacMatch
+      ? joined.slice(sacMatch.index + sacMatch[0].length)
+      : joined.replace(/^\(\d+\)\s*/i, '');
+
+    const tokenMatches = findAllMatches(afterSac, /\S+/g);
+    if (tokenMatches.length < 4) return null;
+    const tokens = tokenMatches.map(m => m[0]);
+
+    let tailIndex = -1;
+    for (let t = tokens.length - 1; t >= 3; t--) {
+      const value      = toNumber(tokens[t]);
+      const unit_price = toNumber(tokens[t - 1]);
+      const uom        = normalizeSpaces(tokens[t - 2]);
+      const order_qty  = toNumber(tokens[t - 3]);
+      if (isFinite(value) && isFinite(unit_price) && isFinite(order_qty) && uom) {
+        tailIndex = t - 3; break;
+      }
+    }
+    if (tailIndex < 0) return null;
+
+    const order_qty  = toNumber(tokens[tailIndex]);
+    const uom        = normalizeSpaces(tokens[tailIndex + 1]);
+    const unit_price = toNumber(tokens[tailIndex + 2]);
+    const value      = toNumber(tokens[tailIndex + 3]);
+    if (!isFinite(value) || !isFinite(unit_price) || !isFinite(order_qty) || !uom) return null;
+
+    const descTokens = tokens.slice(0, tailIndex);
+    const service_description = normalizeSpaces(descTokens.join(' '))
+      .replace(/\(\d+\)\s*/i, '')
+      .replace(/(?:SAC|Sac)\s*:\s*\d{6}\s*-\s*/i, '')
+      .trim();
+    if (!service_description) return null;
+
+    return {
+      item_no: itemNo,
+      section: currentSection,
+      sac_code,
+      description: service_description,
+      unit: uom,
+      qty: order_qty,
+      rate: unit_price,
+      amount: value,
+    };
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = normalizeItemText(lines[i]);
+    if (!line) continue;
+
+    // Skip page-level noise lines
+    if (/Sr\s*No\.?\s*Service\s*Description/i.test(line)) continue;
+    if (/^Building\s*:/i.test(line)) continue;
+    if (/Corporate\s*Addr/i.test(line)) continue;
+    if (/Page\s*No\.?\s*:/i.test(line)) continue;
+
+    if (sectionRe.test(line) && !itemStartRe.test(line) && !lumpSumAuRe.test(line)) {
+      currentSection = line.replace(/^\d+\s+/, '').trim();
+      pushSection(currentSection);
+      continue;
+    }
+
+    if (lumpSumAuRe.test(line) ||
+        (!itemStartRe.test(line) && !/\bSac\s*:\s*\d[\d\s]{5,10}\b/i.test(line))) continue;
+
+    const itemNoMatch = line.match(/^\(\d+\)/) || line.match(/^\d+\)/) || line.match(/^\d+\b/);
+    const itemNo = itemNoMatch
+      ? (itemNoMatch[0].startsWith('(') ? itemNoMatch[0] : `(${itemNoMatch[0].replace(')', '')})`)
+      : '';
+    let joined = line;
+    let consumed = 0;
+    while (i + 1 < lines.length && consumed < 30) {
+      const next = normalizeItemText(lines[i + 1]);
+      if (!next) { i++; consumed++; continue; }
+      // Only break on a real section (digit + space + alpha), not Building:/footer lines
+      if (sectionRe.test(next) && !itemStartRe.test(next) &&
+          !/^Building\s*:/i.test(next) &&
+          !/Sr\s*No\.?\s*Service/i.test(next)) break;
+      if (itemStartRe.test(next)) break;
+      if (lumpSumAuRe.test(next)) { i++; consumed++; continue; }
+      // Skip CGST/SGST/INR tax lines silently — they pollute the buffer
+      if (/\b(CGST|SGST|INR)\b/i.test(next)) { i++; consumed++; continue; }
+      // Skip page headers that appear mid-table (e.g. "Sr No. Service Description Order Qty. UOM Unit Price Value")
+      if (/Sr\s*No\.?\s*Service\s*Description/i.test(next)) { i++; consumed++; continue; }
+      // Skip "Building : ..." lines that appear after section headers
+      if (/^Building\s*:/i.test(next)) { i++; consumed++; continue; }
+      // Skip corporate footer lines
+      if (/Corporate\s*Addr/i.test(next)) { i++; consumed++; continue; }
+      if (/Page\s*No\.?\s*:/i.test(next)) { i++; consumed++; continue; }
+      joined = `${joined} ${next}`.trim();
+      i++; consumed++;
+    }
+    const parsed = extractItem(joined, itemNo);
+    if (parsed) items.push(parsed);
+  }
+  // ── Post-pass: attach dangling lines to the correct item ────────────────
+  // Same problem as Lodha: pdf.js emits the second description line of row N
+  // AFTER the full content of row N+1. E.g.:
+  //   (58) Sac: 995462 - Pro.Under gr.UPVC-Sch. 40 pipe 50  50  M  213.75  10,687.50
+  //   (59) Sac: 995462 - Fix.Under gr.UPVC-Sch. 40 pipe 50 mm ...
+  //   mm Ø                   ← belongs to (58), but comes here
+  //
+  // Fix: same two-pass approach — record start line index for each item,
+  // then in pass 2 attach dangling lines (no item number, no SAC, no numeric tail)
+  // to the item just before the next item that starts after them.
+
+  const hsnRe2 = /\b\d{6}\b/;
+  const tailRe2 = /\b[A-Za-z]{1,10}\s+[\d,]+\.?\d*\s+[\d,]+\.?\d*\s+[\d,]+\.?\d*\s*$/;
+  const itemStartRe2 = /^(?:\(\s*\d+\s*\)|\d+\))/;
+
+  const isDanglingH = line => {
+    if (!line) return false;
+    if (/\b(CGST|SGST|INR)\b/i.test(line)) return false;
+    if (/Sr\s*No\.?\s*Service/i.test(line)) return false;
+    if (/^Building\s*:/i.test(line)) return false;
+    if (/Corporate\s*Addr/i.test(line)) return false;
+    if (/Page\s*No\.?/i.test(line)) return false;
+    if (/^\d+\s+[A-Za-z]/.test(line) && !itemStartRe2.test(line)) return false; // section
+    if (itemStartRe2.test(line)) return false;
+    if (hsnRe2.test(line)) return false;
+    if (tailRe2.test(line)) return false;
+    return true;
+  };
+
+  // Re-scan all lines to find where each item started
+  const allLinesH = splitLines(rawText);
+  const itemStartAtH = [];
+  {
+    let k = 0;
+    for (let li = 0; li < allLinesH.length && k < items.length; li++) {
+      const l = normalizeSpaces(allLinesH[li])
+        .replace(/\(\s*(\d+)\s*\)/g, '($1)')
+        .replace(/^(\d+)\)/, '($1)');
+      if (itemStartRe2.test(l)) {
+        const nm = l.match(/^\(\d+\)/);
+        if (nm && k < items.length && items[k].item_no === nm[0]) {
+          itemStartAtH[k] = li;
+          k++;
+        }
+      }
+    }
+  }
+
+  for (let li = 0; li < allLinesH.length; li++) {
+    const line = normalizeSpaces(allLinesH[li]);
+    if (!isDanglingH(line)) continue;
+
+    // Find first item starting strictly after this line
+    let nextK = -1;
+    for (let k = 0; k < itemStartAtH.length; k++) {
+      if (itemStartAtH[k] > li) { nextK = k; break; }
+    }
+    const target = nextK > 0 ? nextK - 1
+                 : nextK === -1 && items.length > 0 ? items.length - 1
+                 : -1;
+    if (target >= 0) {
+      items[target].description = normalizeSpaces(
+        items[target].description + ' ' + line
+      );
+    }
+  }
+
+  return { items, sections, name: 'Hiranandani' };
+}
+
+// ─── OAKWOOD / GENERIC PARSER ─────────────────────────────────────────────────
+function extractBOQFromText(rawText) {
+  const items = [];
+  let projectName = '';
+  let category = '';
+  let buffer = [];
+
+  if (!rawText || typeof rawText !== 'string') return { items, projectName, sections: [], name: 'Oakwood' };
+
+  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  const skip = line => {
+    if (!line) return true;
+    if (/^OAKWOOD\s+BUILDING|^Item\s*$|^Nos\.\s*Description|^Page\s+No\.|^--\s+\d+\s+of\s+\d+|^SCHEDULE\s+OF\s+QUANTITIES/i.test(line)) return true;
+    if (/^Note:\s*$|^[ivxIVX]+\.\s|^[A-Z]\)\s/.test(line)) return true;
+    if (/^TOTAL\s*:\s*["']?[A-G]["']?\s*CARRIED\s+TO\s+SUMMARY/i.test(line)) return true;
+    if (/^Description\s+Unit\s+(Qty|Total|Tower)/i.test(line)) return true;
+    return false;
+  };
+
+  const sectionMatch = line => /^([A-G])\.\s+(.+)$/.exec(line);
+  const unitQtyOnly  = line => /^(Nos|RM|Cum|Sft|Job|Mtr|Sqm|Kg|Kgs|Set|Pair|M|MM|Meter|Meters|Litre|Ltr|Ltrs|Ft|Feet|Pcs|Each|mm|cm|in|inch|m2|sqm|sqft|sft|Lot|Bag)\.?\s*([\d,]+\.?\d*)\s*$/i.exec(line);
+  const sameLine = line => {
+    const m = line.match(/^([A-Za-z0-9][A-Za-z0-9\-\.]*)\s+(.+?)\s+(Nos|RM|Cum|Sft|Job|Mtr|Sqm|Kg|Kgs|Set|Pair|M|MM|Meter|Meters|Litre|Ltr|Ltrs|Ft|Feet|Pcs|Each|mm|cm|in|inch|m2|sqm|sqft|sft|Lot|Bag)\.?\s*([\d,]+\.?\d*)(?:\s+([\d,]+\.?\d*))?(?:\s+([\d,]+\.?\d*))?\s*$/i);
+    if (!m) return null;
+    const [, no, desc, unit, qty, rate, amount] = m;
+    return {
+      item_no: no.trim(), description: desc.trim(), unit: unit.trim(),
+      qty: String(qty).replace(/,/g, ''),
+      rate: rate ? String(rate).replace(/,/g, '') : undefined,
+      amount: amount ? String(amount).replace(/,/g, '') : undefined,
+    };
+  };
+  const itemStart = line => /^([A-Za-z0-9][A-Za-z0-9\-\.]*)\s+/.exec(line);
+
+  const sections = [];
+  const pushSection = name => {
+    if (name && (!sections.length || sections[sections.length - 1] !== name)) sections.push(name);
+  };
+
+  for (const line of lines) {
+    if (!projectName && /OAKWOOD\s+BUILDING|BUILDING\s+AT\s+KALYAN/i.test(line))
+      projectName = line.trim().slice(0, 120);
+    if (skip(line)) continue;
+
+    const sec = sectionMatch(line);
+    if (sec) {
+      buffer = [];
+      category = sec[2].replace(/\s*\([^)]*\)\s*$/, '').trim().slice(0, 80);
+      pushSection(category);
+      continue;
+    }
+
+    const uq = unitQtyOnly(line);
+    if (uq) {
+      if (buffer.length) {
+        let desc = buffer.join(' ').trim().slice(0, 1000);
+        let itemNo = '';
+        const fm = /^([A-Za-z0-9][A-Za-z0-9\-\.]*)\s+/.exec(desc);
+        if (fm) { itemNo = fm[1]; desc = desc.slice(fm[0].length).trim(); }
+        if (desc) items.push({ item_no: itemNo, section: category, description: desc, hsn: '', unit: uq[1], qty: parseFloat(uq[2].replace(/,/g, '')) || 0, rate: 0, amount: 0 });
+        buffer = [];
+      }
+      continue;
+    }
+
+    const sl = sameLine(line);
+    if (sl) {
+      buffer = [];
+      items.push({ item_no: sl.item_no, section: category, description: sl.description, hsn: '', unit: sl.unit, qty: parseFloat(sl.qty) || 0, rate: parseFloat(sl.rate) || 0, amount: parseFloat(sl.amount) || 0 });
+      continue;
+    }
+
+    if (itemStart(line)) { buffer = [line]; continue; }
+    if (buffer.length) buffer.push(line);
+  }
+
+  return { items, sections, projectName, name: 'Oakwood' };
+}
+
+// ─── AUTO-DETECT ──────────────────────────────────────────────────────────────
+function parseAndRender(rawText, fileName) {
+  const results = [
+    parseLodhaBoq(rawText),
+    parseHiranandaniBoqRowWise(rawText),
+    extractBOQFromText(rawText),
+  ];
+
+  const best = results.reduce((a, b) => b.items.length > a.items.length ? b : a);
+
+  if (!best.items.length) {
+    setStatus('No BOQ items found. Check raw text for extraction issues.');
+    document.getElementById('raw-toggle').style.display = 'block';
+    return;
+  }
+
+  allItems = best.items;
+  const projectName = best.projectName || fileName.replace(/\.pdf$/i, '');
+  renderMeta(projectName, best.name, best.items);
+  renderTable(best.items, best.sections);
+  setStatus('');
+}
+
+// ─── META ─────────────────────────────────────────────────────────────────────
+function renderMeta(projectName, parserName, items) {
+  document.getElementById('m-project').textContent = projectName || '—';
+  document.getElementById('m-parser').textContent = parserName;
+  document.getElementById('m-items').textContent = items.length;
+  const total = items.reduce((s, it) => s + (it.amount || 0), 0);
+  document.getElementById('m-amount').textContent = '₹ ' + formatNum(total);
+  document.getElementById('meta').style.display = 'block';
+}
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+function renderTable(items, sections) {
+  const sf = document.getElementById('sectionFilter');
+  sf.innerHTML = '<option value="">All Sections</option>';
+  [...new Set(items.map(it => it.section).filter(Boolean))].forEach(s => {
+    const o = document.createElement('option'); o.value = s; o.textContent = s; sf.appendChild(o);
+  });
+  renderRows(items);
+  document.getElementById('table-wrap').style.display = 'block';
+  document.getElementById('searchBox').oninput = applyFilters;
+  document.getElementById('sectionFilter').onchange = applyFilters;
+}
+
+function applyFilters() {
+  const q   = document.getElementById('searchBox').value.toLowerCase();
+  const sec = document.getElementById('sectionFilter').value;
+  renderRows(allItems.filter(it => {
+    if (sec && it.section !== sec) return false;
+    if (q && !it.description.toLowerCase().includes(q) && !(it.item_no || '').toLowerCase().includes(q)) return false;
+    return true;
+  }));
+}
+
+function renderRows(items) {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  let sr = 0, lastSection = null, total = 0;
+
+  items.forEach(it => {
+    if (it.section && it.section !== lastSection) {
+      const srow = document.createElement('tr'); srow.className = 'section-row';
+      const td = document.createElement('td'); td.colSpan = 8; td.textContent = it.section;
+      srow.appendChild(td); tbody.appendChild(srow);
+      lastSection = it.section;
+    }
+    sr++;
+    const tr = document.createElement('tr');
+    [
+      { text: sr,                              cls: 'num row-no' },
+      { text: it.item_no || '—',               cls: '' },
+      { text: it.description || '',            cls: '' },
+      { text: it.hsn || it.sac_code || '—',   cls: 'center' },
+      { text: it.unit || '—',                 cls: 'center' },
+      { text: formatNum(it.qty),               cls: 'num' },
+      { text: formatNum(it.rate),              cls: 'num rate' },
+      { text: formatNum(it.amount),            cls: 'num amount' },
+    ].forEach(c => {
+      const td = document.createElement('td');
+      td.textContent = c.text;
+      c.cls.split(' ').filter(Boolean).forEach(cl => td.classList.add(cl));
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+    total += it.amount || 0;
+  });
+
+  document.getElementById('totalAmount').textContent = '₹ ' + formatNum(total);
+  document.getElementById('rowCount').textContent = `${sr} items`;
+}
+
+// ─── SORT ─────────────────────────────────────────────────────────────────────
+function sortTable(col) {
+  document.querySelectorAll('thead th').forEach((th, i) => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (i === col) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+  });
+  if (sortCol === col) sortDir = -sortDir; else { sortCol = col; sortDir = 1; }
+  const keys = ['__sr', 'item_no', 'description', 'hsn', 'unit', 'qty', 'rate', 'amount'];
+  const key  = keys[col];
+  allItems.sort((a, b) => {
+    let av = a[key] ?? '', bv = b[key] ?? '';
+    if (typeof av === 'number' || !isNaN(parseFloat(av))) { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; }
+    else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase(); }
+    return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
+  });
+  applyFilters();
+}
+
+// ─── RAW TOGGLE ───────────────────────────────────────────────────────────────
+function toggleRaw() {
+  const el  = document.getElementById('raw-toggle');
+  const btn = document.getElementById('rawToggleBtn');
+  const show = el.style.display !== 'block';
+  el.style.display  = show ? 'block' : 'none';
+  btn.textContent   = show ? 'Hide Raw Text' : 'Show Raw Text';
+}
+
+// ─── CSV EXPORT ───────────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ['SR No', 'Item No', 'Section', 'Description', 'HSN/SAC', 'Unit', 'Qty', 'Rate', 'Amount'];
+  const rows = allItems.map((it, i) => [
+    i + 1, it.item_no || '', it.section || '',
+    `"${(it.description || '').replace(/"/g, '""')}"`,
+    it.hsn || it.sac_code || '', it.unit || '',
+    it.qty || 0, it.rate || 0, it.amount || 0,
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'boq_export.csv';
+  a.click();
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function formatNum(n) {
+  if (n == null || isNaN(n)) return '—';
+  if (n === 0) return '0';
+  return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+</script>
+</body>
+</html>
