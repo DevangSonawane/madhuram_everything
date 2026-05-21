@@ -11,10 +11,31 @@
  *
  *   items[i] fields:
  *     item_no, section, description, hsn, sac_code, unit, qty, rate, amount
+ *     qty_text, rate_text, amount_text (optional, preserves decimals)
  */
 
 // ─── UTILITIES ────────────────────────────────────────────────────────────────
 const normalizeSpaces = v => String(v || '').replace(/\s+/g, ' ').trim();
+
+const toDecimalString = v => {
+  if (v == null) return '';
+  const cleaned = String(v).trim();
+  const m = cleaned.match(/-?\d[\d,]*(?:\.\d+)?/);
+  if (!m) return '';
+  return m[0].replace(/,/g, '');
+};
+
+const toFixedDecimalString = (v, places = 2) => {
+  const s = toDecimalString(v);
+  if (!s) return '';
+  const sign = s.startsWith('-') ? '-' : '';
+  const abs = sign ? s.slice(1) : s;
+  const [i = '0', f = ''] = abs.split('.');
+  if (places <= 0) return sign + i.replace(/^0+(?=\d)/, '') || '0';
+  const frac = (f + '0'.repeat(places)).slice(0, places);
+  const intPart = (i.replace(/^0+(?=\d)/, '') || '0');
+  return `${sign}${intPart}.${frac}`;
+};
 
 const toNumber = v => {
   if (v == null) return NaN;
@@ -112,6 +133,9 @@ function parseLodhaBoq(rawText) {
     const qty    = toNumber(qtyRaw);
     const rate   = toNumber(rateRaw);
     const amount = toNumber(amountRaw);
+    const qty_text    = toDecimalString(qtyRaw);
+    const rate_text   = toFixedDecimalString(rateRaw, 2);
+    const amount_text = toFixedDecimalString(amountRaw, 2);
 
     const beforeTail = buffer.slice(0, tailMatch.index).trim();
     const hsnIndex   = beforeTail.indexOf(hsn);
@@ -130,6 +154,9 @@ function parseLodhaBoq(rawText) {
       qty:    isFinite(qty)    ? qty    : 0,
       rate:   isFinite(rate)   ? rate   : 0,
       amount: isFinite(amount) ? amount : 0,
+      qty_text,
+      rate_text,
+      amount_text,
     });
   }
 
@@ -207,7 +234,8 @@ function parseHiranandaniBoqRowWise(rawText) {
     const joined = normalizeItemText(joinedRaw);
     // CGST/SGST lines are now skipped during accumulation, so no need to reject here
 
-    const sacMatch = joined.match(/Sac\s*:\s*(\d[\d\s]{5,10})\s*(?:-\s*)?/i);
+    // PDFs vary: "SAC: 995462", "SAC Code : 995462", "SAC Code 995462", "SAC-995462", etc.
+    const sacMatch = joined.match(/Sac(?:\s*Code)?\s*[:\-]?\s*(\d[\d\s]{5,10})\b/i);
     const sac_code = sacMatch ? String(sacMatch[1] || '').replace(/\s+/g, '') : '';
     const afterSac = sacMatch
       ? joined.slice(sacMatch.index + sacMatch[0].length)
@@ -233,6 +261,9 @@ function parseHiranandaniBoqRowWise(rawText) {
     const uom        = normalizeSpaces(tokens[tailIndex + 1]);
     const unit_price = toNumber(tokens[tailIndex + 2]);
     const value      = toNumber(tokens[tailIndex + 3]);
+    const qty_text    = toDecimalString(tokens[tailIndex]);
+    const rate_text   = toFixedDecimalString(tokens[tailIndex + 2], 2);
+    const amount_text = toFixedDecimalString(tokens[tailIndex + 3], 2);
     if (!isFinite(value) || !isFinite(unit_price) || !isFinite(order_qty) || !uom) return null;
 
     const descTokens = tokens.slice(0, tailIndex);
@@ -251,6 +282,9 @@ function parseHiranandaniBoqRowWise(rawText) {
       qty: order_qty,
       rate: unit_price,
       amount: value,
+      qty_text,
+      rate_text,
+      amount_text,
     };
   };
 
@@ -442,7 +476,19 @@ function extractBOQFromText(rawText) {
     const sl = sameLine(line);
     if (sl) {
       buffer = [];
-      items.push({ item_no: sl.item_no, section: category, description: sl.description, hsn: '', unit: sl.unit, qty: parseFloat(sl.qty) || 0, rate: parseFloat(sl.rate) || 0, amount: parseFloat(sl.amount) || 0 });
+      items.push({
+        item_no: sl.item_no,
+        section: category,
+        description: sl.description,
+        hsn: '',
+        unit: sl.unit,
+        qty: parseFloat(sl.qty) || 0,
+        rate: parseFloat(sl.rate) || 0,
+        amount: parseFloat(sl.amount) || 0,
+        qty_text: toDecimalString(sl.qty),
+        rate_text: toFixedDecimalString(sl.rate, 2),
+        amount_text: toFixedDecimalString(sl.amount, 2),
+      });
       continue;
     }
 
