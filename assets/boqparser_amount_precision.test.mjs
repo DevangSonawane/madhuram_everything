@@ -57,4 +57,19 @@ import { parseBoq } from './boqparser.js';
   assert.equal(out.items[0].sac_code, '995462');
 }
 
+// Hiranandani: separate SAC Code column (no "SAC:" label at all)
+{
+  const raw = [
+    'Plumbing',
+    '(1) Some service Plumbing 995462 NOS 340 522.50 177650.00',
+  ].join('\n');
+
+  const out = parseBoq(raw);
+  assert.equal(out.name, 'Hiranandani');
+  assert.equal(out.items.length, 1);
+  assert.equal(out.items[0].item_no, '(1)');
+  assert.equal(out.items[0].sac_code, '995462');
+  assert.equal(out.items[0].amount_text, '177650.00');
+}
+
 console.log('ok');

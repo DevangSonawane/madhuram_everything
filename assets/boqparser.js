@@ -236,7 +236,7 @@ function parseHiranandaniBoqRowWise(rawText) {
 
     // PDFs vary: "SAC: 995462", "SAC Code : 995462", "SAC Code 995462", "SAC-995462", etc.
     const sacMatch = joined.match(/Sac(?:\s*Code)?\s*[:\-]?\s*(\d[\d\s]{5,10})\b/i);
-    const sac_code = sacMatch ? String(sacMatch[1] || '').replace(/\s+/g, '') : '';
+    let sac_code = sacMatch ? String(sacMatch[1] || '').replace(/\s+/g, '') : '';
     const afterSac = sacMatch
       ? joined.slice(sacMatch.index + sacMatch[0].length)
       : joined.replace(/^\(\d+\)\s*/i, '');
@@ -246,27 +246,65 @@ function parseHiranandaniBoqRowWise(rawText) {
     const tokens = tokenMatches.map(m => m[0]);
 
     let tailIndex = -1;
+    let tailMode = 'QTY_UOM_RATE_VALUE'; // legacy: qty uom unit_price value
     for (let t = tokens.length - 1; t >= 3; t--) {
-      const value      = toNumber(tokens[t]);
+      const value = toNumber(tokens[t]);
       const unit_price = toNumber(tokens[t - 1]);
-      const uom        = normalizeSpaces(tokens[t - 2]);
-      const order_qty  = toNumber(tokens[t - 3]);
-      if (isFinite(value) && isFinite(unit_price) && isFinite(order_qty) && uom) {
-        tailIndex = t - 3; break;
+      if (!isFinite(value) || !isFinite(unit_price)) continue;
+
+      // Mode A (legacy): ... qty uom unit_price value
+      {
+        const uom = normalizeSpaces(tokens[t - 2]);
+        const order_qty = toNumber(tokens[t - 3]);
+        if (isFinite(order_qty) && uom && !isFinite(toNumber(uom))) {
+          tailIndex = t - 3;
+          tailMode = 'QTY_UOM_RATE_VALUE';
+          break;
+        }
+      }
+
+      // Mode B (newer): ... uom qty unit_price value
+      {
+        const uom = normalizeSpaces(tokens[t - 3]);
+        const order_qty = toNumber(tokens[t - 2]);
+        if (isFinite(order_qty) && uom && !isFinite(toNumber(uom))) {
+          tailIndex = t - 3;
+          tailMode = 'UOM_QTY_RATE_VALUE';
+          break;
+        }
       }
     }
     if (tailIndex < 0) return null;
 
-    const order_qty  = toNumber(tokens[tailIndex]);
-    const uom        = normalizeSpaces(tokens[tailIndex + 1]);
+    const order_qty  = tailMode === 'QTY_UOM_RATE_VALUE' ? toNumber(tokens[tailIndex])     : toNumber(tokens[tailIndex + 1]);
+    const uom        = tailMode === 'QTY_UOM_RATE_VALUE' ? normalizeSpaces(tokens[tailIndex + 1]) : normalizeSpaces(tokens[tailIndex]);
     const unit_price = toNumber(tokens[tailIndex + 2]);
     const value      = toNumber(tokens[tailIndex + 3]);
-    const qty_text    = toDecimalString(tokens[tailIndex]);
+    const qty_text    = tailMode === 'QTY_UOM_RATE_VALUE' ? toDecimalString(tokens[tailIndex]) : toDecimalString(tokens[tailIndex + 1]);
     const rate_text   = toFixedDecimalString(tokens[tailIndex + 2], 2);
     const amount_text = toFixedDecimalString(tokens[tailIndex + 3], 2);
     if (!isFinite(value) || !isFinite(unit_price) || !isFinite(order_qty) || !uom) return null;
 
-    const descTokens = tokens.slice(0, tailIndex);
+    let descTokens = tokens.slice(0, tailIndex);
+
+    // Newer Hiranandani exports sometimes have separate columns:
+    // Item No | Description | Section | SAC Code | UOM | Order Qty | Unit Price | Value
+    // In this case, SAC code may appear as a bare 4–10 digit token (no "SAC:" label).
+    if (!sac_code) {
+      for (let j = descTokens.length - 1; j >= 0; j--) {
+        const t = String(descTokens[j] || '');
+        const m = t.match(/^(\d[\d\s]{3,10})$/); // 4..11 incl spaces
+        if (m) {
+          const candidate = String(m[1]).replace(/\s+/g, '');
+          if (candidate.length >= 4 && candidate.length <= 10) {
+            sac_code = candidate;
+            descTokens = descTokens.slice(0, j).concat(descTokens.slice(j + 1));
+            break;
+          }
+        }
+      }
+    }
+
     const service_description = normalizeSpaces(descTokens.join(' '))
       .replace(/\(\d+\)\s*/i, '')
       .replace(/(?:SAC|Sac)\s*:\s*\d{6}\s*-\s*/i, '')
