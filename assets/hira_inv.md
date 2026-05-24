@@ -41,11 +41,25 @@ Hira    <!DOCTYPE html>
   .ref-bar > div:not(:last-child) { border-right:1px solid #000; }
   .ref-hd { font-weight:bold; background:#f0f0f0; }
 
-  table { width:100%; border-collapse:collapse; border:1.5px solid #000; border-top:none; font-size:10px; }
-  th { background:#e8e8e8; font-weight:bold; text-align:center; padding:4px 5px; border:1px solid #000; }
-  td { padding:3px 5px; border:1px solid #000; vertical-align:middle; }
+  table {
+    width:100%;
+    /* Use separate borders to avoid “double line” artifacts in html2canvas->PDF rendering */
+    border-collapse:separate;
+    border-spacing:0;
+    border:1.5px solid #000; border-top:none; font-size:10px;
+  }
+  th {
+    background:#e8e8e8; font-weight:bold; text-align:center; padding:4px 5px;
+    border:0; border-right:1px solid #000; border-bottom:1px solid #000;
+  }
+  td {
+    padding:3px 5px; vertical-align:middle;
+    border:0; border-right:1px solid #000; border-bottom:1px solid #000;
+  }
   td.c { text-align:center; } td.r { text-align:right; }
   tr.foot-row td { font-weight:bold; background:#f0f0f0; font-size:11px; }
+  /* Left edge borders */
+  thead tr th:first-child, tbody tr td:first-child, tfoot tr td:first-child { border-left:1px solid #000; }
 
   .summary { display:grid; grid-template-columns:1fr 240px; border:1.5px solid #000; border-top:none; }
   .sum-left { padding:6px 8px; border-right:1px solid #000; }
