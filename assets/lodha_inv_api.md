@@ -1,3 +1,5 @@
+
+
 Lodha Invoice
 
 
@@ -15,54 +17,75 @@ application/json
 Edit Value
 Schema
 {
+  "invoice": {
+    "invoiceNo": "string",
+    "invoiceDate": "2026-05-27",
+    "gstin": "string",
+    "website": "string",
+    "buyer": {
+      "name": "string",
+      "address": "string",
+      "stateName": "string",
+      "stateCode": "string",
+      "gstin": "string"
+    },
+    "receiverDetails": {
+      "name": "string",
+      "address": "string",
+      "placeOfSupply": "string"
+    },
+    "workOrderDetails": {
+      "woNo": "string",
+      "woDate": "2026-05-27",
+      "plantName": "string",
+      "billNo": "string"
+    },
+    "lineItems": [
+      {
+        "sn": 0,
+        "descriptionOfServiceGoods": "string",
+        "sacHsnCode": "string",
+        "uom": "string",
+        "qty": 0,
+        "rate": 0,
+        "totalValueOfGoods": 0,
+        "discountIf": 0,
+        "taxableValue": 0,
+        "cgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "sgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "igst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "cess": {
+          "rate": 0,
+          "amount": 0
+        },
+        "line_total": 0
+      }
+    ],
+    "totals": {
+      "totalTaxableValue": 0,
+      "totalCgstAmount": 0,
+      "totalSgstAmount": 0,
+      "totalIgstAmount": 0,
+      "totalCessAmount": 0,
+      "totalInvoiceValueFigure": 0,
+      "totalInvoiceValueWords": "string"
+    },
+    "declaration": "string",
+    "electronicReferenceNumber": "string",
+    "authorisedSignatory": "string"
+  },
   "project_id": 0,
-  "company_name": "string",
-  "company_address": "string",
-  "company_phone": "string",
-  "company_email": "string",
-  "company_website": "string",
-  "supplier_gstin": "string",
-  "invoice_number": "string",
-  "invoice_date": "2026-05-25",
-  "buyer_name": "string",
-  "buyer_address": "string",
-  "buyer_state_name": "string",
-  "buyer_state_code": "string",
-  "buyer_gstin": "string",
-  "receiver_name": "string",
-  "receiver_address": "string",
-  "place_of_supply": "string",
-  "work_order_number": "string",
-  "plant_name": "string",
-  "bill_no": "string",
-  "total_taxable_value": 0,
-  "total_cgst": 0,
-  "total_sgst": 0,
-  "total_value": 0,
-  "total_invoice_value": 0,
-  "total_invoice_value_words": "string",
-  "declaration": "string",
-  "electronic_ref_number": "string",
-  "electronic_ref_date": "2026-05-25",
-  "authorised_signatory": "string",
   "user_id": "string",
-  "user_name": "string",
-  "items": [
-    {
-      "sn": 0,
-      "description": "string",
-      "sac_code": "string",
-      "value_of_supply": 0,
-      "discount": 0,
-      "taxable_value": 0,
-      "cgst_rate": 0,
-      "cgst_amount": 0,
-      "sgst_rate": 0,
-      "sgst_amount": 0,
-      "igst_amount": 0,
-      "line_total": 0
-    }
-  ]
+  "user_name": "string"
 }
 Execute
 Responses
@@ -77,59 +100,110 @@ Controls Accept header.
 Example Value
 Schema
 {
+  "invoice": {
+    "invoiceNo": "string",
+    "invoiceDate": "2026-05-27",
+    "gstin": "string",
+    "website": "string",
+    "buyer": {
+      "name": "string",
+      "address": "string",
+      "stateName": "string",
+      "stateCode": "string",
+      "gstin": "string"
+    },
+    "receiverDetails": {
+      "name": "string",
+      "address": "string",
+      "placeOfSupply": "string"
+    },
+    "workOrderDetails": {
+      "woNo": "string",
+      "woDate": "2026-05-27",
+      "plantName": "string",
+      "billNo": "string"
+    },
+    "lineItems": [
+      {
+        "sn": 0,
+        "descriptionOfServiceGoods": "string",
+        "sacHsnCode": "string",
+        "uom": "string",
+        "qty": 0,
+        "rate": 0,
+        "totalValueOfGoods": 0,
+        "discountIf": 0,
+        "taxableValue": 0,
+        "cgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "sgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "igst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "cess": {
+          "rate": 0,
+          "amount": 0
+        },
+        "line_total": 0
+      }
+    ],
+    "totals": {
+      "totalTaxableValue": 0,
+      "totalCgstAmount": 0,
+      "totalSgstAmount": 0,
+      "totalIgstAmount": 0,
+      "totalCessAmount": 0,
+      "totalInvoiceValueFigure": 0,
+      "totalInvoiceValueWords": "string"
+    },
+    "declaration": "string",
+    "electronicReferenceNumber": "string",
+    "authorisedSignatory": "string"
+  },
   "project_id": 0,
-  "company_name": "string",
-  "company_address": "string",
-  "company_phone": "string",
-  "company_email": "string",
-  "company_website": "string",
-  "supplier_gstin": "string",
-  "invoice_number": "string",
-  "invoice_date": "2026-05-25",
-  "buyer_name": "string",
-  "buyer_address": "string",
-  "buyer_state_name": "string",
-  "buyer_state_code": "string",
-  "buyer_gstin": "string",
-  "receiver_name": "string",
-  "receiver_address": "string",
-  "place_of_supply": "string",
-  "work_order_number": "string",
-  "plant_name": "string",
-  "bill_no": "string",
-  "total_taxable_value": 0,
-  "total_cgst": 0,
-  "total_sgst": 0,
-  "total_value": 0,
-  "total_invoice_value": 0,
-  "total_invoice_value_words": "string",
-  "declaration": "string",
-  "electronic_ref_number": "string",
-  "electronic_ref_date": "2026-05-25",
-  "authorised_signatory": "string",
   "user_id": "string",
   "user_name": "string",
+  "invoice_id": 0,
+  "created_at": "2026-05-27T09:55:08.386Z",
+  "updated_at": "2026-05-27T09:55:08.386Z",
   "items": [
     {
       "sn": 0,
-      "description": "string",
-      "sac_code": "string",
-      "value_of_supply": 0,
-      "discount": 0,
-      "taxable_value": 0,
-      "cgst_rate": 0,
-      "cgst_amount": 0,
-      "sgst_rate": 0,
-      "sgst_amount": 0,
-      "igst_amount": 0,
+      "descriptionOfServiceGoods": "string",
+      "sacHsnCode": "string",
+      "uom": "string",
+      "qty": 0,
+      "rate": 0,
+      "totalValueOfGoods": 0,
+      "discountIf": 0,
+      "taxableValue": 0,
+      "cgst": {
+        "rate": 0,
+        "amount": 0
+      },
+      "sgst": {
+        "rate": 0,
+        "amount": 0
+      },
+      "igst": {
+        "rate": 0,
+        "amount": 0
+      },
+      "cess": {
+        "rate": 0,
+        "amount": 0
+      },
       "line_total": 0,
       "item_id": 0,
       "invoice_id": 0
     }
-  ],
-  "invoice_id": 0,
-  "created_at": "2026-05-25T12:02:34.769Z",
-  "updated_at": "2026-05-25T12:02:34.769Z"
+  ]
 }
 No links
 500	

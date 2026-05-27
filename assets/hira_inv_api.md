@@ -1,3 +1,4 @@
+
 Hiranandani Invoice
 
 
@@ -15,67 +16,88 @@ application/json
 Edit Value
 Schema
 {
+  "invoice": {
+    "invoiceNo": "string",
+    "invoiceDate": "2026-05-27",
+    "reverseCharge": "string",
+    "state": "string",
+    "stateCode": "string",
+    "seller": {
+      "name": "string",
+      "gstin": "string",
+      "panNo": "string"
+    },
+    "complianceDetails": {
+      "pfNo": "string",
+      "esicNo": "string",
+      "ptrNo": "string",
+      "mlwfNo": "string"
+    },
+    "billToParty": {
+      "coAccountName": "string",
+      "address": "string",
+      "gstin": "string",
+      "state": "string",
+      "stateCode": "string"
+    },
+    "shipToPartySite": {
+      "coAccountName": "string",
+      "gstin": "string",
+      "state": "string",
+      "stateCode": "string",
+      "buildingName": "string"
+    },
+    "referenceDetails": {
+      "raNo": "string",
+      "workDescription": "string",
+      "woNo": "string",
+      "woDate": "2026-05-27",
+      "serviceDateFrom": "2026-05-27",
+      "serviceDateTo": "2026-05-27"
+    },
+    "lineItems": [
+      {
+        "sNo": 0,
+        "goodsServiceDescription": "string",
+        "sacCode": "string",
+        "valueOfSupply": 0,
+        "discount": 0,
+        "taxableValue": 0,
+        "cgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "sgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "total": 0
+      }
+    ],
+    "totals": {
+      "totalValueOfSupply": 0,
+      "totalDiscount": 0,
+      "totalTaxableValue": 0,
+      "totalCgstAmount": 0,
+      "totalSgstAmount": 0,
+      "totalAmount": 0
+    },
+    "summary": {
+      "totalInvoiceAmountInWords": "string",
+      "totalAmountBeforeTax": 0,
+      "addCgst": 0,
+      "addSgst": 0,
+      "roundOff": 0,
+      "totalAmountAfterTax": 0,
+      "gstOnReverseCharge": 0,
+      "eAndOE": true
+    },
+    "bankDetails": "string",
+    "authorisedSignatory": "string"
+  },
   "project_id": 0,
-  "company_name": "string",
-  "company_address": "string",
-  "company_phone": "string",
-  "company_email": "string",
-  "company_website": "string",
-  "supplier_gstin": "string",
-  "pan_number": "string",
-  "pf_number": "string",
-  "esic_number": "string",
-  "ptr_number": "string",
-  "mlwf_number": "string",
-  "invoice_number": "string",
-  "invoice_date": "2026-05-25",
-  "reverse_charge": "string",
-  "supplier_state_name": "string",
-  "supplier_state_code": "string",
-  "bill_to_name": "string",
-  "bill_to_address": "string",
-  "bill_to_gstin": "string",
-  "bill_to_state": "string",
-  "bill_to_state_code": "string",
-  "ship_to_name": "string",
-  "ship_to_address": "string",
-  "ship_to_gstin": "string",
-  "ship_to_state": "string",
-  "ship_to_state_code": "string",
-  "building_name": "string",
-  "ra_number": "string",
-  "work_description": "string",
-  "work_order_number": "string",
-  "service_date_from": "2026-05-25",
-  "service_date_to": "2026-05-25",
-  "total_before_tax": 0,
-  "total_taxable_value": 0,
-  "total_cgst": 0,
-  "total_sgst": 0,
-  "round_off": 0,
-  "total_amount_after_tax": 0,
-  "gst_on_reverse_charge": 0,
-  "invoice_amount_words": "string",
-  "bank_details": "string",
-  "terms_and_conditions": "string",
-  "authorised_signatory": "string",
   "user_id": "string",
-  "user_name": "string",
-  "items": [
-    {
-      "sn": 0,
-      "description": "string",
-      "sac_code": "string",
-      "value_of_supply": 0,
-      "discount": 0,
-      "taxable_value": 0,
-      "cgst_rate": 0,
-      "cgst_amount": 0,
-      "sgst_rate": 0,
-      "sgst_amount": 0,
-      "line_total": 0
-    }
-  ]
+  "user_name": "string"
 }
 Execute
 Responses
@@ -90,72 +112,112 @@ Controls Accept header.
 Example Value
 Schema
 {
+  "invoice": {
+    "invoiceNo": "string",
+    "invoiceDate": "2026-05-27",
+    "reverseCharge": "string",
+    "state": "string",
+    "stateCode": "string",
+    "seller": {
+      "name": "string",
+      "gstin": "string",
+      "panNo": "string"
+    },
+    "complianceDetails": {
+      "pfNo": "string",
+      "esicNo": "string",
+      "ptrNo": "string",
+      "mlwfNo": "string"
+    },
+    "billToParty": {
+      "coAccountName": "string",
+      "address": "string",
+      "gstin": "string",
+      "state": "string",
+      "stateCode": "string"
+    },
+    "shipToPartySite": {
+      "coAccountName": "string",
+      "gstin": "string",
+      "state": "string",
+      "stateCode": "string",
+      "buildingName": "string"
+    },
+    "referenceDetails": {
+      "raNo": "string",
+      "workDescription": "string",
+      "woNo": "string",
+      "woDate": "2026-05-27",
+      "serviceDateFrom": "2026-05-27",
+      "serviceDateTo": "2026-05-27"
+    },
+    "lineItems": [
+      {
+        "sNo": 0,
+        "goodsServiceDescription": "string",
+        "sacCode": "string",
+        "valueOfSupply": 0,
+        "discount": 0,
+        "taxableValue": 0,
+        "cgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "sgst": {
+          "rate": 0,
+          "amount": 0
+        },
+        "total": 0
+      }
+    ],
+    "totals": {
+      "totalValueOfSupply": 0,
+      "totalDiscount": 0,
+      "totalTaxableValue": 0,
+      "totalCgstAmount": 0,
+      "totalSgstAmount": 0,
+      "totalAmount": 0
+    },
+    "summary": {
+      "totalInvoiceAmountInWords": "string",
+      "totalAmountBeforeTax": 0,
+      "addCgst": 0,
+      "addSgst": 0,
+      "roundOff": 0,
+      "totalAmountAfterTax": 0,
+      "gstOnReverseCharge": 0,
+      "eAndOE": true
+    },
+    "bankDetails": "string",
+    "authorisedSignatory": "string"
+  },
   "project_id": 0,
-  "company_name": "string",
-  "company_address": "string",
-  "company_phone": "string",
-  "company_email": "string",
-  "company_website": "string",
-  "supplier_gstin": "string",
-  "pan_number": "string",
-  "pf_number": "string",
-  "esic_number": "string",
-  "ptr_number": "string",
-  "mlwf_number": "string",
-  "invoice_number": "string",
-  "invoice_date": "2026-05-25",
-  "reverse_charge": "string",
-  "supplier_state_name": "string",
-  "supplier_state_code": "string",
-  "bill_to_name": "string",
-  "bill_to_address": "string",
-  "bill_to_gstin": "string",
-  "bill_to_state": "string",
-  "bill_to_state_code": "string",
-  "ship_to_name": "string",
-  "ship_to_address": "string",
-  "ship_to_gstin": "string",
-  "ship_to_state": "string",
-  "ship_to_state_code": "string",
-  "building_name": "string",
-  "ra_number": "string",
-  "work_description": "string",
-  "work_order_number": "string",
-  "service_date_from": "2026-05-25",
-  "service_date_to": "2026-05-25",
-  "total_before_tax": 0,
-  "total_taxable_value": 0,
-  "total_cgst": 0,
-  "total_sgst": 0,
-  "round_off": 0,
-  "total_amount_after_tax": 0,
-  "gst_on_reverse_charge": 0,
-  "invoice_amount_words": "string",
-  "bank_details": "string",
-  "terms_and_conditions": "string",
-  "authorised_signatory": "string",
   "user_id": "string",
   "user_name": "string",
+  "invoice_id": 0,
+  "created_at": "2026-05-27T09:56:13.655Z",
+  "updated_at": "2026-05-27T09:56:13.655Z",
   "items": [
     {
-      "sn": 0,
-      "description": "string",
-      "sac_code": "string",
-      "value_of_supply": 0,
+      "sNo": 0,
+      "goodsServiceDescription": "string",
+      "sacCode": "string",
+      "valueOfSupply": 0,
       "discount": 0,
-      "taxable_value": 0,
-      "cgst_rate": 0,
-      "cgst_amount": 0,
-      "sgst_rate": 0,
-      "sgst_amount": 0,
-      "line_total": 0,
+      "taxableValue": 0,
+      "cgst": {
+        "rate": 0,
+        "amount": 0
+      },
+      "sgst": {
+        "rate": 0,
+        "amount": 0
+      },
+      "total": 0,
       "item_id": 0,
       "invoice_id": 0
     }
-  ],
-  "invoice_id": 0,
-  "created_at": "2026-05-25T12:03:53.927Z",
-  "updated_at": "2026-05-25T12:03:53.927Z"
+  ]
 }
 No links
 500	
