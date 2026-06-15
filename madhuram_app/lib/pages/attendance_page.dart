@@ -71,12 +71,18 @@ class _AttendancePageState extends State<AttendancePage>
   List<Map<String, dynamic>> _leaveRequests = const [];
   bool _absentCountLoading = false;
   int _yearAbsentCount = 0;
+  bool _blockStatusLoading = false;
+  bool _isAdminBlocked = false;
+  String? _adminBlockReason;
+  List<Map<String, dynamic>> _adminBlockHistory = const [];
   bool _todayAttendanceLoading = false;
   bool _todayCheckedIn = false;
   bool _todayCheckedOut = false;
   String? _todayAttendanceId;
 
   String _todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+  bool get _isAttendanceBlocked => _yearAbsentCount >= 15 || _isAdminBlocked;
 
   bool _hasCheckoutField(Map<String, dynamic> item) {
     final value =
@@ -204,6 +210,7 @@ class _AttendancePageState extends State<AttendancePage>
     if (state != AppLifecycleState.resumed) return;
     unawaited(_handleCameraPermissionOnResume());
     unawaited(_refreshLeaveStatus());
+    unawaited(_refreshBlockStatus());
   }
 
   @override
@@ -214,6 +221,7 @@ class _AttendancePageState extends State<AttendancePage>
     unawaited(_refreshTodayAttendanceStatus());
     unawaited(_refreshLeaveStatus());
     unawaited(_refreshYearlyAbsentCount());
+    unawaited(_refreshBlockStatus());
   }
 
   DateTime? _tryParseDateOnly(dynamic value) {
@@ -322,6 +330,158 @@ class _AttendancePageState extends State<AttendancePage>
       // non-blocking
     } finally {
       _absentCountLoading = false;
+    }
+  }
+
+  String? _resolveBlockUserKey(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) {
+      final user = value['user'];
+      String? nestedId;
+      String? nestedUserId;
+      if (user is Map) {
+        final userMap = Map<String, dynamic>.from(user);
+        nestedId = userMap['id']?.toString();
+        nestedUserId = userMap['user_id']?.toString();
+      }
+      return value['user_id']?.toString() ??
+          value['userId']?.toString() ??
+          value['id']?.toString() ??
+          nestedId ??
+          nestedUserId ??
+          value['user_name']?.toString() ??
+          value['phone_number']?.toString();
+    }
+    if (value is Map) {
+      final map = Map<String, dynamic>.from(value);
+      return _resolveBlockUserKey(map);
+    }
+    return value.toString();
+  }
+
+  String _normalizeLookupValue(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return '';
+    return text.toLowerCase();
+  }
+
+  bool _matchesBlockIdentity(String? candidate, List<String?> values) {
+    final normalizedCandidate = _normalizeLookupValue(candidate);
+    if (normalizedCandidate.isEmpty) return false;
+    for (final value in values) {
+      final normalizedValue = _normalizeLookupValue(value);
+      if (normalizedValue.isNotEmpty && normalizedValue == normalizedCandidate) {
+        return true;
+      }
+      if (normalizedValue.isNotEmpty &&
+          normalizedValue.replaceAll(RegExp(r'\D'), '') ==
+              normalizedCandidate.replaceAll(RegExp(r'\D'), '')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _resolveBlockReason(Map<String, dynamic>? entry) {
+    if (entry == null) return '';
+    final reason = entry['reason'] ?? entry['block_reason'] ?? entry['note'] ?? entry['message'];
+    return reason?.toString().trim() ?? '';
+  }
+
+  List<Map<String, dynamic>> _resolveBlockHistory(dynamic entry) {
+    if (entry == null) return const [];
+    final candidate =
+        entry is Map<String, dynamic> ? entry['block_history'] ?? entry['history'] ?? entry['blockHistory'] : null;
+    if (candidate is List) {
+      return candidate
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return const [];
+  }
+
+  Future<void> _refreshBlockStatus({bool silent = true}) async {
+    if (_blockStatusLoading) return;
+    if (_userId == null || _userId!.trim().isEmpty) return;
+    _blockStatusLoading = true;
+    try {
+      final store = StoreProvider.of<AppState>(context);
+      final currentUser = store.state.auth.user;
+      final currentUserId = _resolveUserId(currentUser);
+      final currentUserPhone = _resolveUserPhone(currentUser);
+      final currentUserName = _resolveUserName(currentUser);
+
+      final res = await ApiClient.getBlockedAttendanceUsers();
+      if (!mounted) return;
+      if (res['success'] != true) {
+        setState(() {
+          _isAdminBlocked = false;
+          _adminBlockReason = null;
+          _adminBlockHistory = const [];
+        });
+        return;
+      }
+
+      final data = res['data'];
+      final list = data is List ? data : const [];
+      Map<String, dynamic>? match;
+      for (final item in list) {
+        if (item is! Map) continue;
+        final row = Map<String, dynamic>.from(item);
+        final key = _resolveBlockUserKey(row);
+        if (key == null) continue;
+        if (_matchesBlockIdentity(key, [
+          _userId,
+          currentUserId,
+          currentUserPhone,
+          currentUserName,
+        ])) {
+          match = row;
+          break;
+        }
+      }
+
+      if (match != null) {
+        final historyRes = await ApiClient.getAttendanceBlockHistory(_userId!);
+        final historyData = historyRes['data'];
+        final historyList = historyData is List ? historyData : _resolveBlockHistory(match);
+        final parsedHistory = historyList
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        if (!mounted) return;
+        setState(() {
+          _isAdminBlocked = true;
+          _adminBlockReason = _resolveBlockReason(match);
+          _adminBlockHistory = parsedHistory;
+          if (_mode != _AttendanceMode.select) {
+            _mode = _AttendanceMode.select;
+            _selfie = null;
+            _siteImage = null;
+            _position = null;
+            _locationName = null;
+            _locationCapturedAt = null;
+            _checkoutSelfie = null;
+            _checkoutSiteImage = null;
+            _checkoutPosition = null;
+            _checkoutLocationName = null;
+            _checkoutLocationCapturedAt = null;
+          }
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _isAdminBlocked = false;
+        _adminBlockReason = null;
+        _adminBlockHistory = const [];
+      });
+    } catch (_) {
+      // non-blocking
+    } finally {
+      _blockStatusLoading = false;
     }
   }
 
@@ -1284,6 +1444,20 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _submitAttendance() async {
     if (_submitting) return;
     _syncUserContext(force: true);
+    await _refreshBlockStatus(silent: true);
+    await _refreshYearlyAbsentCount();
+    if (_isAttendanceBlocked) {
+      showToast(
+        context,
+        _isAdminBlocked
+            ? (_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
+                ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
+                : 'Attendance is blocked by admin. Please contact the admin.')
+            : 'Attendance is blocked because the 15-day absence limit was reached.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
     await _refreshTodayAttendanceStatus(silent: true);
 
     if (_todayCheckedIn) {
@@ -1697,6 +1871,20 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _submitCheckout() async {
     if (_checkoutSubmitting) return;
     _syncUserContext(force: true);
+    await _refreshBlockStatus(silent: true);
+    await _refreshYearlyAbsentCount();
+    if (_isAttendanceBlocked) {
+      showToast(
+        context,
+        _isAdminBlocked
+            ? (_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
+                ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
+                : 'Attendance is blocked by admin. Please contact the admin.')
+            : 'Attendance is blocked because the 15-day absence limit was reached.',
+        variant: ToastVariant.error,
+      );
+      return;
+    }
     await _refreshTodayAttendanceStatus(silent: true);
     if (_todayCheckedOut) {
       showToast(
@@ -2345,11 +2533,12 @@ class _AttendancePageState extends State<AttendancePage>
       );
       return d <= _attendanceAllowedRadiusMeters;
     }();
-    final isAttendanceBlocked = _yearAbsentCount >= 15;
+    final isAttendanceBlocked = _isAttendanceBlocked;
     final checkInLockedForProject =
         _todayAttendanceLoading || _todayCheckedIn || _todayCheckedOut;
     final checkOutLockedForProject =
         _todayAttendanceLoading || !_todayCheckedIn || _todayCheckedOut;
+    final showAttendanceActions = !isAttendanceBlocked;
 
     return ProtectedRoute(
       title: 'Attendance',
@@ -2490,8 +2679,10 @@ class _AttendancePageState extends State<AttendancePage>
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Check In / Check Out will be blocked, please contact the admin.\n'
-                          '(Absent this year: $_yearAbsentCount)',
+                          _isAdminBlocked
+                              ? 'Attendance is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}\nHistory entries: ${_adminBlockHistory.length}'
+                              : 'Check In / Check Out will be blocked, please contact the admin.\n'
+                                '(Absent this year: $_yearAbsentCount)',
                           style: TextStyle(
                             color: isDark
                                 ? AppTheme.darkForeground
@@ -2509,116 +2700,137 @@ class _AttendancePageState extends State<AttendancePage>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: [
-                      SizedBox(
-                        width: isMobile ? double.infinity : 320,
-                        child: MadCard(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(LucideIcons.logIn, size: 24),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Check In',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
+                  if (showAttendanceActions)
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        SizedBox(
+                          width: isMobile ? double.infinity : 320,
+                          child: MadCard(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(LucideIcons.logIn, size: 24),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Check In',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Capture selfie, site photo, and location.',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: isDark
-                                        ? AppTheme.darkMutedForeground
-                                        : AppTheme.lightMutedForeground,
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Capture selfie, site photo, and location.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark
+                                          ? AppTheme.darkMutedForeground
+                                          : AppTheme.lightMutedForeground,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 12),
-                                MadButton(
-                                  text: 'Start Check In',
-                                  icon: LucideIcons.arrowRight,
-                                  disabled:
-                                      isAttendanceBlocked || checkInLockedForProject,
-                                  onPressed:
-                                      (isAttendanceBlocked || checkInLockedForProject)
-                                          ? null
-                                          : () {
-                                          setState(() {
-                                            _mode = _AttendanceMode.checkIn;
-                                            _selfie = null;
-                                            _siteImage = null;
-                                            _position = null;
-                                            _locationName = null;
-                                            _locationCapturedAt = null;
-                                          });
-                                        },
-                                ),
-                              ],
+                                  const SizedBox(height: 12),
+                                  MadButton(
+                                    text: 'Start Check In',
+                                    icon: LucideIcons.arrowRight,
+                                    disabled: checkInLockedForProject,
+                                    onPressed: checkInLockedForProject
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _mode = _AttendanceMode.checkIn;
+                                              _selfie = null;
+                                              _siteImage = null;
+                                              _position = null;
+                                              _locationName = null;
+                                              _locationCapturedAt = null;
+                                            });
+                                          },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      SizedBox(
-                        width: isMobile ? double.infinity : 320,
-                        child: MadCard(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(LucideIcons.logOut, size: 24),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Check Out',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
+                        SizedBox(
+                          width: isMobile ? double.infinity : 320,
+                          child: MadCard(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(LucideIcons.logOut, size: 24),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Check Out',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Capture selfie, site photo, and location.',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: isDark
-                                        ? AppTheme.darkMutedForeground
-                                        : AppTheme.lightMutedForeground,
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Capture selfie, site photo, and location.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark
+                                          ? AppTheme.darkMutedForeground
+                                          : AppTheme.lightMutedForeground,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 12),
-                                MadButton(
-                                  text: 'Start Check Out',
-                                  icon: LucideIcons.arrowRight,
-                                  disabled:
-                                      isAttendanceBlocked || checkOutLockedForProject,
-                                  onPressed:
-                                      (isAttendanceBlocked || checkOutLockedForProject)
-                                          ? null
-                                          : () {
-                                          setState(() {
-                                            _mode = _AttendanceMode.checkOut;
-                                            _checkoutSelfie = null;
-                                            _checkoutSiteImage = null;
-                                            _checkoutPosition = null;
-                                            _checkoutLocationName = null;
-                                            _checkoutLocationCapturedAt = null;
-                                          });
-                                        },
-                                ),
-                              ],
+                                  const SizedBox(height: 12),
+                                  MadButton(
+                                    text: 'Start Check Out',
+                                    icon: LucideIcons.arrowRight,
+                                    disabled: checkOutLockedForProject,
+                                    onPressed: checkOutLockedForProject
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _mode = _AttendanceMode.checkOut;
+                                              _checkoutSelfie = null;
+                                              _checkoutSiteImage = null;
+                                              _checkoutPosition = null;
+                                              _checkoutLocationName = null;
+                                              _checkoutLocationCapturedAt = null;
+                                            });
+                                          },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
+                      ],
+                    )
+                  else
+                    MadCard(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            const Icon(LucideIcons.shieldAlert, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _isAdminBlocked
+                                    ? 'Attendance access is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}'
+                                    : 'Attendance access is blocked because the 15-day absence limit was reached.',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppTheme.darkForeground
+                                      : AppTheme.lightForeground,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
                   if (_todayAttendanceLoading) ...[
                     const SizedBox(height: 12),
                     Text(

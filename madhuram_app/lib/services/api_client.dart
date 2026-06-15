@@ -1506,6 +1506,50 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static Future<Map<String, dynamic>> getBlockedAttendanceUsers() async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/attendance/blocked-users');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> blockAttendanceUser(
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/attendance/block/$userId');
+    final res = await _patch(
+      uri,
+      headers: {..._authHeaders(token), 'Content-Type': 'application/json'},
+      body: jsonEncode(data),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> unblockAttendanceUser(
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/attendance/unblock/$userId');
+    final res = await _patch(
+      uri,
+      headers: {..._authHeaders(token), 'Content-Type': 'application/json'},
+      body: jsonEncode(data),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getAttendanceBlockHistory(
+    String userId,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/attendance/user/$userId/block-history');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
   static Future<Map<String, dynamic>> checkoutAttendance(
     String id,
     Map<String, dynamic> data,
