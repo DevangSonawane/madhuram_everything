@@ -37,6 +37,16 @@ class AccessControlStore {
     if (source == null) return user;
 
     final normalized = normalizeAccessControl(source);
-    return {...user, 'access_control': normalized};
+    final pages = Map<String, bool>.from(normalized['pages'] as Map);
+    final functions = Map<String, bool>.from(normalized['functions'] as Map);
+    if (user['is_blocked'] == true) {
+      pages['/attendance'] = false;
+      functions['attendance.view'] = false;
+      functions['attendance.mark'] = false;
+    }
+    return {
+      ...user,
+      'access_control': {'pages': pages, 'functions': functions},
+    };
   }
 }

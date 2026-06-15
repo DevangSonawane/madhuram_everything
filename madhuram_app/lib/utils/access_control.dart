@@ -3,7 +3,6 @@ import '../constants/access_control_catalog.dart';
 const alwaysAllowedPagePaths = <String>{
   '/profile',
   '/settings',
-  '/attendance',
 };
 
 Map<String, dynamic> buildNoAccessControl() {
@@ -94,6 +93,7 @@ String normalizeRouteForAccess(String route) {
 
 bool hasPageAccess(Map<String, dynamic>? user, String? pagePath) {
   if (pagePath == null || pagePath.isEmpty) return true;
+  if (user?['is_blocked'] == true && pagePath == '/attendance') return false;
   if (alwaysAllowedPagePaths.contains(pagePath)) return true;
   if (user?['role'] == 'admin') return true;
 
