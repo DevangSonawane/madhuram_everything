@@ -633,7 +633,7 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                             children: [
                               _buildHeaderCell('PR', flex: 2, isDark: isDark),
                               _buildHeaderCell(
-                                'Project',
+                                'Sample ID',
                                 flex: 2,
                                 isDark: isDark,
                               ),
@@ -759,25 +759,10 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
           ),
           Expanded(
             flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  request.projectName,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (isMobile)
-                  Text(
-                    request.workorderNo,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark
-                          ? AppTheme.darkMutedForeground
-                          : AppTheme.lightMutedForeground,
-                    ),
-                  ),
-              ],
+            child: Text(
+              request.sampleId?.isNotEmpty == true ? request.sampleId! : '-',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           if (!isMobile) ...[
@@ -891,13 +876,6 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(
-                        request.projectName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
                       if ((request.sampleId ?? '').isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -974,20 +952,6 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
                       Text(
                         dateLabel,
                         style: TextStyle(fontSize: 13, color: muted),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(LucideIcons.mapPin, size: 14),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          request.location.isEmpty ? '-' : request.location,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13, color: muted),
-                        ),
                       ),
                     ],
                   ),
