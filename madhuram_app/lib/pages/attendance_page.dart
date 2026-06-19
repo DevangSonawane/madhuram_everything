@@ -24,6 +24,7 @@ import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/project.dart';
 import '../services/api_client.dart';
+import '../services/auth_refresh_service.dart';
 import '../services/auth_storage.dart';
 import '../services/file_service.dart';
 import '../store/app_state.dart';
@@ -74,6 +75,7 @@ class _AttendancePageState extends State<AttendancePage>
   String? _adminBlockReason;
   List<Map<String, dynamic>> _adminBlockHistory = const [];
   bool _attendanceBlockReleasedByAdmin = false;
+  Timer? _accessRefreshTimer;
   bool _todayAttendanceLoading = false;
   bool _todayCheckedIn = false;
   bool _todayCheckedOut = false;
@@ -163,13 +165,38 @@ class _AttendancePageState extends State<AttendancePage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshCameraPermissionStatus());
+    _startAccessRefreshPolling();
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshLeaveStatus());
   }
 
   @override
   void dispose() {
+    _accessRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _startAccessRefreshPolling() {
+    _accessRefreshTimer?.cancel();
+    _accessRefreshTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(AuthRefreshService.instance.forceRefreshUser()),
+    );
+    unawaited(AuthRefreshService.instance.forceRefreshUser());
+  }
+
+  void _stopAccessRefreshPolling() {
+    _accessRefreshTimer?.cancel();
+    _accessRefreshTimer = null;
+  }
+
+  Future<void> _refreshAttendancePage() async {
+    await AuthRefreshService.instance.forceRefreshUser();
+    _syncUserContext(force: true);
+    await _refreshBlockStatus(silent: true);
+    await _refreshTodayAttendanceStatus(silent: true);
+    await _refreshLeaveStatus();
+    await _ensureSelectedProjectHasLocationData();
   }
 
   Future<void> _refreshCameraPermissionStatus() async {
@@ -207,10 +234,15 @@ class _AttendancePageState extends State<AttendancePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
-    unawaited(_handleCameraPermissionOnResume());
-    unawaited(_refreshLeaveStatus());
-    unawaited(_refreshBlockStatus());
+    if (state == AppLifecycleState.resumed) {
+      _startAccessRefreshPolling();
+      unawaited(_handleCameraPermissionOnResume());
+      unawaited(_refreshLeaveStatus());
+      unawaited(_refreshBlockStatus());
+      return;
+    }
+
+    _stopAccessRefreshPolling();
   }
 
   @override
@@ -329,7 +361,8 @@ class _AttendancePageState extends State<AttendancePage>
     if (normalizedCandidate.isEmpty) return false;
     for (final value in values) {
       final normalizedValue = _normalizeLookupValue(value);
-      if (normalizedValue.isNotEmpty && normalizedValue == normalizedCandidate) {
+      if (normalizedValue.isNotEmpty &&
+          normalizedValue == normalizedCandidate) {
         return true;
       }
       if (normalizedValue.isNotEmpty &&
@@ -343,14 +376,19 @@ class _AttendancePageState extends State<AttendancePage>
 
   String _resolveBlockReason(Map<String, dynamic>? entry) {
     if (entry == null) return '';
-    final reason = entry['reason'] ?? entry['block_reason'] ?? entry['note'] ?? entry['message'];
+    final reason =
+        entry['reason'] ??
+        entry['block_reason'] ??
+        entry['note'] ??
+        entry['message'];
     return reason?.toString().trim() ?? '';
   }
 
   List<Map<String, dynamic>> _resolveBlockHistory(dynamic entry) {
     if (entry == null) return const [];
-    final candidate =
-        entry is Map<String, dynamic> ? entry['block_history'] ?? entry['history'] ?? entry['blockHistory'] : null;
+    final candidate = entry is Map<String, dynamic>
+        ? entry['block_history'] ?? entry['history'] ?? entry['blockHistory']
+        : null;
     if (candidate is List) {
       return candidate
           .whereType<Map>()
@@ -363,15 +401,16 @@ class _AttendancePageState extends State<AttendancePage>
   String _resolveBlockState(dynamic entry) {
     if (entry is! Map) return 'unknown';
     final item = Map<String, dynamic>.from(entry);
-    final status = (item['status'] ??
-            item['block_status'] ??
-            item['blockStatus'] ??
-            item['state'] ??
-            '')
-        .toString()
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[\s-]+'), '_');
+    final status =
+        (item['status'] ??
+                item['block_status'] ??
+                item['blockStatus'] ??
+                item['state'] ??
+                '')
+            .toString()
+            .trim()
+            .toLowerCase()
+            .replaceAll(RegExp(r'[\s-]+'), '_');
     if (status == 'unblocked' ||
         status == 'unblock' ||
         status == 'inactive' ||
@@ -396,7 +435,8 @@ class _AttendancePageState extends State<AttendancePage>
   int _resolveBlockTimestamp(dynamic entry) {
     if (entry is! Map) return 0;
     final item = Map<String, dynamic>.from(entry);
-    final raw = item['created_at'] ??
+    final raw =
+        item['created_at'] ??
         item['createdAt'] ??
         item['blocked_at'] ??
         item['blockedAt'] ??
@@ -408,7 +448,13 @@ class _AttendancePageState extends State<AttendancePage>
     return parsed?.millisecondsSinceEpoch ?? 0;
   }
 
-  ({bool blocked, bool released, String? reason, List<Map<String, dynamic>> history}) _resolveAttendanceBlockState(
+  ({
+    bool blocked,
+    bool released,
+    String? reason,
+    List<Map<String, dynamic>> history,
+  })
+  _resolveAttendanceBlockState(
     Map<String, dynamic> match,
     List<Map<String, dynamic>> history,
   ) {
@@ -427,8 +473,11 @@ class _AttendancePageState extends State<AttendancePage>
     }
 
     final latestState = _resolveBlockState(latest);
-    final reason = latest != null ? _resolveBlockReason(latest) : _resolveBlockReason(match);
-    final effectiveBlocked = latestState == 'blocked' || (history.isEmpty && match.isNotEmpty);
+    final reason = latest != null
+        ? _resolveBlockReason(latest)
+        : _resolveBlockReason(match);
+    final effectiveBlocked =
+        latestState == 'blocked' || (history.isEmpty && match.isNotEmpty);
     final effectiveReleased = latestState == 'unblocked';
     return (
       blocked: effectiveBlocked,
@@ -458,7 +507,9 @@ class _AttendancePageState extends State<AttendancePage>
         };
       }
 
-      final res = await ApiClient.getResolvedAttendanceBlockStatus(resolvedUser);
+      final res = await ApiClient.getResolvedAttendanceBlockStatus(
+        resolvedUser,
+      );
       if (!mounted) return;
       if (res['success'] != true) {
         setState(() {
@@ -474,16 +525,18 @@ class _AttendancePageState extends State<AttendancePage>
       final released = res['released'] == true;
       final parsedHistory = res['history'] is List
           ? (res['history'] as List)
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList()
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : const <Map<String, dynamic>>[];
       final reason = res['reason']?.toString().trim();
       if (!mounted) return;
       setState(() {
         _isAdminBlocked = blocked;
         _attendanceBlockReleasedByAdmin = released;
-        _adminBlockReason = blocked && reason != null && reason.isNotEmpty ? reason : null;
+        _adminBlockReason = blocked && reason != null && reason.isNotEmpty
+            ? reason
+            : null;
         _adminBlockHistory = parsedHistory;
         if (_mode != _AttendanceMode.select && (blocked || released)) {
           _mode = _AttendanceMode.select;
@@ -2561,67 +2614,121 @@ class _AttendancePageState extends State<AttendancePage>
     return ProtectedRoute(
       title: 'Attendance',
       route: '/attendance',
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(isMobile ? 16 : 24),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+      child: RefreshIndicator(
+        onRefresh: _refreshAttendancePage,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(isMobile ? 16 : 24),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                  ),
+                  gradient: LinearGradient(
+                    colors: isDark
+                        ? const [
+                            Color(0xFF0F172A),
+                            Color(0xFF111827),
+                            Color(0xFF1F2937),
+                          ]
+                        : const [
+                            Color(0xFFE0F2FE),
+                            Color(0xFFECFEFF),
+                            Colors.white,
+                          ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
                 ),
-                gradient: LinearGradient(
-                  colors: isDark
-                      ? const [
-                          Color(0xFF0F172A),
-                          Color(0xFF111827),
-                          Color(0xFF1F2937),
-                        ]
-                      : const [
-                          Color(0xFFE0F2FE),
-                          Color(0xFFECFEFF),
-                          Colors.white,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _mode == _AttendanceMode.select
+                                ? 'Attendance'
+                                : _mode == _AttendanceMode.checkIn
+                                ? 'Check In'
+                                : 'Check Out',
+                            style: TextStyle(
+                              fontSize: responsive.value(
+                                mobile: 22,
+                                tablet: 26,
+                                desktop: 28,
+                              ),
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _mode == _AttendanceMode.checkIn
+                                ? 'Capture selfie, site photo, and location to mark attendance.'
+                                : _mode == _AttendanceMode.checkOut
+                                ? 'Capture selfie, site photo, and location to check out.'
+                                : 'Choose an action to continue.',
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground,
+                            ),
+                          ),
                         ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
+                      ),
+                    ),
+                    if (_mode != _AttendanceMode.select)
+                      MadButton(
+                        text: 'Back',
+                        variant: ButtonVariant.outline,
+                        icon: LucideIcons.arrowLeft,
+                        onPressed: () {
+                          setState(() {
+                            _mode = _AttendanceMode.select;
+                          });
+                        },
+                      ),
+                  ],
                 ),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 24),
+              if (_activeLeaveBanner != null &&
+                  _activeLeaveBanner!.trim().isNotEmpty) ...[
+                MadCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
                       children: [
-                        Text(
-                          _mode == _AttendanceMode.select
-                              ? 'Attendance'
-                              : _mode == _AttendanceMode.checkIn
-                              ? 'Check In'
-                              : 'Check Out',
-                          style: TextStyle(
-                            fontSize: responsive.value(
-                              mobile: 22,
-                              tablet: 26,
-                              desktop: 28,
+                        const Icon(
+                          LucideIcons.badgeCheck,
+                          color: Color(0xFFF59E0B),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _activeLeaveBanner!,
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
                             ),
-                            fontWeight: FontWeight.bold,
-                            color: isDark
-                                ? AppTheme.darkForeground
-                                : AppTheme.lightForeground,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _mode == _AttendanceMode.checkIn
-                              ? 'Capture selfie, site photo, and location to mark attendance.'
-                              : _mode == _AttendanceMode.checkOut
-                              ? 'Capture selfie, site photo, and location to check out.'
-                              : 'Choose an action to continue.',
-                          style: TextStyle(
+                        IconButton(
+                          onPressed: () =>
+                              setState(() => _activeLeaveBanner = null),
+                          icon: Icon(
+                            LucideIcons.x,
+                            size: 18,
                             color: isDark
                                 ? AppTheme.darkMutedForeground
                                 : AppTheme.lightMutedForeground,
@@ -2630,437 +2737,397 @@ class _AttendancePageState extends State<AttendancePage>
                       ],
                     ),
                   ),
-                  if (_mode != _AttendanceMode.select)
-                    MadButton(
-                      text: 'Back',
-                      variant: ButtonVariant.outline,
-                      icon: LucideIcons.arrowLeft,
-                      onPressed: () {
-                        setState(() {
-                          _mode = _AttendanceMode.select;
-                        });
-                      },
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (_activeLeaveBanner != null &&
-                _activeLeaveBanner!.trim().isNotEmpty) ...[
-              MadCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        LucideIcons.badgeCheck,
-                        color: Color(0xFFF59E0B),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          _activeLeaveBanner!,
-                          style: TextStyle(
-                            color: isDark
-                                ? AppTheme.darkForeground
-                                : AppTheme.lightForeground,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () =>
-                            setState(() => _activeLeaveBanner = null),
-                        icon: Icon(
-                          LucideIcons.x,
-                          size: 18,
-                          color: isDark
-                              ? AppTheme.darkMutedForeground
-                              : AppTheme.lightMutedForeground,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-            ],
-            if (isAttendanceBlocked) ...[
-              MadCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        LucideIcons.shieldAlert,
-                        color: Color(0xFFDC2626),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Attendance is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}\nHistory entries: ${_adminBlockHistory.length}',
-                          style: TextStyle(
-                            color: isDark
-                                ? AppTheme.darkForeground
-                                : AppTheme.lightForeground,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-            if (_mode == _AttendanceMode.select) ...[
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showAttendanceActions)
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 16,
+                const SizedBox(height: 24),
+              ],
+              if (isAttendanceBlocked) ...[
+                MadCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
                       children: [
-                        SizedBox(
-                          width: isMobile ? double.infinity : 320,
-                          child: MadCard(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(LucideIcons.logIn, size: 24),
-                                  const SizedBox(height: 12),
-                                  const Text(
-                                    'Check In',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Capture selfie, site photo, and location.',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isDark
-                                          ? AppTheme.darkMutedForeground
-                                          : AppTheme.lightMutedForeground,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  MadButton(
-                                    text: 'Start Check In',
-                                    icon: LucideIcons.arrowRight,
-                                    disabled: checkInLockedForProject,
-                                    onPressed: checkInLockedForProject
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _mode = _AttendanceMode.checkIn;
-                                              _selfie = null;
-                                              _siteImage = null;
-                                              _position = null;
-                                              _locationName = null;
-                                              _locationCapturedAt = null;
-                                            });
-                                          },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                        const Icon(
+                          LucideIcons.shieldAlert,
+                          color: Color(0xFFDC2626),
                         ),
-                        SizedBox(
-                          width: isMobile ? double.infinity : 320,
-                          child: MadCard(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(LucideIcons.logOut, size: 24),
-                                  const SizedBox(height: 12),
-                                  const Text(
-                                    'Check Out',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Capture selfie, site photo, and location.',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isDark
-                                          ? AppTheme.darkMutedForeground
-                                          : AppTheme.lightMutedForeground,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  MadButton(
-                                    text: 'Start Check Out',
-                                    icon: LucideIcons.arrowRight,
-                                    disabled: checkOutLockedForProject,
-                                    onPressed: checkOutLockedForProject
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _mode = _AttendanceMode.checkOut;
-                                              _checkoutSelfie = null;
-                                              _checkoutSiteImage = null;
-                                              _checkoutPosition = null;
-                                              _checkoutLocationName = null;
-                                              _checkoutLocationCapturedAt = null;
-                                            });
-                                          },
-                                  ),
-                                ],
-                              ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Attendance is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}\nHistory entries: ${_adminBlockHistory.length}',
+                            style: TextStyle(
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
                             ),
                           ),
                         ),
                       ],
-                    )
-                  else
-                    MadCard(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            const Icon(LucideIcons.shieldAlert, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _isAdminBlocked
-                                    ? 'Attendance access is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}'
-                                    : 'Attendance access is blocked by admin. Please contact the admin.',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? AppTheme.darkForeground
-                                      : AppTheme.lightForeground,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+              if (_mode == _AttendanceMode.select) ...[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (showAttendanceActions)
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 16,
+                        children: [
+                          SizedBox(
+                            width: isMobile ? double.infinity : 320,
+                            child: MadCard(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(LucideIcons.logIn, size: 24),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Check In',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Capture selfie, site photo, and location.',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark
+                                            ? AppTheme.darkMutedForeground
+                                            : AppTheme.lightMutedForeground,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    MadButton(
+                                      text: 'Start Check In',
+                                      icon: LucideIcons.arrowRight,
+                                      disabled: checkInLockedForProject,
+                                      onPressed: checkInLockedForProject
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _mode = _AttendanceMode.checkIn;
+                                                _selfie = null;
+                                                _siteImage = null;
+                                                _position = null;
+                                                _locationName = null;
+                                                _locationCapturedAt = null;
+                                              });
+                                            },
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ],
+                          ),
+                          SizedBox(
+                            width: isMobile ? double.infinity : 320,
+                            child: MadCard(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(LucideIcons.logOut, size: 24),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Check Out',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Capture selfie, site photo, and location.',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark
+                                            ? AppTheme.darkMutedForeground
+                                            : AppTheme.lightMutedForeground,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    MadButton(
+                                      text: 'Start Check Out',
+                                      icon: LucideIcons.arrowRight,
+                                      disabled: checkOutLockedForProject,
+                                      onPressed: checkOutLockedForProject
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _mode =
+                                                    _AttendanceMode.checkOut;
+                                                _checkoutSelfie = null;
+                                                _checkoutSiteImage = null;
+                                                _checkoutPosition = null;
+                                                _checkoutLocationName = null;
+                                                _checkoutLocationCapturedAt =
+                                                    null;
+                                              });
+                                            },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      MadCard(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                LucideIcons.shieldAlert,
+                                color: Color(0xFFDC2626),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _isAdminBlocked
+                                      ? 'Attendance access is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}'
+                                      : 'Attendance access is blocked by admin. Please contact the admin.',
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? AppTheme.darkForeground
+                                        : AppTheme.lightForeground,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  if (_todayAttendanceLoading) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Checking today’s attendance status…',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark
-                            ? AppTheme.darkMutedForeground
-                            : AppTheme.lightMutedForeground,
+                    if (_todayAttendanceLoading) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Checking today’s attendance status…',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                       ),
-                    ),
-                  ] else if (_todayCheckedOut) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'You have already checked in and checked out for this project today.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark
-                            ? AppTheme.darkMutedForeground
-                            : AppTheme.lightMutedForeground,
+                    ] else if (_todayCheckedOut) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'You have already checked in and checked out for this project today.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                       ),
-                    ),
-                  ] else if (_todayCheckedIn) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'You are checked in for this project today. Please check out.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark
-                            ? AppTheme.darkMutedForeground
-                            : AppTheme.lightMutedForeground,
+                    ] else if (_todayCheckedIn) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'You are checked in for this project today. Please check out.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 320,
+                      child: MadCard(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                LucideIcons.calendarCheck2,
+                                size: 24,
+                                color: AppTheme.primaryColor,
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'View My Attendance',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'See your attendance status (present/absent) marked by admin.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? AppTheme.darkMutedForeground
+                                      : AppTheme.lightMutedForeground,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              MadButton(
+                                text: 'View Attendance',
+                                icon: LucideIcons.arrowRight,
+                                onPressed: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    '/attendance/my',
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: isMobile ? double.infinity : 320,
-                    child: MadCard(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              LucideIcons.calendarCheck2,
-                              size: 24,
-                              color: AppTheme.primaryColor,
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'View My Attendance',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'See your attendance status (present/absent) marked by admin.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: isDark
-                                    ? AppTheme.darkMutedForeground
-                                    : AppTheme.lightMutedForeground,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            MadButton(
-                              text: 'View Attendance',
-                              icon: LucideIcons.arrowRight,
-                              onPressed: () {
-                                Navigator.pushNamed(context, '/attendance/my');
-                              },
-                            ),
-                          ],
-                        ),
+                ),
+              ] else if (_mode == _AttendanceMode.checkOut) ...[
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: [
+                    SizedBox(
+                      width: isMobile ? double.infinity : 360,
+                      child: _buildPhotoCard(
+                        title: 'Selfie',
+                        subtitle: 'Capture a clear selfie for checkout.',
+                        icon: LucideIcons.user,
+                        onCapture: _captureCheckoutSelfie,
+                        photo: _checkoutSelfie,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ] else if (_mode == _AttendanceMode.checkOut) ...[
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  SizedBox(
-                    width: isMobile ? double.infinity : 360,
-                    child: _buildPhotoCard(
-                      title: 'Selfie',
-                      subtitle: 'Capture a clear selfie for checkout.',
-                      icon: LucideIcons.user,
-                      onCapture: _captureCheckoutSelfie,
-                      photo: _checkoutSelfie,
+                    SizedBox(
+                      width: isMobile ? double.infinity : 360,
+                      child: _buildPhotoCard(
+                        title: 'Site Photo',
+                        subtitle: 'Capture the current site image.',
+                        icon: LucideIcons.building,
+                        onCapture: _captureCheckoutSiteImage,
+                        photo: _checkoutSiteImage,
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: isMobile ? double.infinity : 360,
-                    child: _buildPhotoCard(
-                      title: 'Site Photo',
-                      subtitle: 'Capture the current site image.',
-                      icon: LucideIcons.building,
-                      onCapture: _captureCheckoutSiteImage,
-                      photo: _checkoutSiteImage,
+                    SizedBox(
+                      width: isMobile ? double.infinity : 360,
+                      child: _buildCheckoutLocationCard(),
                     ),
-                  ),
-                  SizedBox(
-                    width: isMobile ? double.infinity : 360,
-                    child: _buildCheckoutLocationCard(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              MadCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Submit Check Out',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                  ],
+                ),
+                const SizedBox(height: 20),
+                MadCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Submit Check Out',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Ensure both photos and location are captured before submission.',
-                        style: TextStyle(
-                          color: isDark
-                              ? AppTheme.darkMutedForeground
-                              : AppTheme.lightMutedForeground,
+                        const SizedBox(height: 6),
+                        Text(
+                          'Ensure both photos and location are captured before submission.',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      MadButton(
-                        text: _checkoutSubmitting
-                            ? 'Submitting...'
-                            : 'Submit to Admin',
-                        icon: LucideIcons.send,
-                        disabled: !canSubmitCheckOut,
-                        onPressed: _submitCheckout,
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+                        MadButton(
+                          text: _checkoutSubmitting
+                              ? 'Submitting...'
+                              : 'Submit to Admin',
+                          icon: LucideIcons.send,
+                          disabled: !canSubmitCheckOut,
+                          onPressed: _submitCheckout,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ] else ...[
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  SizedBox(
-                    width: isMobile ? double.infinity : 360,
-                    child: _buildPhotoCard(
-                      title: 'Selfie',
-                      subtitle: 'Capture a clear selfie for attendance.',
-                      icon: LucideIcons.user,
-                      onCapture: _captureSelfie,
-                      photo: _selfie,
+              ] else ...[
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: [
+                    SizedBox(
+                      width: isMobile ? double.infinity : 360,
+                      child: _buildPhotoCard(
+                        title: 'Selfie',
+                        subtitle: 'Capture a clear selfie for attendance.',
+                        icon: LucideIcons.user,
+                        onCapture: _captureSelfie,
+                        photo: _selfie,
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: isMobile ? double.infinity : 360,
-                    child: _buildPhotoCard(
-                      title: 'Site Photo',
-                      subtitle: 'Capture the current site image.',
-                      icon: LucideIcons.building,
-                      onCapture: _captureSiteImage,
-                      photo: _siteImage,
+                    SizedBox(
+                      width: isMobile ? double.infinity : 360,
+                      child: _buildPhotoCard(
+                        title: 'Site Photo',
+                        subtitle: 'Capture the current site image.',
+                        icon: LucideIcons.building,
+                        onCapture: _captureSiteImage,
+                        photo: _siteImage,
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: isMobile ? double.infinity : 360,
-                    child: _buildLocationCard(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              MadCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Submit Attendance',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                    SizedBox(
+                      width: isMobile ? double.infinity : 360,
+                      child: _buildLocationCard(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                MadCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Submit Attendance',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Ensure both photos and location are captured before submission.',
-                        style: TextStyle(
-                          color: isDark
-                              ? AppTheme.darkMutedForeground
-                              : AppTheme.lightMutedForeground,
+                        const SizedBox(height: 6),
+                        Text(
+                          'Ensure both photos and location are captured before submission.',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      MadButton(
-                        text: _submitting ? 'Submitting...' : 'Submit to Admin',
-                        icon: LucideIcons.send,
-                        disabled: !canSubmitCheckIn,
-                        onPressed: _submitAttendance,
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+                        MadButton(
+                          text: _submitting
+                              ? 'Submitting...'
+                              : 'Submit to Admin',
+                          icon: LucideIcons.send,
+                          disabled: !canSubmitCheckIn,
+                          onPressed: _submitAttendance,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

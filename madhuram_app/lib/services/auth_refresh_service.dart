@@ -18,6 +18,7 @@ class AuthRefreshService {
 
   String? _activeUserId;
   String? _activeToken;
+  int _refreshGeneration = 0;
 
   Future<void> initialize(Store<AppState> store) async {
     _store = store;
@@ -37,6 +38,7 @@ class AuthRefreshService {
     _store = null;
     _activeUserId = null;
     _activeToken = null;
+    _refreshGeneration += 1;
   }
 
   void _handleAuthStateChange(Map<String, dynamic>? user) {
@@ -49,6 +51,7 @@ class AuthRefreshService {
 
     _activeUserId = userId;
     _activeToken = token;
+    _refreshGeneration += 1;
 
     _refreshTimer?.cancel();
     _refreshTimer = null;
@@ -72,9 +75,10 @@ class AuthRefreshService {
         user?['uid']?.toString();
   }
 
-  Future<void> refreshUser() async {
+  Future<void> refreshUser({bool force = false}) async {
     final store = _store;
     if (store == null) return;
+    final generationAtStart = _refreshGeneration;
 
     final current = store.state.auth.user;
     final userId = _resolveUserId(current);
@@ -93,15 +97,29 @@ class AuthRefreshService {
       return;
     }
 
+    if (!force && generationAtStart != _refreshGeneration) {
+      return;
+    }
+
     final accessResult = await ApiClient.getAccessUser(userId);
-    final accessControl = (accessResult['success'] == true &&
+    final accessControl =
+        (accessResult['success'] == true &&
             accessResult['data'] is Map<String, dynamic>)
         ? Map<String, dynamic>.from(accessResult['data'] as Map)
         : null;
 
-    final attendanceBlockResult = await ApiClient.getResolvedAttendanceBlockStatus(
-      {...data, 'token': token},
-    );
+    if (!force && generationAtStart != _refreshGeneration) {
+      return;
+    }
+
+    final attendanceBlockResult =
+        await ApiClient.getResolvedAttendanceBlockStatus({
+          ...data,
+          'token': token,
+        });
+    if (!force && generationAtStart != _refreshGeneration) {
+      return;
+    }
     final mergedUser = {
       ...data,
       'token': token,
@@ -109,7 +127,9 @@ class AuthRefreshService {
       'attendance_block_released': attendanceBlockResult['released'] == true,
       if (attendanceBlockResult['reason'] != null &&
           attendanceBlockResult['reason'].toString().trim().isNotEmpty)
-        'attendance_block_reason': attendanceBlockResult['reason'].toString().trim(),
+        'attendance_block_reason': attendanceBlockResult['reason']
+            .toString()
+            .trim(),
       'attendance_block_history': attendanceBlockResult['history'] ?? const [],
     };
     final resolvedUser = AccessControlStore.resolveUserAccessControl(
@@ -118,6 +138,12 @@ class AuthRefreshService {
     );
 
     await AuthStorage.setUser(resolvedUser);
-    store.dispatch(LoginSuccess(resolvedUser));
+    if (force || generationAtStart == _refreshGeneration) {
+      store.dispatch(LoginSuccess(resolvedUser));
+    }
+  }
+
+  Future<void> forceRefreshUser() async {
+    await refreshUser(force: true);
   }
 }
