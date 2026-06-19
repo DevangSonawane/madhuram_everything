@@ -1078,11 +1078,13 @@ class _AttendancePageState extends State<AttendancePage>
     final resolvedUserId = _resolveUserId(user);
     final resolvedPhone = _resolveUserPhone(user);
     final resolvedProjectId = _resolveProjectId(project);
+    final releasedByAdmin = user?['attendance_block_released'] == true;
     if (!force &&
         resolvedName == _userName &&
         resolvedUserId == _userId &&
         resolvedPhone == _userPhone &&
-        resolvedProjectId == _projectId) {
+        resolvedProjectId == _projectId &&
+        releasedByAdmin == _attendanceBlockReleasedByAdmin) {
       return;
     }
     setState(() {
@@ -1090,6 +1092,7 @@ class _AttendancePageState extends State<AttendancePage>
       _userId = resolvedUserId;
       _userPhone = resolvedPhone;
       _projectId = resolvedProjectId;
+      _attendanceBlockReleasedByAdmin = releasedByAdmin;
     });
   }
 

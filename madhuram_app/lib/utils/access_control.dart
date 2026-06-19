@@ -93,6 +93,9 @@ String normalizeRouteForAccess(String route) {
 
 bool isAttendanceBlockedUser(Map<String, dynamic>? user) {
   if (user == null) return false;
+  if (user['attendance_block_released'] == true) {
+    return false;
+  }
   if (user.containsKey('attendance_blocked')) {
     return user['attendance_blocked'] == true;
   }
