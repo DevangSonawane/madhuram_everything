@@ -39,7 +39,7 @@ class AccessControlStore {
     final normalized = normalizeAccessControl(source);
     final pages = Map<String, bool>.from(normalized['pages'] as Map);
     final functions = Map<String, bool>.from(normalized['functions'] as Map);
-    if (user['is_blocked'] == true) {
+    if (isAttendanceBlockedUser(user)) {
       pages['/attendance'] = false;
       functions['attendance.view'] = false;
       functions['attendance.mark'] = false;

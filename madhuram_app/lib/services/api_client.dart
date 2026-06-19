@@ -1506,6 +1506,155 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static String _normalizeAttendanceBlockLookup(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return '';
+    return text.toLowerCase();
+  }
+
+  static bool _matchesAttendanceBlockIdentity(
+    Map<String, dynamic> item,
+    Map<String, dynamic> user,
+  ) {
+    final candidateValues = <String?>[
+      user['user_id']?.toString(),
+      user['id']?.toString(),
+      user['uid']?.toString(),
+      user['phone_number']?.toString(),
+      user['phone']?.toString(),
+      user['name']?.toString(),
+      user['username']?.toString(),
+      user['email']?.toString(),
+    ];
+
+    final itemUser = item['user'];
+    if (itemUser is Map) {
+      final nested = Map<String, dynamic>.from(itemUser);
+      candidateValues.addAll([
+        nested['user_id']?.toString(),
+        nested['id']?.toString(),
+        nested['phone_number']?.toString(),
+        nested['phone']?.toString(),
+        nested['name']?.toString(),
+        nested['username']?.toString(),
+        nested['email']?.toString(),
+      ]);
+    }
+
+    final itemValues = <String?>[
+      item['user_id']?.toString(),
+      item['userId']?.toString(),
+      item['id']?.toString(),
+      item['phone_number']?.toString(),
+      item['phone']?.toString(),
+      item['user_name']?.toString(),
+      item['name']?.toString(),
+      item['username']?.toString(),
+      item['email']?.toString(),
+    ];
+
+    for (final candidate in candidateValues) {
+      final normalizedCandidate = _normalizeAttendanceBlockLookup(candidate);
+      if (normalizedCandidate.isEmpty) continue;
+      for (final itemValue in itemValues) {
+        final normalizedItemValue = _normalizeAttendanceBlockLookup(itemValue);
+        if (normalizedItemValue.isEmpty) continue;
+        if (normalizedCandidate == normalizedItemValue) return true;
+        final candidateDigits = normalizedCandidate.replaceAll(RegExp(r'\D'), '');
+        final itemDigits = normalizedItemValue.replaceAll(RegExp(r'\D'), '');
+        if (candidateDigits.isNotEmpty && candidateDigits == itemDigits) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  static int _attendanceBlockTimestamp(dynamic value) {
+    if (value is! Map) return 0;
+    final item = Map<String, dynamic>.from(value);
+    final raw = item['created_at'] ??
+        item['createdAt'] ??
+        item['blocked_at'] ??
+        item['blockedAt'] ??
+        item['updated_at'] ??
+        item['updatedAt'] ??
+        item['timestamp'] ??
+        item['date'];
+    final parsed = DateTime.tryParse(raw?.toString() ?? '');
+    return parsed?.millisecondsSinceEpoch ?? 0;
+  }
+
+  static String _attendanceBlockState(dynamic value) {
+    if (value is! Map) return 'unknown';
+    final item = Map<String, dynamic>.from(value);
+    final status = (item['status'] ??
+            item['block_status'] ??
+            item['blockStatus'] ??
+            item['state'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s-]+'), '_');
+    if (status == 'unblocked' ||
+        status == 'unblock' ||
+        status == 'inactive' ||
+        status == 'removed' ||
+        status == 'released' ||
+        item['is_blocked'] == false ||
+        item['blocked'] == false ||
+        item['unblocked'] == true) {
+      return 'unblocked';
+    }
+    if (status == 'blocked' ||
+        status == 'block' ||
+        status == 'active_block' ||
+        status == 'currently_blocked' ||
+        item['is_blocked'] == true ||
+        item['blocked'] == true) {
+      return 'blocked';
+    }
+    return 'unknown';
+  }
+
+  static Map<String, dynamic> _attendanceBlockResult(
+    List<Map<String, dynamic>> history,
+  ) {
+    Map<String, dynamic>? latest;
+    var latestTimestamp = 0;
+    for (final entry in history) {
+      final state = _attendanceBlockState(entry);
+      if (state == 'unknown') continue;
+      final timestamp = _attendanceBlockTimestamp(entry);
+      if (latest == null ||
+          timestamp > latestTimestamp ||
+          (timestamp == latestTimestamp && state == 'unblocked')) {
+        latest = entry;
+        latestTimestamp = timestamp;
+      }
+    }
+
+    final latestState = _attendanceBlockState(latest);
+    final latestMap = latest;
+    return {
+      'blocked': latestState == 'blocked',
+      'released': latestState == 'unblocked',
+      'latest_state': latestState,
+      'latest_entry': latest,
+      'history': history,
+      'reason': latestMap != null
+          ? (latestMap['reason'] ??
+                  latestMap['block_reason'] ??
+                  latestMap['note'] ??
+                  latestMap['message'])
+              ?.toString()
+              .trim()
+          : null,
+    };
+  }
+
   static Future<Map<String, dynamic>> getBlockedAttendanceUsers() async {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/attendance/blocked-users');
@@ -1548,6 +1697,88 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/api/attendance/user/$userId/block-history');
     final res = await _get(uri, headers: _authHeaders(token));
     return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getResolvedAttendanceBlockStatus(
+    Map<String, dynamic>? user,
+  ) async {
+    final resolvedUser = user is Map<String, dynamic> ? user : null;
+    if (resolvedUser == null || resolvedUser.isEmpty) {
+      return {
+        'success': false,
+        'blocked': false,
+        'released': false,
+        'history': const [],
+        'reason': null,
+      };
+    }
+
+    final userId = resolvedUser['user_id']?.toString() ??
+        resolvedUser['id']?.toString() ??
+        resolvedUser['uid']?.toString();
+    final token = await _getToken();
+    final blockedUri = Uri.parse('$baseUrl/api/attendance/blocked-users');
+    final blockedRes = await _get(blockedUri, headers: _authHeaders(token));
+    final blockedData = await _handleResponse(blockedRes);
+    if (blockedData['success'] != true) {
+      return {
+        'success': false,
+        'blocked': false,
+        'released': false,
+        'history': const [],
+        'reason': null,
+        'error': blockedData['error'],
+      };
+    }
+
+    final blockedList = blockedData['data'] is List
+        ? (blockedData['data'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    Map<String, dynamic>? match;
+    for (final item in blockedList) {
+      if (_matchesAttendanceBlockIdentity(item, resolvedUser)) {
+        match = item;
+        break;
+      }
+    }
+
+    List<Map<String, dynamic>> history = const [];
+    if (userId != null && userId.trim().isNotEmpty) {
+      final historyRes = await getAttendanceBlockHistory(userId);
+      if (historyRes['success'] == true && historyRes['data'] is List) {
+        history = (historyRes['data'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      } else if (match != null) {
+        final fallbackHistory = match['block_history'] ?? match['history'] ?? match['blockHistory'];
+        if (fallbackHistory is List) {
+          history = fallbackHistory
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+    }
+
+    final resolvedHistory = _attendanceBlockResult(history);
+    final latestState = resolvedHistory['latest_state']?.toString();
+    final blocked = latestState == 'blocked' || (match != null && history.isEmpty);
+
+    return {
+      'success': true,
+      'blocked': blocked,
+      'released': latestState == 'unblocked',
+      'reason': resolvedHistory['reason'],
+      'history': resolvedHistory['history'],
+      'latest_state': latestState,
+      'latest_entry': resolvedHistory['latest_entry'],
+      'match': match,
+    };
   }
 
   static Future<Map<String, dynamic>> checkoutAttendance(

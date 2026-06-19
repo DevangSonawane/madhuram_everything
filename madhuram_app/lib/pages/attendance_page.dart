@@ -75,6 +75,7 @@ class _AttendancePageState extends State<AttendancePage>
   bool _isAdminBlocked = false;
   String? _adminBlockReason;
   List<Map<String, dynamic>> _adminBlockHistory = const [];
+  bool _attendanceBlockReleasedByAdmin = false;
   bool _todayAttendanceLoading = false;
   bool _todayCheckedIn = false;
   bool _todayCheckedOut = false;
@@ -82,7 +83,9 @@ class _AttendancePageState extends State<AttendancePage>
 
   String _todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-  bool get _isAttendanceBlocked => _yearAbsentCount >= 15 || _isAdminBlocked;
+  bool get _isAttendanceBlocked =>
+      !_attendanceBlockReleasedByAdmin &&
+      (_yearAbsentCount >= 15 || _isAdminBlocked);
 
   bool _hasCheckoutField(Map<String, dynamic> item) {
     final value =
@@ -401,6 +404,84 @@ class _AttendancePageState extends State<AttendancePage>
     return const [];
   }
 
+  String _resolveBlockState(dynamic entry) {
+    if (entry is! Map) return 'unknown';
+    final item = Map<String, dynamic>.from(entry);
+    final status = (item['status'] ??
+            item['block_status'] ??
+            item['blockStatus'] ??
+            item['state'] ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s-]+'), '_');
+    if (status == 'unblocked' ||
+        status == 'unblock' ||
+        status == 'inactive' ||
+        status == 'removed' ||
+        status == 'released' ||
+        item['is_blocked'] == false ||
+        item['blocked'] == false ||
+        item['unblocked'] == true) {
+      return 'unblocked';
+    }
+    if (status == 'blocked' ||
+        status == 'block' ||
+        status == 'active_block' ||
+        status == 'currently_blocked' ||
+        item['is_blocked'] == true ||
+        item['blocked'] == true) {
+      return 'blocked';
+    }
+    return 'unknown';
+  }
+
+  int _resolveBlockTimestamp(dynamic entry) {
+    if (entry is! Map) return 0;
+    final item = Map<String, dynamic>.from(entry);
+    final raw = item['created_at'] ??
+        item['createdAt'] ??
+        item['blocked_at'] ??
+        item['blockedAt'] ??
+        item['updated_at'] ??
+        item['updatedAt'] ??
+        item['timestamp'] ??
+        item['date'];
+    final parsed = DateTime.tryParse(raw?.toString() ?? '');
+    return parsed?.millisecondsSinceEpoch ?? 0;
+  }
+
+  ({bool blocked, bool released, String? reason, List<Map<String, dynamic>> history}) _resolveAttendanceBlockState(
+    Map<String, dynamic> match,
+    List<Map<String, dynamic>> history,
+  ) {
+    Map<String, dynamic>? latest;
+    var latestTimestamp = 0;
+    for (final entry in history) {
+      final state = _resolveBlockState(entry);
+      if (state == 'unknown') continue;
+      final timestamp = _resolveBlockTimestamp(entry);
+      if (latest == null ||
+          timestamp > latestTimestamp ||
+          (timestamp == latestTimestamp && state == 'unblocked')) {
+        latest = entry;
+        latestTimestamp = timestamp;
+      }
+    }
+
+    final latestState = _resolveBlockState(latest);
+    final reason = latest != null ? _resolveBlockReason(latest) : _resolveBlockReason(match);
+    final effectiveBlocked = latestState == 'blocked' || (history.isEmpty && match.isNotEmpty);
+    final effectiveReleased = latestState == 'unblocked';
+    return (
+      blocked: effectiveBlocked,
+      released: effectiveReleased,
+      reason: reason,
+      history: history,
+    );
+  }
+
   Future<void> _refreshBlockStatus({bool silent = true}) async {
     if (_blockStatusLoading) return;
     if (_userId == null || _userId!.trim().isEmpty) return;
@@ -408,75 +489,47 @@ class _AttendancePageState extends State<AttendancePage>
     try {
       final store = StoreProvider.of<AppState>(context);
       final currentUser = store.state.auth.user;
-      final currentUserId = _resolveUserId(currentUser);
-      final currentUserPhone = _resolveUserPhone(currentUser);
-      final currentUserName = _resolveUserName(currentUser);
 
-      final res = await ApiClient.getBlockedAttendanceUsers();
+      final res = await ApiClient.getResolvedAttendanceBlockStatus(currentUser);
       if (!mounted) return;
       if (res['success'] != true) {
         setState(() {
           _isAdminBlocked = false;
           _adminBlockReason = null;
           _adminBlockHistory = const [];
+          _attendanceBlockReleasedByAdmin = false;
         });
         return;
       }
 
-      final data = res['data'];
-      final list = data is List ? data : const [];
-      Map<String, dynamic>? match;
-      for (final item in list) {
-        if (item is! Map) continue;
-        final row = Map<String, dynamic>.from(item);
-        final key = _resolveBlockUserKey(row);
-        if (key == null) continue;
-        if (_matchesBlockIdentity(key, [
-          _userId,
-          currentUserId,
-          currentUserPhone,
-          currentUserName,
-        ])) {
-          match = row;
-          break;
-        }
-      }
-
-      if (match != null) {
-        final historyRes = await ApiClient.getAttendanceBlockHistory(_userId!);
-        final historyData = historyRes['data'];
-        final historyList = historyData is List ? historyData : _resolveBlockHistory(match);
-        final parsedHistory = historyList
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        if (!mounted) return;
-        setState(() {
-          _isAdminBlocked = true;
-          _adminBlockReason = _resolveBlockReason(match);
-          _adminBlockHistory = parsedHistory;
-          if (_mode != _AttendanceMode.select) {
-            _mode = _AttendanceMode.select;
-            _selfie = null;
-            _siteImage = null;
-            _position = null;
-            _locationName = null;
-            _locationCapturedAt = null;
-            _checkoutSelfie = null;
-            _checkoutSiteImage = null;
-            _checkoutPosition = null;
-            _checkoutLocationName = null;
-            _checkoutLocationCapturedAt = null;
-          }
-        });
-        return;
-      }
-
+      final blocked = res['blocked'] == true;
+      final released = res['released'] == true;
+      final parsedHistory = res['history'] is List
+          ? (res['history'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : const <Map<String, dynamic>>[];
+      final reason = res['reason']?.toString().trim();
       if (!mounted) return;
       setState(() {
-        _isAdminBlocked = false;
-        _adminBlockReason = null;
-        _adminBlockHistory = const [];
+        _isAdminBlocked = blocked;
+        _attendanceBlockReleasedByAdmin = released;
+        _adminBlockReason = blocked && reason != null && reason.isNotEmpty ? reason : null;
+        _adminBlockHistory = parsedHistory;
+        if (_mode != _AttendanceMode.select && (blocked || released)) {
+          _mode = _AttendanceMode.select;
+          _selfie = null;
+          _siteImage = null;
+          _position = null;
+          _locationName = null;
+          _locationCapturedAt = null;
+          _checkoutSelfie = null;
+          _checkoutSiteImage = null;
+          _checkoutPosition = null;
+          _checkoutLocationName = null;
+          _checkoutLocationCapturedAt = null;
+        }
       });
     } catch (_) {
       // non-blocking

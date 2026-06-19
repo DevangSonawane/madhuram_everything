@@ -91,9 +91,17 @@ String normalizeRouteForAccess(String route) {
   return '/dashboard';
 }
 
+bool isAttendanceBlockedUser(Map<String, dynamic>? user) {
+  if (user == null) return false;
+  if (user.containsKey('attendance_blocked')) {
+    return user['attendance_blocked'] == true;
+  }
+  return user['is_blocked'] == true;
+}
+
 bool hasPageAccess(Map<String, dynamic>? user, String? pagePath) {
   if (pagePath == null || pagePath.isEmpty) return true;
-  if (user?['is_blocked'] == true && pagePath == '/attendance') return false;
+  if (isAttendanceBlockedUser(user) && pagePath == '/attendance') return false;
   if (alwaysAllowedPagePaths.contains(pagePath)) return true;
   if (user?['role'] == 'admin') return true;
 
