@@ -69,8 +69,6 @@ class _AttendancePageState extends State<AttendancePage>
   String? _activeLeaveBanner;
   bool _leaveLoading = false;
   List<Map<String, dynamic>> _leaveRequests = const [];
-  bool _absentCountLoading = false;
-  int _yearAbsentCount = 0;
   bool _blockStatusLoading = false;
   bool _isAdminBlocked = false;
   String? _adminBlockReason;
@@ -84,8 +82,7 @@ class _AttendancePageState extends State<AttendancePage>
   String _todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
   bool get _isAttendanceBlocked =>
-      !_attendanceBlockReleasedByAdmin &&
-      (_yearAbsentCount >= 15 || _isAdminBlocked);
+      !_attendanceBlockReleasedByAdmin && _isAdminBlocked;
 
   bool _hasCheckoutField(Map<String, dynamic> item) {
     final value =
@@ -223,7 +220,6 @@ class _AttendancePageState extends State<AttendancePage>
     unawaited(_ensureSelectedProjectHasLocationData());
     unawaited(_refreshTodayAttendanceStatus());
     unawaited(_refreshLeaveStatus());
-    unawaited(_refreshYearlyAbsentCount());
     unawaited(_refreshBlockStatus());
   }
 
@@ -293,46 +289,6 @@ class _AttendancePageState extends State<AttendancePage>
       // non-blocking
     } finally {
       _leaveLoading = false;
-    }
-  }
-
-  Future<void> _refreshYearlyAbsentCount() async {
-    if (_absentCountLoading) return;
-    if (_userId == null || _userId!.trim().isEmpty) return;
-    _absentCountLoading = true;
-    try {
-      final res = await ApiClient.getAttendanceByUser(_userId!);
-      if (!mounted) return;
-      if (res['success'] == true) {
-        final data = res['data'];
-        final list = data is List ? data : const [];
-        final items = list
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        final now = DateTime.now();
-        final yearStart = DateTime(now.year, 1, 1);
-        final yearEnd = DateTime(now.year, 12, 31);
-        var absentCount = 0;
-        for (final item in items) {
-          final status = (item['status'] ?? item['attendance_status'] ?? '')
-              .toString()
-              .toLowerCase();
-          if (status != 'absent') continue;
-          final date =
-              _tryParseDateOnly(item['date']) ??
-              _tryParseDateOnly(item['created_at']) ??
-              _tryParseDateOnly(item['updated_at']);
-          if (date == null) continue;
-          if (date.isBefore(yearStart) || date.isAfter(yearEnd)) continue;
-          absentCount += 1;
-        }
-        setState(() => _yearAbsentCount = absentCount);
-      }
-    } catch (_) {
-      // non-blocking
-    } finally {
-      _absentCountLoading = false;
     }
   }
 
@@ -489,8 +445,20 @@ class _AttendancePageState extends State<AttendancePage>
     try {
       final store = StoreProvider.of<AppState>(context);
       final currentUser = store.state.auth.user;
+      Map<String, dynamic> resolvedUser = currentUser is Map<String, dynamic>
+          ? Map<String, dynamic>.from(currentUser)
+          : <String, dynamic>{};
 
-      final res = await ApiClient.getResolvedAttendanceBlockStatus(currentUser);
+      final latestUserResult = await ApiClient.getUserById(_userId!);
+      if (latestUserResult['success'] == true &&
+          latestUserResult['data'] is Map<String, dynamic>) {
+        resolvedUser = {
+          ...resolvedUser,
+          ...Map<String, dynamic>.from(latestUserResult['data'] as Map),
+        };
+      }
+
+      final res = await ApiClient.getResolvedAttendanceBlockStatus(resolvedUser);
       if (!mounted) return;
       if (res['success'] != true) {
         setState(() {
@@ -1501,15 +1469,12 @@ class _AttendancePageState extends State<AttendancePage>
     if (_submitting) return;
     _syncUserContext(force: true);
     await _refreshBlockStatus(silent: true);
-    await _refreshYearlyAbsentCount();
     if (_isAttendanceBlocked) {
       showToast(
         context,
-        _isAdminBlocked
-            ? (_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
-                ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
-                : 'Attendance is blocked by admin. Please contact the admin.')
-            : 'Attendance is blocked because the 15-day absence limit was reached.',
+        _adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
+            ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
+            : 'Attendance is blocked by admin. Please contact the admin.',
         variant: ToastVariant.error,
       );
       return;
@@ -1928,15 +1893,12 @@ class _AttendancePageState extends State<AttendancePage>
     if (_checkoutSubmitting) return;
     _syncUserContext(force: true);
     await _refreshBlockStatus(silent: true);
-    await _refreshYearlyAbsentCount();
     if (_isAttendanceBlocked) {
       showToast(
         context,
-        _isAdminBlocked
-            ? (_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
-                ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
-                : 'Attendance is blocked by admin. Please contact the admin.')
-            : 'Attendance is blocked because the 15-day absence limit was reached.',
+        _adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
+            ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
+            : 'Attendance is blocked by admin. Please contact the admin.',
         variant: ToastVariant.error,
       );
       return;
@@ -2735,10 +2697,7 @@ class _AttendancePageState extends State<AttendancePage>
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          _isAdminBlocked
-                              ? 'Attendance is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}\nHistory entries: ${_adminBlockHistory.length}'
-                              : 'Check In / Check Out will be blocked, please contact the admin.\n'
-                                '(Absent this year: $_yearAbsentCount)',
+                          'Attendance is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}\nHistory entries: ${_adminBlockHistory.length}',
                           style: TextStyle(
                             color: isDark
                                 ? AppTheme.darkForeground
@@ -2875,7 +2834,7 @@ class _AttendancePageState extends State<AttendancePage>
                               child: Text(
                                 _isAdminBlocked
                                     ? 'Attendance access is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}'
-                                    : 'Attendance access is blocked because the 15-day absence limit was reached.',
+                                    : 'Attendance access is blocked by admin. Please contact the admin.',
                                 style: TextStyle(
                                   color: isDark
                                       ? AppTheme.darkForeground

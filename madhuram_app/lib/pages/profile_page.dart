@@ -219,6 +219,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return ProtectedRoute(
           title: 'Profile',
           route: '/profile',
+          requireProject: false,
           child: DefaultTabController(
             length: tabs.length,
             child: Column(

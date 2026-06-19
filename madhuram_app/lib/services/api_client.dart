@@ -1713,6 +1713,32 @@ class ApiClient {
       };
     }
 
+    final directReleased = resolvedUser['attendance_block_released'] == true;
+    final directBlockedFlag =
+        resolvedUser['attendance_blocked'] == true ||
+        resolvedUser['is_blocked'] == true ||
+        resolvedUser['blocked'] == true ||
+        (() {
+          final status = resolvedUser['block_status']?.toString().trim().toLowerCase();
+          return status == 'blocked' || status == 'active_block' || status == 'currently_blocked';
+        })();
+    if (directReleased || directBlockedFlag) {
+      return {
+        'success': true,
+        'blocked': directReleased ? false : directBlockedFlag,
+        'released': directReleased,
+        'history': const [],
+        'reason': resolvedUser['attendance_block_reason']?.toString().trim() ??
+            resolvedUser['block_reason']?.toString().trim() ??
+            resolvedUser['reason']?.toString().trim(),
+        'latest_state': directReleased
+            ? 'unblocked'
+            : (directBlockedFlag ? 'blocked' : 'unknown'),
+        'latest_entry': null,
+        'match': null,
+      };
+    }
+
     final userId = resolvedUser['user_id']?.toString() ??
         resolvedUser['id']?.toString() ??
         resolvedUser['uid']?.toString();

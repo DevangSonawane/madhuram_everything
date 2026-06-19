@@ -184,26 +184,47 @@ class _MainLayoutState extends State<MainLayout> {
         final hasAccess = hasRouteAccess(vm.user, normalizedRoute);
         final content = hasAccess
             ? widget.child
-            : Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.lock_outline, size: 56),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'You do not have permission to access this page.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pushReplacementNamed(context, '/profile');
-                        },
-                        child: const Text('Open Profile'),
-                      ),
-                    ],
+            : WillPopScope(
+                onWillPop: () async {
+                  Navigator.of(context, rootNavigator: true)
+                      .pushNamedAndRemoveUntil(
+                        '/projects',
+                        (route) => false,
+                      );
+                  return false;
+                },
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.lock_outline, size: 56),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'You do not have permission to access this page.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            TextButton(
+                              onPressed: () {
+                                Navigator.of(context, rootNavigator: true)
+                                    .pushNamedAndRemoveUntil(
+                                      '/projects',
+                                      (route) => false,
+                                    );
+                              },
+                              child: const Text('Back to Projects'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );

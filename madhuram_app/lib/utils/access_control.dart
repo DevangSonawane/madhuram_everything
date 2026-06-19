@@ -1,9 +1,6 @@
 import '../constants/access_control_catalog.dart';
 
-const alwaysAllowedPagePaths = <String>{
-  '/profile',
-  '/settings',
-};
+const alwaysAllowedPagePaths = <String>['/profile', '/settings'];
 
 Map<String, dynamic> buildNoAccessControl() {
   final pages = <String, bool>{};
@@ -104,9 +101,8 @@ bool isAttendanceBlockedUser(Map<String, dynamic>? user) {
 
 bool hasPageAccess(Map<String, dynamic>? user, String? pagePath) {
   if (pagePath == null || pagePath.isEmpty) return true;
-  if (isAttendanceBlockedUser(user) && pagePath == '/attendance') return false;
-  if (alwaysAllowedPagePaths.contains(pagePath)) return true;
   if (user?['role'] == 'admin') return true;
+  if (alwaysAllowedPagePaths.contains(pagePath)) return true;
 
   final accessControl = user?['access_control'];
   if (accessControl is! Map) return false;
