@@ -42,6 +42,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String? _lastUserId;
   String? _lastProjectId;
   String? _lastSocketToken;
+  String? _lastAttendanceUserId;
   String? _lastAttendanceProjectId;
   bool? _lastAttendanceAccess;
 
@@ -68,6 +69,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _lastProjectId != projectId ||
         _lastSocketToken != token;
     final attendanceScopeChanged =
+        _lastAttendanceUserId != userId ||
         _lastAttendanceProjectId != projectId ||
         _lastAttendanceAccess != canViewAttendance;
 
@@ -80,10 +82,11 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     if (attendanceScopeChanged) {
+      _lastAttendanceUserId = userId;
       _lastAttendanceProjectId = projectId;
       _lastAttendanceAccess = canViewAttendance;
-      if (canViewAttendance) {
-        _loadAttendance(projectId: projectId);
+      if (canViewAttendance && userId != null && userId.isNotEmpty) {
+        _loadAttendance(userId: userId, projectId: projectId);
       } else {
         setState(() {
           _attendanceItems = [];
@@ -102,38 +105,31 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Future<void> _loadAttendance({String? projectId}) async {
+  Future<void> _loadAttendance({
+    required String userId,
+    String? projectId,
+  }) async {
     if (!mounted) return;
     setState(() {
       _attendanceLoading = true;
     });
     try {
-      Map<String, dynamic> result;
-      if (projectId != null && projectId.isNotEmpty) {
-        result = await ApiClient.getAttendanceByProject(projectId);
-        if (result['success'] != true && result['status'] == 404) {
-          final fallback = await ApiClient.getAllAttendance();
-          if (fallback['success'] == true) {
-            final filtered = _normalizeAttendance(
-              _extractAttendanceList(fallback['data']),
-            ).where(
-              (item) =>
-                  item['project_id']?.toString() == projectId.toString(),
-            ).toList();
-            setState(() {
-              _attendanceItems = filtered.take(5).toList();
-              _attendanceLoading = false;
-            });
-            return;
-          }
-        }
-      } else {
-        result = await ApiClient.getAllAttendance();
-      }
+      final result = await ApiClient.getAttendanceByUser(userId);
 
       if (!mounted) return;
       if (result['success'] == true) {
-        final list = _normalizeAttendance(_extractAttendanceList(result['data']));
+        final list = _normalizeAttendance(
+          _extractAttendanceList(result['data']),
+        ).where((item) {
+          final itemUserId = item['user_id']?.toString();
+          final matchesUser = itemUserId == null || itemUserId.isEmpty
+              ? true
+              : itemUserId == userId;
+          final matchesProject = projectId == null || projectId.isEmpty
+              ? true
+              : item['project_id']?.toString() == projectId;
+          return matchesUser && matchesProject;
+        }).toList();
         setState(() {
           _attendanceItems = list.take(5).toList();
           _attendanceLoading = false;
@@ -1160,10 +1156,10 @@ class _DashboardPageState extends State<DashboardPage> {
           MadCardHeader(
             title: const MadCardTitle('Attendance'),
             subtitle: const MadCardDescription(
-              'Latest attendance submissions for this project.',
+              'Your latest attendance submissions for this project.',
             ),
             action: GestureDetector(
-              onTap: () => Navigator.pushNamed(context, '/attendance'),
+              onTap: () => Navigator.pushNamed(context, '/attendance/my'),
               child: Text(
                 'View all',
                 style: TextStyle(
@@ -1230,7 +1226,8 @@ class _DashboardPageState extends State<DashboardPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        item['user_name']?.toString() ?? '—',
+                                        item['user_name']?.toString() ??
+                                            'My attendance',
                                         style: TextStyle(
                                           fontSize: responsive.value(
                                             mobile: 13,
@@ -1365,7 +1362,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   child: Image.network(
                     url,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, _, __) => const Center(
+                    errorBuilder: (context, error, stackTrace) => const Center(
                       child: Text('Failed to load image'),
                     ),
                   ),
