@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:path_provider/path_provider.dart';
@@ -81,6 +81,12 @@ class BOQExtractionResult {
 
 /// Service for extracting BOQ data from PDFs
 class BOQExtractor {
+  static void _log(String message) {
+    if (kDebugMode) {
+      debugPrint('[BOQExtractor] $message');
+    }
+  }
+
   // Skip patterns for header/footer lines
   static final List<RegExp> _skipPatterns = [
     RegExp(r'^OAKWOOD\s+BUILDING|^Item\s*$|^Nos\.\s*Description|^Page\s+No\.', caseSensitive: false),
@@ -261,23 +267,30 @@ class BOQExtractor {
   /// Pick and extract BOQ from a PDF file
   static Future<BOQExtractionResult> pickAndExtract(BuildContext context) async {
     try {
+      _log('pickAndExtract started');
       final file = await FileService.pickFileWithSource(
         context: context,
         allowedExtensions: ['pdf'],
       );
       if (file == null) {
+        _log('pickAndExtract: no file selected');
         return const BOQExtractionResult(error: 'No file selected');
       }
+
+      _log('pickAndExtract: selected file path=${file.path}');
 
       Uint8List bytes;
       if (!kIsWeb) {
         bytes = await File(file.path).readAsBytes();
+        _log('pickAndExtract: loaded ${bytes.length} bytes from disk');
       } else {
+        _log('pickAndExtract: web path cannot read bytes here');
         return const BOQExtractionResult(error: 'Could not read file data');
       }
 
       return await extractFromBytes(bytes);
     } catch (e) {
+      _log('pickAndExtract failed: $e');
       return BOQExtractionResult(error: 'Error picking file: $e');
     }
   }
@@ -289,18 +302,24 @@ class BOQExtractor {
     String? projectId,
   }) async {
     try {
+      _log('extractFromFile started path=${file.path} client=${client ?? "(none)"} projectId=${projectId ?? "(none)"}');
       final bytes = await file.readAsBytes();
+      _log('extractFromFile read ${bytes.length} bytes');
       final local = await extractFromBytes(bytes, client: client);
+      _log('extractFromFile local result success=${local.success} items=${local.items.length} error=${local.error ?? "(none)"}');
       if (local.success) return local;
 
       final normalizedClient = (client ?? '').trim().toLowerCase();
+      _log('extractFromFile falling back to remote parser for client=$normalizedClient');
       if (normalizedClient == 'lodha') {
         final remote = await ApiClient.parseBOQPdfLodha(
           boqFile: file,
           projectId: projectId,
           save: false,
         );
+        _log('extractFromFile remote lodha response keys=${remote.keys.toList()}');
         final parsed = _resultFromRemoteResponse(remote, client: client);
+        _log('extractFromFile remote lodha parsed success=${parsed?.success == true} items=${parsed?.items.length ?? 0}');
         if (parsed != null) return parsed;
       } else {
         final remote = await ApiClient.parseBOQPdf(
@@ -309,12 +328,16 @@ class BOQExtractor {
           save: false,
           client: client,
         );
+        _log('extractFromFile remote response keys=${remote.keys.toList()}');
         final parsed = _resultFromRemoteResponse(remote, client: client);
+        _log('extractFromFile remote parsed success=${parsed?.success == true} items=${parsed?.items.length ?? 0}');
         if (parsed != null) return parsed;
       }
 
+      _log('extractFromFile returning local fallback result');
       return local;
     } catch (e) {
+      _log('extractFromFile failed: $e');
       return BOQExtractionResult(error: 'Error reading PDF file: $e');
     }
   }
@@ -325,21 +348,30 @@ class BOQExtractor {
     String? client,
   }) async {
     try {
+      _log('extractFromBytes started bytes=${bytes.length} client=${client ?? "(none)"}');
       final PdfDocument document = PdfDocument(inputBytes: bytes);
+      _log('extractFromBytes opened PDF pages=${document.pages.count}');
       final String rawText = _extractRawText(document);
+      _log('extractFromBytes raw text length=${rawText.length}');
       document.dispose();
 
       if (rawText.trim().isNotEmpty) {
+        _log('extractFromBytes using direct text extraction');
         return extractFromText(rawText, client: client);
       }
 
+      _log('extractFromBytes raw text empty, starting OCR fallback');
       final ocrText = await _extractTextWithOcr(bytes);
+      _log('extractFromBytes ocr text length=${ocrText.length}');
       if (ocrText.trim().isNotEmpty) {
+        _log('extractFromBytes using OCR text');
         return extractFromText(ocrText, client: client);
       }
 
+      _log('extractFromBytes no text found after raw extraction and OCR');
       return const BOQExtractionResult(error: 'No text found in PDF.');
     } catch (e) {
+      _log('extractFromBytes failed: $e');
       return BOQExtractionResult(error: 'Error reading PDF: $e');
     }
   }
@@ -347,9 +379,11 @@ class BOQExtractor {
   static String _extractRawText(PdfDocument document) {
     final buffer = StringBuffer();
     final extractor = PdfTextExtractor(document);
+    _log('extractRawText scanning ${document.pages.count} pages');
     for (var i = 0; i < document.pages.count; i++) {
       try {
         final lines = extractor.extractTextLines(startPageIndex: i, endPageIndex: i);
+        _log('extractRawText page=$i textLines=${lines.length}');
         if (lines.isNotEmpty) {
           final ordered = [...lines]
             ..sort((a, b) {
@@ -361,40 +395,50 @@ class BOQExtractor {
             final text = _normalizeSpaces(line.text);
             if (text.isNotEmpty) buffer.writeln(text);
           }
+          _log('extractRawText page=$i accumulatedLength=${buffer.length}');
           continue;
         }
       } catch (_) {
         // Some PDFs contain malformed name/dictionary objects that break the
         // structured line extractor. Fall back to plain text extraction.
+        _log('extractRawText page=$i extractTextLines failed, falling back to extractText');
       }
 
       try {
         final pageText = extractor.extractText(startPageIndex: i, endPageIndex: i);
+        _log('extractRawText page=$i extractTextLength=${pageText.length}');
         if (pageText.trim().isNotEmpty) buffer.writeln(pageText);
       } catch (_) {
         // Skip pages we cannot decode cleanly.
+        _log('extractRawText page=$i extractText failed');
       }
     }
+    _log('extractRawText finished length=${buffer.length}');
     return buffer.toString();
   }
 
   static Future<String> _extractTextWithOcr(Uint8List bytes) async {
     try {
+      _log('ocr fallback started bytes=${bytes.length}');
       final tempDir = await getTemporaryDirectory();
+      _log('ocr tempDir=${tempDir.path}');
       final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
       final buffer = StringBuffer();
       var pageIndex = 0;
 
-      await for (final raster in Printing.raster(bytes, dpi: 2.0)) {
+      await for (final raster in Printing.raster(bytes, dpi: 300.0)) {
+        _log('ocr raster page=$pageIndex size=${raster.width}x${raster.height}');
         final pageFile = File('${tempDir.path}/boq_ocr_${DateTime.now().microsecondsSinceEpoch}_$pageIndex.png');
         await pageFile.writeAsBytes(await raster.toPng(), flush: true);
         try {
           final inputImage = InputImage.fromFilePath(pageFile.path);
           final recognizedText = await recognizer.processImage(inputImage);
           final text = _normalizeSpaces(recognizedText.text);
+          _log('ocr page=$pageIndex recognizedLength=${text.length}');
           if (text.isNotEmpty) buffer.writeln(text);
-        } catch (_) {
+        } catch (e) {
           // Skip pages we cannot OCR cleanly.
+          _log('ocr page=$pageIndex recognition failed: $e');
         } finally {
           try {
             if (await pageFile.exists()) {
@@ -403,12 +447,13 @@ class BOQExtractor {
           } catch (_) {}
         }
         pageIndex += 1;
-        if (pageIndex >= 10) break;
       }
 
       await recognizer.close();
+      _log('ocr fallback finished length=${buffer.length}');
       return buffer.toString();
-    } catch (_) {
+    } catch (e) {
+      _log('ocr fallback failed: $e');
       return '';
     }
   }
@@ -417,8 +462,10 @@ class BOQExtractor {
     Map<String, dynamic> response, {
     String? client,
   }) {
+    _log('remote response success=${response['success']} keys=${response.keys.toList()}');
     if (response['success'] != true) return null;
     final data = response['data'];
+    _log('remote response dataType=${data.runtimeType}');
     final itemsData = data is Map
         ? (data['items'] is List
             ? data['items'] as List
@@ -452,6 +499,7 @@ class BOQExtractor {
           );
         })
         .toList();
+    _log('remote response parsed items=${items.length}');
     if (items.isEmpty) return null;
     final projectName = data is Map
         ? (data['projectName'] ?? data['project_name'] ?? '').toString()
@@ -468,25 +516,41 @@ class BOQExtractor {
     String rawText, {
     String? client,
   }) {
-    final normalizedClient = (client ?? '').trim().toLowerCase();
+      final lineCount = rawText.split(RegExp(r'\r?\n')).where((l) => l.trim().isNotEmpty).length;
+      _log('extractFromText started rawLength=${rawText.length} lineCount=$lineCount client=${client ?? "(none)"}');
+      if (rawText.isNotEmpty) {
+        final sample = rawText.replaceAll(RegExp(r'\s+'), ' ').trim();
+        _log('extractFromText sample="${sample.length > 1000 ? '${sample.substring(0, 1000)}...' : sample}"');
+      }
+      final normalizedClient = (client ?? '').trim().toLowerCase();
     if (normalizedClient == 'lodha') {
+      _log('extractFromText forcing lodha parser');
       final parsed = _extractLodhaFromText(rawText);
+      _log('extractFromText lodha items=${parsed.items.length} error=${parsed.error ?? "(none)"}');
       if (parsed.items.isNotEmpty) return parsed;
     } else if (normalizedClient == 'hiranandani') {
+      _log('extractFromText forcing hiranandani parser');
       final parsed = _extractHiranandaniFromText(rawText);
+      _log('extractFromText hiranandani items=${parsed.items.length} error=${parsed.error ?? "(none)"}');
       if (parsed.items.isNotEmpty) return parsed;
     } else {
       if (_looksLikeLodha(rawText)) {
+        _log('extractFromText detected lodha-like text');
         final lodha = _extractLodhaFromText(rawText);
+        _log('extractFromText lodha detected items=${lodha.items.length} error=${lodha.error ?? "(none)"}');
         if (lodha.items.isNotEmpty) return lodha;
       }
       if (_looksLikeHiranandani(rawText)) {
+        _log('extractFromText detected hiranandani-like text');
         final hiranandani = _extractHiranandaniFromText(rawText);
+        _log('extractFromText hiranandani detected items=${hiranandani.items.length} error=${hiranandani.error ?? "(none)"}');
         if (hiranandani.items.isNotEmpty) return hiranandani;
       }
       final lodha = _extractLodhaFromText(rawText);
+      _log('extractFromText fallback lodha items=${lodha.items.length} error=${lodha.error ?? "(none)"}');
       if (lodha.items.isNotEmpty) return lodha;
       final hiranandani = _extractHiranandaniFromText(rawText);
+      _log('extractFromText fallback hiranandani items=${hiranandani.items.length} error=${hiranandani.error ?? "(none)"}');
       if (hiranandani.items.isNotEmpty) return hiranandani;
     }
 
@@ -496,6 +560,7 @@ class BOQExtractor {
     List<String> buffer = [];
 
     if (rawText.isEmpty) {
+      _log('extractFromText raw text empty after format detection');
       return const BOQExtractionResult(error: 'No text to extract');
     }
 
@@ -515,6 +580,9 @@ class BOQExtractor {
     }
 
     for (final line in lines) {
+      if (items.length < 5) {
+        _log('extractFromText scanning line="${line.length > 160 ? '${line.substring(0, 160)}...' : line}"');
+      }
       // Try to find project name
       if (projectName.isEmpty) {
         final projectMatch = _projectNamePattern.firstMatch(line);
@@ -593,11 +661,13 @@ class BOQExtractor {
     flush();
 
     if (items.isEmpty) {
+      _log('extractFromText final items empty');
       return const BOQExtractionResult(
         error: 'No BOQ items found in the PDF. The format may not be supported.',
       );
     }
 
+    _log('extractFromText success items=${items.length} projectName=${projectName.isEmpty ? "(none)" : projectName}');
     return BOQExtractionResult(
       items: items,
       projectName: projectName,
