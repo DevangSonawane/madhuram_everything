@@ -8,7 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import '../store/app_state.dart';
 import '../services/api_client.dart';
+import '../services/excel_service.dart';
 import '../services/file_service.dart';
+import '../services/pdf_service.dart';
 import '../models/purchase_order.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
@@ -108,6 +110,7 @@ Map<String, dynamic> _buildPoApiPayloadFromUi(
       ? Map<String, dynamic>.from(taxes['sgst'] as Map)
       : <String, dynamic>{};
   final notes = poData['notes'];
+  final termsAndConditions = poData['termsAndConditions'];
   final resolvedProjectId =
       projectId ?? int.tryParse('${poData['project_id'] ?? ''}');
   final sampleRaw = poData['sample_id'] ?? poData['sampleId'];
@@ -163,6 +166,15 @@ Map<String, dynamic> _buildPoApiPayloadFromUi(
     'delivery': summary['delivery'] ?? poData['delivery'] ?? '',
     'payment': summary['payment'] ?? poData['payment'] ?? '',
     'notes': notes is List ? notes.join('\n') : (notes?.toString() ?? ''),
+    'termsAndConditions': termsAndConditions is List
+        ? termsAndConditions.map((e) => e.toString()).toList()
+        : (termsAndConditions is String && termsAndConditions.trim().isNotEmpty
+            ? termsAndConditions
+                .split('\n')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+            : const <String>[]),
     'status': statusOverride ?? poData['status'] ?? 'created',
   };
 }
@@ -301,7 +313,7 @@ Map<String, dynamic> _normalizePoForPreview(Map<String, dynamic> raw) {
     'termsAndConditions': _poReadStringList(
       raw['termsAndConditions'] ?? raw['terms_and_conditions'],
     ),
-    'status': _poReadString(raw['status']),
+    'status': _poReadString(raw['status']).isEmpty ? 'created' : _poReadString(raw['status']),
     'sourceFileName': _poReadString(
       raw['sourceFileName'] ?? raw['source_file_name'],
     ),
@@ -469,6 +481,52 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
     final date = order.poDate ?? order.indentDate ?? order.createdAt;
     if (date == null || date.trim().isEmpty) return '-';
     return _dateOnly(date);
+  }
+
+  Future<void> _downloadPurchaseOrderPdf(PurchaseOrder order) async {
+    try {
+      final doc = await PdfService.generatePurchaseOrderPdf(order.toJson());
+      final filename = 'PO_${order.orderNo.isNotEmpty ? order.orderNo : order.id}.pdf';
+      final savedPath = await PdfService.exportPurchaseOrderPdf(doc, filename);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            savedPath == null
+                ? 'PDF export failed.'
+                : 'PDF saved successfully.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF export failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _downloadPurchaseOrderExcel(PurchaseOrder order) async {
+    try {
+      final workbook = await ExcelService.exportPurchaseOrderToExcel(order.toJson());
+      final filename = 'PO_${order.orderNo.isNotEmpty ? order.orderNo : order.id}.xlsx';
+      final savedPath = await ExcelService.exportExcel(workbook, filename);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            savedPath == null
+                ? 'Excel export failed.'
+                : 'Excel saved successfully.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Excel export failed: $e')),
+      );
+    }
   }
 
   @override
@@ -974,7 +1032,12 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                 MadMenuItem(
                   label: 'Download PDF',
                   icon: LucideIcons.download,
-                  onTap: () {},
+                  onTap: () => _downloadPurchaseOrderPdf(order),
+                ),
+                MadMenuItem(
+                  label: 'Download Excel',
+                  icon: LucideIcons.fileSpreadsheet,
+                  onTap: () => _downloadPurchaseOrderExcel(order),
                 ),
                 MadMenuItem(
                   label: 'Duplicate',
@@ -1829,6 +1892,52 @@ class _POViewPageState extends State<_POViewPage> {
     );
   }
 
+  Future<void> _downloadPdf() async {
+    final data = _poData;
+    if (data == null) return;
+    try {
+      final doc = await PdfService.generatePurchaseOrderPdf(data);
+      final filename = 'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.pdf';
+      final savedPath = await PdfService.exportPurchaseOrderPdf(doc, filename);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            savedPath == null ? 'PDF export failed.' : 'PDF saved successfully.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF export failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _downloadExcel() async {
+    final data = _poData;
+    if (data == null) return;
+    try {
+      final workbook = await ExcelService.exportPurchaseOrderToExcel(data);
+      final filename = 'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.xlsx';
+      final savedPath = await ExcelService.exportExcel(workbook, filename);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            savedPath == null ? 'Excel export failed.' : 'Excel saved successfully.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Excel export failed: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1837,6 +1946,18 @@ class _POViewPageState extends State<_POViewPage> {
       appBar: AppBar(
         title: const Text('Purchase Order Preview'),
         actions: [
+          if (!_isLoading && data != null)
+            IconButton(
+              tooltip: 'Download PDF',
+              onPressed: _downloadPdf,
+              icon: const Icon(LucideIcons.fileText),
+            ),
+          if (!_isLoading && data != null)
+            IconButton(
+              tooltip: 'Download Excel',
+              onPressed: _downloadExcel,
+              icon: const Icon(LucideIcons.fileSpreadsheet),
+            ),
           if (!_isLoading && data != null)
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -2078,6 +2199,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   final _deliveryTerms = TextEditingController();
   final _paymentTerms = TextEditingController();
   final _notes = TextEditingController();
+  final _termsAndConditions = TextEditingController();
   final _subtotalAmount = TextEditingController();
   final _discountPercent = TextEditingController();
   final _discountAmount = TextEditingController();
@@ -2096,6 +2218,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   bool _loadingPrItems = false;
   String _selectedSampleId = '';
   String _selectedPrId = '';
+  String _status = 'created';
   static int _itemId = 0;
   bool _isSubmitting = false;
   bool _isHydratingEditData = false;
@@ -2334,6 +2457,14 @@ class _ManualPOFormState extends State<_ManualPOForm> {
             ? (data['notes'] as List).join('\n')
             : data['notes']?.toString()) ??
         '';
+    _termsAndConditions.text =
+        (data['termsAndConditions'] is List
+            ? (data['termsAndConditions'] as List).join('\n')
+            : data['termsAndConditions']?.toString()) ??
+        '';
+    _status = (data['status']?.toString().trim().isNotEmpty ?? false)
+        ? data['status'].toString()
+        : 'created';
     final disc = data['discount'] as Map<String, dynamic>?;
     if (disc != null) {
       _discountPercent.text = disc['percent']?.toString() ?? '';
@@ -2444,6 +2575,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     _deliveryTerms.dispose();
     _paymentTerms.dispose();
     _notes.dispose();
+    _termsAndConditions.dispose();
     _subtotalAmount.dispose();
     _discountPercent.dispose();
     _discountAmount.dispose();
@@ -2683,6 +2815,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     final total = _parseValue(_totalAmount.text) ?? (afterDiscount + cgstAmt + sgstAmt);
 
     final notesText = _notes.text.trim();
+    final termsText = _termsAndConditions.text.trim();
     return {
       if (widget.projectId.isNotEmpty) 'project_id': widget.projectId,
       if (_selectedSampleId.trim().isNotEmpty)
@@ -2758,7 +2891,8 @@ class _ManualPOFormState extends State<_ManualPOForm> {
             : _paymentTerms.text.trim(),
       },
       'notes': notesText.isEmpty ? null : notesText.split('\n'),
-      'status': 'Draft',
+      'termsAndConditions': termsText.isEmpty ? null : termsText.split('\n'),
+      'status': _status,
     };
   }
 
@@ -3432,6 +3566,13 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                 hintText: 'Additional notes...',
                 controller: _notes,
                 minLines: 2,
+              ),
+              const SizedBox(height: 12),
+              MadTextarea(
+                labelText: 'Terms & Conditions (one per line)',
+                hintText: 'Enter one term per line',
+                controller: _termsAndConditions,
+                minLines: 3,
               ),
               const SizedBox(height: 24),
               Row(

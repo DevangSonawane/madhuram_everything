@@ -2,6 +2,8 @@ class PurchaseOrderItem {
   final String srNo;
   final String? hsnCode;
   final String description;
+  final String? width;
+  final String? length;
   final String quantity;
   final String uom;
   final String rate;
@@ -12,6 +14,8 @@ class PurchaseOrderItem {
     required this.srNo,
     this.hsnCode,
     required this.description,
+    this.width,
+    this.length,
     required this.quantity,
     required this.uom,
     required this.rate,
@@ -24,6 +28,8 @@ class PurchaseOrderItem {
       srNo: json['srNo']?.toString() ?? '',
       hsnCode: json['hsnCode']?.toString(),
       description: json['description'] ?? '',
+      width: json['width']?.toString(),
+      length: json['length']?.toString(),
       quantity: json['qty']?.toString() ?? json['quantity']?.toString() ?? '',
       uom: json['uom'] ?? '',
       rate: json['rate']?.toString() ?? '',
@@ -37,6 +43,8 @@ class PurchaseOrderItem {
     'srno': srNo,
     'hsn': hsnCode,
     'description': description,
+    'width': width,
+    'length': length,
     'qty': quantity,
     'UOM': uom,
     'Rate': rate,
@@ -136,7 +144,7 @@ class PurchaseOrder {
     this.payment,
     this.notes,
     this.termsAndConditions,
-    this.status = 'Draft',
+    this.status = 'created',
     this.source,
     this.sourceFileName,
     this.createdAt,
@@ -189,8 +197,8 @@ class PurchaseOrder {
     final summaryJson = summaryRaw is Map
         ? Map<String, dynamic>.from(summaryRaw)
         : null;
-    final notesRaw = json['notes'];
-    final termsRaw = json['termsAndConditions'];
+    final notesRaw = json['notes'] ?? json['po_notes'];
+    final termsRaw = json['termsAndConditions'] ?? json['terms_and_conditions'];
 
     return PurchaseOrder(
       id: (json['po_id'] ?? json['id'] ?? '').toString(),
@@ -247,7 +255,10 @@ class PurchaseOrder {
           : (termsRaw is String && termsRaw.trim().isNotEmpty
                 ? [termsRaw]
                 : null),
-      status: json['status'] ?? 'Draft',
+      status: (() {
+        final status = json['status']?.toString().trim();
+        return (status == null || status.isEmpty) ? 'created' : status;
+      })(),
       source: json['source'],
       sourceFileName: json['sourceFileName'],
       createdAt: _readCleanString(json['created_at'] ?? json['createdAt']),

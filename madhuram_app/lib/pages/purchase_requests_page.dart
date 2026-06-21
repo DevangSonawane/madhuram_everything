@@ -57,6 +57,7 @@ class PurchaseRequestItem {
 
 class PurchaseRequest {
   final String id;
+  final String prNumber;
   final String projectId;
   final String projectName;
   final String? sampleId;
@@ -74,6 +75,7 @@ class PurchaseRequest {
 
   const PurchaseRequest({
     required this.id,
+    required this.prNumber,
     required this.projectId,
     required this.projectName,
     required this.sampleId,
@@ -115,6 +117,7 @@ class PurchaseRequest {
 
     return PurchaseRequest(
       id: (json['pr_id'] ?? json['id'] ?? '').toString(),
+      prNumber: (json['pr_number'] ?? json['pr_no'] ?? json['prNo'] ?? '').toString(),
       projectId: (json['project_id'] ?? json['projectId'] ?? '').toString(),
       sampleId: json['sample_id']?.toString(),
       poId: poId,
@@ -134,6 +137,8 @@ class PurchaseRequest {
 }
 
 String _formatPrNumber(PurchaseRequest pr) {
+  final explicit = pr.prNumber.trim();
+  if (explicit.isNotEmpty) return explicit;
   final sourceDate = pr.date ?? DateTime.now().toIso8601String();
   final parsed = DateTime.tryParse(sourceDate);
   final datePart = parsed == null
@@ -224,15 +229,16 @@ class _PRItemRowState extends State<_PRItemRow> {
                   'Item ${widget.index + 1}',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                IconButton(
-                  icon: const Icon(LucideIcons.trash2, size: 18),
+                TextButton.icon(
                   onPressed: widget.canRemove ? widget.onRemove : null,
+                  icon: const Icon(LucideIcons.x, size: 16),
+                  label: const Text('Remove'),
                 ),
               ],
             ),
             const SizedBox(height: 12),
             MadInput(
-              labelText: 'Material Description',
+              labelText: 'Material Description *',
               hintText: 'Material',
               controller: _materialController,
               onChanged: (v) => item.materialDescription = v,
@@ -253,7 +259,7 @@ class _PRItemRowState extends State<_PRItemRow> {
                 Expanded(
                   child: MadSelect<String>(
                     labelText: 'Unit',
-                    placeholder: 'Unit',
+                    placeholder: 'NOS',
                     value: item.unit,
                     options: const [
                       MadSelectOption(value: 'NOS', label: 'NOS'),
@@ -268,15 +274,23 @@ class _PRItemRowState extends State<_PRItemRow> {
             ),
             const SizedBox(height: 12),
             MadInput(
+              labelText: 'Req Qty *',
+              hintText: '0',
+              keyboardType: TextInputType.number,
+              controller: _qtyController,
+              onChanged: (v) => item.reqQty = v,
+            ),
+            const SizedBox(height: 12),
+            MadInput(
               labelText: 'Make',
-              hintText: 'Make',
+              hintText: 'Brand / make',
               controller: _makeController,
               onChanged: (v) => item.make = v,
             ),
             const SizedBox(height: 12),
             MadInput(
               labelText: 'Place of Utilisation',
-              hintText: 'Place of utilisation',
+              hintText: 'Usage area',
               controller: _placeController,
               onChanged: (v) => item.placeOfUtilisation = v,
             ),
@@ -1603,6 +1617,8 @@ class _PurchaseRequestFormContentState
     return v;
   }
 
+  void _refreshPrNumber() {}
+
   Future<void> _pickDate() async {
     final current = DateTime.tryParse(_dateController.text) ?? DateTime.now();
     final date = await showDatePicker(
@@ -1615,6 +1631,7 @@ class _PurchaseRequestFormContentState
       setState(
         () => _dateController.text = DateFormat('yyyy-MM-dd').format(date),
       );
+      _refreshPrNumber();
     }
   }
 
@@ -2110,6 +2127,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   bool _loadingProjects = false;
   bool _loadingSamples = false;
   bool _loadingMirs = false;
+  bool _loadingPrs = false;
   bool _loadingSampleItems = false;
   bool _submitting = false;
   bool _uploadingPr = false;
@@ -2118,6 +2136,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   List<Map<String, dynamic>> _projects = [];
   List<Map<String, dynamic>> _samples = [];
   List<Map<String, dynamic>> _mirs = [];
+  List<Map<String, dynamic>> _prs = [];
 
   String _projectId = '';
   String _sampleId = 'none';
@@ -2125,6 +2144,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   String _urgency = 'Medium';
 
   final TextEditingController _projectNameController = TextEditingController();
+  final TextEditingController _prNumberController = TextEditingController();
   final TextEditingController _workorderController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _dateController = TextEditingController(
@@ -2161,6 +2181,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         if (!mounted) return;
         _syncProjectNameFromList();
         _loadSamplesAndMirs();
+        _loadPrs();
       });
     }
     _appliedInitialProject = true;
@@ -2169,6 +2190,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   @override
   void dispose() {
     _projectNameController.dispose();
+    _prNumberController.dispose();
     _workorderController.dispose();
     _locationController.dispose();
     _dateController.dispose();
@@ -2213,6 +2235,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       });
       _syncProjectNameFromList();
       await _loadSamplesAndMirs();
+      await _loadPrs();
       return;
     }
     setState(() {
@@ -2235,6 +2258,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     if (name.isNotEmpty) {
       _projectNameController.text = name;
     }
+    _refreshPrNumber();
   }
 
   Future<void> _loadSamplesAndMirs() async {
@@ -2285,6 +2309,71 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         _mirNo = 'none';
       }
     });
+  }
+
+  Future<void> _loadPrs() async {
+    final projectId = _projectId.trim();
+    if (projectId.isEmpty) {
+      setState(() {
+        _prs = [];
+      });
+      _refreshPrNumber();
+      return;
+    }
+
+    setState(() => _loadingPrs = true);
+    try {
+      final result = await ApiClient.getPRsByProject(projectId);
+      if (!mounted) return;
+      final data = result['success'] == true ? result['data'] : [];
+      final list = data is List ? data : const [];
+      setState(() {
+        _prs = list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _prs = []);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingPrs = false);
+      }
+      _refreshPrNumber();
+    }
+  }
+
+  String _formatDateToken(String value) {
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return '0000-00-00';
+    final yyyy = parsed.year.toString().padLeft(4, '0');
+    final mm = parsed.month.toString().padLeft(2, '0');
+    final dd = parsed.day.toString().padLeft(2, '0');
+    return '$yyyy-$mm-$dd';
+  }
+
+  String _buildAutoPrNumber() {
+    final project = _parsePositiveIntOrNull(_projectId) ?? 0;
+    final dateToken = _formatDateToken(_dateController.text.trim());
+    final sequence = _prs.where((pr) {
+      final sameProject =
+          (pr['project_id'] ?? pr['projectId'] ?? '').toString() ==
+          project.toString();
+      final sameDate =
+          _formatDateToken((pr['date'] ?? pr['created_at'] ?? '').toString()) ==
+          dateToken;
+      return sameProject && sameDate;
+    }).length + 1;
+    return 'PR-$dateToken-$sequence-$project';
+  }
+
+  void _refreshPrNumber() {
+    final next = _buildAutoPrNumber();
+    if (_prNumberController.text != next) {
+      _prNumberController.text = next;
+    }
   }
 
   String _projectValue(Map<String, dynamic> p) =>
@@ -2519,6 +2608,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     final sampleIdStr = _sampleId == 'none' ? '' : _sampleId;
     final sampleIdInt = _parsePositiveIntOrNull(sampleIdStr);
     return {
+      'pr_number': _prNumberController.text.trim(),
       'project_id': projectIdInt ?? _projectId,
       'sample_id': sampleIdInt ?? (sampleIdStr.isEmpty ? null : sampleIdStr),
       'project_name': _projectNameController.text.trim(),
@@ -2538,11 +2628,12 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   Future<void> _submit() async {
     if (_submitting) return;
     if (_projectId.trim().isEmpty ||
-        _projectNameController.text.trim().isEmpty) {
+        _projectNameController.text.trim().isEmpty ||
+        _prNumberController.text.trim().isEmpty) {
       MadDialog.alert(
         context: context,
         title: 'Missing fields',
-        description: 'Project is required.',
+        description: 'Project ID, Project Name, and PR Number are required.',
       );
       return;
     }
@@ -2621,7 +2712,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
             Align(
               alignment: Alignment.centerRight,
               child: MadButton(
-                text: 'Back',
+                text: 'Back to PR List',
                 icon: LucideIcons.arrowLeft,
                 variant: ButtonVariant.outline,
                 onPressed: () => Navigator.of(context).pop(false),
@@ -2648,7 +2739,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                 ),
                 const SizedBox(width: 12),
                 MadButton(
-                  text: 'Back',
+                  text: 'Back to PR List',
                   icon: LucideIcons.arrowLeft,
                   variant: ButtonVariant.outline,
                   onPressed: () => Navigator.of(context).pop(false),
@@ -2695,6 +2786,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                 });
                                 _syncProjectNameFromList();
                                 await _loadSamplesAndMirs();
+                                await _loadPrs();
                               },
                             ),
                             const SizedBox(height: 12),
@@ -2702,6 +2794,14 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                               controller: _projectNameController,
                               labelText: 'Project Name *',
                               hintText: 'Project name',
+                              enabled: false,
+                            ),
+                            const SizedBox(height: 12),
+                            MadInput(
+                              controller: _prNumberController,
+                              labelText: 'PR Number *',
+                              hintText: 'Enter PR number',
+                              enabled: false,
                             ),
                           ] else
                             Row(
@@ -2725,6 +2825,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                       });
                                       _syncProjectNameFromList();
                                       await _loadSamplesAndMirs();
+                                      await _loadPrs();
                                     },
                                   ),
                                 ),
@@ -2734,10 +2835,18 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                     controller: _projectNameController,
                                     labelText: 'Project Name *',
                                     hintText: 'Project name',
+                                    enabled: false,
                                   ),
                                 ),
                               ],
                             ),
+                          const SizedBox(height: 12),
+                          MadInput(
+                            controller: _prNumberController,
+                            labelText: 'PR Number *',
+                            hintText: 'Enter PR number',
+                            enabled: false,
+                          ),
                           const SizedBox(height: 12),
                           if (isMobile) ...[
                             MadSelect<String>(
@@ -2960,7 +3069,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Items',
+                                'PR Items',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
@@ -2970,13 +3079,23 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                 ),
                               ),
                               MadButton(
-                                text: 'Add Item',
+                                text: 'Add Row',
                                 icon: LucideIcons.plus,
                                 size: ButtonSize.sm,
                                 onPressed: () =>
                                     setState(() => _items.add(_PRWizardItem())),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Add at least one item row.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           ...List.generate(_items.length, (i) {
@@ -3001,6 +3120,13 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      MadButton(
+                        text: 'Cancel',
+                        variant: ButtonVariant.outline,
+                        disabled: _submitting || _uploadingPr || _uploadingSig,
+                        onPressed: () => Navigator.of(context).pop(false),
+                      ),
+                      const SizedBox(width: 12),
                       MadButton(
                         text: _submitting ? 'Creating...' : 'Create PR',
                         icon: LucideIcons.save,

@@ -303,8 +303,8 @@ class _NewChallanPageState extends State<NewChallanPage> {
       return _PoPreviewItem(
         name: item.description.isNotEmpty ? item.description : 'Item ${idx + 1}',
         description: (item.remarks ?? '').isNotEmpty ? item.remarks! : item.description,
-        width: '',
-        length: '',
+        width: item.width ?? '',
+        length: item.length ?? '',
         quantity: item.quantity,
         price: item.rate,
       );

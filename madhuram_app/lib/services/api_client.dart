@@ -606,6 +606,52 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static Future<Map<String, dynamic>> parseBOQPdf({
+    required File boqFile,
+    String? projectId,
+    bool save = false,
+    String? category,
+    String? client,
+  }) async {
+    final fields = <String, String>{
+      'save': save.toString(),
+    };
+    if ((projectId ?? '').trim().isNotEmpty) {
+      fields['project_id'] = projectId!.trim();
+    }
+    if ((category ?? '').trim().isNotEmpty) {
+      fields['category'] = category!.trim();
+    }
+    if ((client ?? '').trim().isNotEmpty) {
+      fields['client'] = client!.trim();
+    }
+    return _multipartRequest(
+      'POST',
+      '/api/boq/parse-pdf',
+      fields,
+      files: {'boq_file': boqFile},
+    );
+  }
+
+  static Future<Map<String, dynamic>> parseBOQPdfLodha({
+    required File boqFile,
+    String? projectId,
+    bool save = false,
+  }) async {
+    final fields = <String, String>{
+      'save': save.toString(),
+    };
+    if ((projectId ?? '').trim().isNotEmpty) {
+      fields['project_id'] = projectId!.trim();
+    }
+    return _multipartRequest(
+      'POST',
+      '/api/boq/parse-pdf/lodha',
+      fields,
+      files: {'boq_file': boqFile},
+    );
+  }
+
   static Future<Map<String, dynamic>> createBOQ(
     Map<String, dynamic> data,
   ) async {
@@ -648,6 +694,64 @@ class ApiClient {
     return _multipartRequest(
       'POST',
       '/api/boq',
+      fields,
+      files: files.isEmpty ? null : files,
+    );
+  }
+
+  static Future<Map<String, dynamic>> createBOQLodha(
+    Map<String, dynamic> data,
+  ) async {
+    final fields = <String, String>{
+      'project_id': (data['project_id'] ?? '').toString(),
+      'description': (data['description'] ?? data['item_description'] ?? '').toString(),
+    };
+
+    for (final key in ['section', 'item_no', 'hsn', 'unit', 'qty', 'rate', 'amount', 'project_name', 'category', 'floor']) {
+      final value = data[key];
+      if (value != null && value.toString().isNotEmpty) {
+        fields[key] = value.toString();
+      }
+    }
+
+    final files = <String, File>{};
+    final file = data['boq_file'];
+    if (file is File) {
+      files['boq_file'] = file;
+    }
+
+    return _multipartRequest(
+      'POST',
+      '/api/boq/lodha',
+      fields,
+      files: files.isEmpty ? null : files,
+    );
+  }
+
+  static Future<Map<String, dynamic>> createBOQHiranandani(
+    Map<String, dynamic> data,
+  ) async {
+    final fields = <String, String>{
+      'project_id': (data['project_id'] ?? '').toString(),
+      'description': (data['description'] ?? data['service_description'] ?? '').toString(),
+    };
+
+    for (final key in ['section', 'item_no', 'sac_code', 'uom', 'order_qty', 'unit_price', 'value', 'project_name', 'category', 'floor']) {
+      final value = data[key];
+      if (value != null && value.toString().isNotEmpty) {
+        fields[key] = value.toString();
+      }
+    }
+
+    final files = <String, File>{};
+    final file = data['boq_file'];
+    if (file is File) {
+      files['boq_file'] = file;
+    }
+
+    return _multipartRequest(
+      'POST',
+      '/api/boq/hiranandani',
       fields,
       files: files.isEmpty ? null : files,
     );
@@ -771,6 +875,88 @@ class ApiClient {
     if (boqFile != null) files['boq_file'] = boqFile;
 
     return _multipartRequest('PUT', '/api/boq/$boqId', fields, files: files);
+  }
+
+  static Future<Map<String, dynamic>> saveBOQItems({
+    required String projectId,
+    required List<Map<String, dynamic>> items,
+    String? boqFileName,
+    String? client,
+  }) async {
+    final normalizedClient = (client ?? '').toString().trim().toLowerCase();
+    final payload = <Map<String, dynamic>>[];
+    for (final item in items) {
+      final category = item['category'] ?? 'General';
+      final description = item['description'] ?? '';
+      final unit = item['unit'] ?? '';
+      final floor = item['floor'] ?? '';
+      final quantity = item['quantity'] ?? '';
+      final rate = item['rate'] ?? '';
+      final amount = item['amount'] ?? '';
+      final code = item['item_code'] ?? item['code'] ?? '';
+      if (normalizedClient == 'lodha') {
+        payload.add({
+          'project_id': projectId,
+          'description': description,
+          'section': category,
+          'item_no': item['item_no'] ?? item['code'] ?? '',
+          'hsn': item['hsn'] ?? item['item_code'] ?? '',
+          'unit': unit,
+          'qty': quantity,
+          'rate': rate,
+          'amount': amount,
+          'category': category,
+          'floor': floor,
+        });
+      } else if (normalizedClient == 'hiranandani') {
+        payload.add({
+          'project_id': projectId,
+          'description': description,
+          'section': category,
+          'item_no': item['item_no'] ?? item['code'] ?? '',
+          'sac_code': item['sac_code'] ?? item['item_code'] ?? '',
+          'order_qty': quantity,
+          'uom': unit,
+          'unit_price': rate,
+          'value': amount,
+          'category': category,
+          'floor': floor,
+        });
+      } else {
+        payload.add({
+          'project_id': projectId,
+          'category': category,
+          'item_code': code,
+          'description': description,
+          'floor': floor,
+          'unit': unit,
+          'quantity': quantity,
+          'rate': rate,
+          'amount': amount,
+        });
+      }
+    }
+
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/boq/save-items');
+    final res = await _post(
+      uri,
+      headers: {
+        ..._authHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'project_id': projectId,
+        if ((boqFileName ?? '').isNotEmpty) 'boq_file_name': boqFileName,
+        if (normalizedClient.isNotEmpty) 'client': normalizedClient,
+        'items': payload,
+      }),
+    );
+    final result = await _handleResponse(res);
+    if (result['success'] == true) {
+      return {...result, 'data': _unwrapData(result['data'])};
+    }
+    return result;
   }
 
   // ============================================================================

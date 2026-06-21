@@ -118,6 +118,62 @@ class PdfService {
     );
   }
 
+  static String _stringValue(dynamic value, [String fallback = '']) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty || text.toLowerCase() == 'null' ? fallback : text;
+  }
+
+  static double _doubleValue(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    final normalized = value.toString().replaceAll(',', '').trim();
+    return double.tryParse(normalized) ?? 0;
+  }
+
+  static List<String> _stringList(dynamic value) {
+    if (value is List) {
+      return value
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return value
+          .split('\n')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  static List<Map<String, dynamic>> _normalizePoItems(dynamic rawItems) {
+    if (rawItems is! List) return const [];
+    return rawItems
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .map((item) {
+          final qty = _doubleValue(
+            item['qty'] ?? item['quantity'] ?? item['Qty'],
+          );
+          final rate = _doubleValue(item['Rate'] ?? item['rate'] ?? item['price']);
+          final amount = _doubleValue(item['Amount'] ?? item['amount']) != 0
+              ? _doubleValue(item['Amount'] ?? item['amount'])
+              : qty * rate;
+          return <String, dynamic>{
+            'srNo': _stringValue(item['srNo'] ?? item['srno']),
+            'hsnCode': _stringValue(item['hsnCode'] ?? item['hsn']),
+            'description': _stringValue(item['description']),
+            'qty': qty,
+            'uom': _stringValue(item['uom'] ?? item['UOM']),
+            'rate': rate,
+            'amount': amount,
+            'remarks': _stringValue(item['remarks'] ?? item['remark']),
+          };
+        })
+        .toList();
+  }
+
   /// Save PDF to file
   static Future<File?> saveToFile(pw.Document doc, String filename) async {
     try {
@@ -216,17 +272,65 @@ class PdfService {
   }
 
   /// Generate Purchase Order PDF
-  static Future<pw.Document> generatePurchaseOrderPdf({
-    required String poNumber,
-    required String vendorName,
-    required String projectName,
-    required List<Map<String, dynamic>> items,
-    required double totalAmount,
-    String? terms,
+  static Future<pw.Document> generatePurchaseOrderPdf(
+    Map<String, dynamic> poData, {
+    String? projectName,
   }) async {
     final doc = await createDocument();
-    final now = DateTime.now();
-    final dateStr = '${now.day}/${now.month}/${now.year}';
+    final raw = Map<String, dynamic>.from(poData);
+    final vendor = raw['vendor'] is Map
+        ? Map<String, dynamic>.from(raw['vendor'] as Map)
+        : <String, dynamic>{};
+    final contacts = vendor['contacts'] is Map
+        ? Map<String, dynamic>.from(vendor['contacts'] as Map)
+        : <String, dynamic>{};
+    final primary = contacts['primary'] is Map
+        ? Map<String, dynamic>.from(contacts['primary'] as Map)
+        : <String, dynamic>{};
+    final secondary = contacts['secondary'] is Map
+        ? Map<String, dynamic>.from(contacts['secondary'] as Map)
+        : <String, dynamic>{};
+    final discount = raw['discount'] is Map
+        ? Map<String, dynamic>.from(raw['discount'] as Map)
+        : <String, dynamic>{};
+    final taxes = raw['taxes'] is Map
+        ? Map<String, dynamic>.from(raw['taxes'] as Map)
+        : <String, dynamic>{};
+    final cgst = taxes['cgst'] is Map
+        ? Map<String, dynamic>.from(taxes['cgst'] as Map)
+        : <String, dynamic>{};
+    final sgst = taxes['sgst'] is Map
+        ? Map<String, dynamic>.from(taxes['sgst'] as Map)
+        : <String, dynamic>{};
+    final summary = raw['summary'] is Map
+        ? Map<String, dynamic>.from(raw['summary'] as Map)
+        : <String, dynamic>{};
+    final items = _normalizePoItems(raw['items']);
+    final poNumber = _stringValue(raw['order_no'] ?? raw['orderNo'] ?? raw['poNumber']);
+    final poDate = _stringValue(raw['po_date'] ?? raw['poDate']);
+    final dateStr = poDate.isNotEmpty ? poDate : '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
+    final resolvedProjectName = projectName ??
+        _stringValue(raw['project_name'] ?? raw['projectName'] ?? raw['project_id'], 'Purchase Order');
+    final totalAmount = _doubleValue(raw['total_amount'] ?? raw['totalAmount']);
+    final afterDiscount = _doubleValue(raw['afterDiscountAmount'] ?? raw['after_discount']);
+    final notes = _stringList(raw['notes']);
+    final terms = _stringList(raw['termsAndConditions']);
+    final subtotal = items.fold<double>(0, (sum, item) => sum + (item['amount'] as double? ?? 0));
+    final companyName = _stringValue(raw['companyName'] ?? raw['company_name']);
+    final companySubtitle = _stringValue(raw['companySubtitle'] ?? raw['company_subtitle']);
+    final companyEmail = _stringValue(raw['companyEmail'] ?? raw['company_email']);
+    final companyGst = _stringValue(raw['companyGstNo'] ?? raw['company_gst']);
+    final indentNo = _stringValue(raw['indentNo'] ?? raw['indent_no']);
+    final indentDate = _stringValue(raw['indentDate'] ?? raw['indent_date']);
+    final status = _stringValue(raw['status'], 'created');
+    final vendorName = _stringValue(vendor['name'] ?? raw['vendor_name']);
+    final vendorSite = _stringValue(vendor['site'] ?? raw['site']);
+    final vendorAddress = _stringValue(vendor['address'] ?? raw['vendor_address']);
+    final contactPerson = _stringValue(vendor['contactPerson'] ?? raw['contact_person']);
+    final primaryName = _stringValue(primary['name'] ?? raw['primary_contact_name']);
+    final primaryPhone = _stringValue(primary['phone'] ?? primary['number'] ?? raw['primary_contact_number']);
+    final secondaryName = _stringValue(secondary['name'] ?? raw['secondary_contact_name']);
+    final secondaryPhone = _stringValue(secondary['phone'] ?? secondary['number'] ?? raw['secondary_contact_number']);
 
     doc.addPage(
       pw.MultiPage(
@@ -234,8 +338,8 @@ class PdfService {
         margin: const pw.EdgeInsets.all(40),
         header: (context) => buildHeader(
           title: 'Purchase Order',
-          subtitle: poNumber,
-          projectName: projectName,
+          subtitle: poNumber.isEmpty ? 'Draft PO' : poNumber,
+          projectName: resolvedProjectName,
           date: dateStr,
         ),
         footer: buildFooter,
@@ -245,65 +349,160 @@ class PdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Vendor', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-                    pw.SizedBox(height: 4),
-                    pw.Text(vendorName, style: const pw.TextStyle(fontSize: 10)),
-                  ],
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Header Details', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                      pw.SizedBox(height: 6),
+                      pw.Text('PO No: ${poNumber.isEmpty ? '-' : poNumber}', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text('PO Date: ${poDate.isEmpty ? '-' : poDate}', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text('Indent No: ${indentNo.isEmpty ? '-' : indentNo}', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text('Indent Date: ${indentDate.isEmpty ? '-' : indentDate}', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text('Status: ${status.isEmpty ? 'created' : status}', style: const pw.TextStyle(fontSize: 9)),
+                    ],
+                  ),
+                ),
+              ),
+              pw.SizedBox(width: 12),
+              pw.Expanded(
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Vendor Details', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                      pw.SizedBox(height: 6),
+                      pw.Text(vendorName.isEmpty ? '-' : vendorName, style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text(vendorSite.isEmpty ? '-' : vendorSite, style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text(contactPerson.isEmpty ? '-' : contactPerson, style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text(vendorAddress.isEmpty ? '-' : vendorAddress, style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text('Primary: ${primaryName.isEmpty ? '-' : primaryName} / ${primaryPhone.isEmpty ? '-' : primaryPhone}', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text('Secondary: ${secondaryName.isEmpty ? '-' : secondaryName} / ${secondaryPhone.isEmpty ? '-' : secondaryPhone}', style: const pw.TextStyle(fontSize: 9)),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
+          if (companyName.isNotEmpty || companySubtitle.isNotEmpty || companyEmail.isNotEmpty || companyGst.isNotEmpty) ...[
+            pw.SizedBox(height: 10),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey50,
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Text(
+                [
+                  if (companyName.isNotEmpty) companyName,
+                  if (companySubtitle.isNotEmpty) companySubtitle,
+                  if (companyEmail.isNotEmpty) companyEmail,
+                  if (companyGst.isNotEmpty) 'GST: $companyGst',
+                ].join('  |  '),
+                style: const pw.TextStyle(fontSize: 9),
+              ),
+            ),
+          ],
           pw.SizedBox(height: 20),
           buildTable(
-            headers: ['S.No', 'Description', 'Unit', 'Qty', 'Rate', 'Amount'],
+            headers: ['S.No', 'HSN', 'Description', 'Qty', 'UOM', 'Rate', 'Amount', 'Remarks'],
             rows: items.asMap().entries.map((e) => [
-              (e.key + 1).toString(),
-              (e.value['description'] ?? '').toString(),
-              (e.value['unit'] ?? '').toString(),
-              (e.value['quantity'] ?? 0).toString(),
-              '₹${e.value['rate'] ?? 0}',
-              '₹${((e.value['quantity'] ?? 0) * (e.value['rate'] ?? 0)).toStringAsFixed(2)}',
+              _stringValue(e.value['srNo'], (e.key + 1).toString()),
+              _stringValue(e.value['hsnCode']),
+              _stringValue(e.value['description']),
+              _stringValue(e.value['qty']),
+              _stringValue(e.value['uom']),
+              '₹${(_doubleValue(e.value['rate'])).toStringAsFixed(2)}',
+              '₹${(_doubleValue(e.value['amount'])).toStringAsFixed(2)}',
+              _stringValue(e.value['remarks']),
             ]).toList(),
           ),
           pw.SizedBox(height: 20),
           pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.end,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Container(
-                width: 200,
-                child: pw.Column(
-                  children: [
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text('Subtotal:', style: const pw.TextStyle(fontSize: 10)),
-                        pw.Text('₹${totalAmount.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 10)),
-                      ],
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Divider(),
-                    pw.SizedBox(height: 4),
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text('Total:', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                        pw.Text('₹${totalAmount.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                      ],
-                    ),
-                  ],
+              pw.Expanded(
+                child: buildSummaryBox(
+                  title: 'Amounts & Delivery',
+                  items: {
+                    'Subtotal': '₹${subtotal.toStringAsFixed(2)}',
+                    'Discount %': _stringValue(discount['percent']),
+                    'Discount Amount': '₹${_doubleValue(discount['amount']).toStringAsFixed(2)}',
+                    'After Discount': '₹${afterDiscount.toStringAsFixed(2)}',
+                    'CGST %': _stringValue(cgst['percent']),
+                    'CGST Amount': '₹${_doubleValue(cgst['amount']).toStringAsFixed(2)}',
+                    'SGST %': _stringValue(sgst['percent']),
+                    'SGST Amount': '₹${_doubleValue(sgst['amount']).toStringAsFixed(2)}',
+                    'Total Amount': '₹${totalAmount.toStringAsFixed(2)}',
+                    'Delivery': _stringValue(summary['delivery']),
+                    'Payment': _stringValue(summary['payment']),
+                  },
                 ),
               ),
+              if (notes.isNotEmpty || terms.isNotEmpty) ...[
+                pw.SizedBox(width: 12),
+                pw.Expanded(
+                  child: pw.Column(
+                    children: [
+                      if (notes.isNotEmpty)
+                        pw.Container(
+                          width: double.infinity,
+                          padding: const pw.EdgeInsets.all(10),
+                          decoration: pw.BoxDecoration(
+                            border: pw.Border.all(color: PdfColors.grey300),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                          ),
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text('Notes', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                              pw.SizedBox(height: 6),
+                              ...notes.map((line) => pw.Padding(
+                                padding: const pw.EdgeInsets.only(bottom: 3),
+                                child: pw.Text('• $line', style: const pw.TextStyle(fontSize: 9)),
+                              )),
+                            ],
+                          ),
+                        ),
+                      if (notes.isNotEmpty && terms.isNotEmpty) pw.SizedBox(height: 10),
+                      if (terms.isNotEmpty)
+                        pw.Container(
+                          width: double.infinity,
+                          padding: const pw.EdgeInsets.all(10),
+                          decoration: pw.BoxDecoration(
+                            border: pw.Border.all(color: PdfColors.grey300),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                          ),
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text('Terms & Conditions', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                              pw.SizedBox(height: 6),
+                              ...terms.map((line) => pw.Padding(
+                                padding: const pw.EdgeInsets.only(bottom: 3),
+                                child: pw.Text('• $line', style: const pw.TextStyle(fontSize: 9)),
+                              )),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
-          if (terms != null) ...[
-            pw.SizedBox(height: 30),
-            pw.Text('Terms & Conditions', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-            pw.SizedBox(height: 8),
-            pw.Text(terms, style: const pw.TextStyle(fontSize: 9)),
-          ],
           pw.SizedBox(height: 50),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -329,6 +528,22 @@ class PdfService {
     );
 
     return doc;
+  }
+
+  static Future<String?> exportPurchaseOrderPdf(
+    pw.Document doc,
+    String filename,
+  ) async {
+    try {
+      final bytes = await doc.save();
+      return await FileService.saveFileAs(
+        filename: filename.endsWith('.pdf') ? filename : '$filename.pdf',
+        bytes: bytes,
+      );
+    } catch (e) {
+      print('Error exporting PDF: $e');
+    }
+    return null;
   }
 
   /// Generate Purchase Request (Material Request) PDF
