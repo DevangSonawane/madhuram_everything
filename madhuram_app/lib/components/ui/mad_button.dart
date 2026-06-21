@@ -137,9 +137,15 @@ class MadButton extends StatelessWidget {
         if (child != null)
           child!
         else if (text != null)
-          Text(
-            text!,
-            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w500),
+          Flexible(
+            child: Text(
+              text!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w500),
+            ),
           ),
         if (trailingIcon != null)
           Padding(

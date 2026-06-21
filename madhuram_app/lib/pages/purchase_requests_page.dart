@@ -1433,6 +1433,7 @@ class _PurchaseRequestFormContentState
   late final TextEditingController _projectNameController;
   late final TextEditingController _workorderController;
   late final TextEditingController _locationController;
+  late final TextEditingController _mirNoController;
   late final TextEditingController _approvedByController;
   late final TextEditingController _remarksController;
   late final TextEditingController _dateController;
@@ -1463,6 +1464,7 @@ class _PurchaseRequestFormContentState
       text: existing?.workorderNo ?? '',
     );
     _locationController = TextEditingController(text: existing?.location ?? '');
+    _mirNoController = TextEditingController(text: existing?.mirNo ?? '');
     _approvedByController = TextEditingController(
       text: existing?.approvedBy ?? '',
     );
@@ -1476,6 +1478,9 @@ class _PurchaseRequestFormContentState
     _sampleId =
         (existing?.sampleId?.isNotEmpty == true ? existing!.sampleId! : 'none');
     _mirNo = existing?.mirNo.isNotEmpty == true ? existing!.mirNo : 'none';
+    if (_mirNo != 'none') {
+      _mirNoController.text = _mirNo;
+    }
     _prFilePath = existing?.prFilePath ?? '';
     _signatureFilePath = existing?.signatureFilePath ?? '';
     _prFileName = _fileNameFromPath(_prFilePath);
@@ -1508,6 +1513,16 @@ class _PurchaseRequestFormContentState
     final defaultProjectId = selectedProject?['project_id']?.toString() ?? '';
     final defaultProjectName =
         selectedProject?['project_name']?.toString() ?? '';
+    final defaultWorkOrder = [
+      selectedProject?['wo_number'],
+      selectedProject?['workorder_no'],
+      selectedProject?['work_order_no'],
+      selectedProject?['workOrderNo'],
+      selectedProject?['woNo'],
+    ].map((value) => value?.toString().trim() ?? '').firstWhere(
+      (value) => value.isNotEmpty,
+      orElse: () => '',
+    );
 
     if (_projectIdController.text.trim().isEmpty &&
         defaultProjectId.isNotEmpty) {
@@ -1516,6 +1531,9 @@ class _PurchaseRequestFormContentState
     if (_projectNameController.text.trim().isEmpty &&
         defaultProjectName.isNotEmpty) {
       _projectNameController.text = defaultProjectName;
+    }
+    if (_workorderController.text.trim().isEmpty && defaultWorkOrder.isNotEmpty) {
+      _workorderController.text = defaultWorkOrder;
     }
     if (_projectIdController.text.trim().isNotEmpty) {
       _loadSamplesAndMirs();
@@ -1529,6 +1547,7 @@ class _PurchaseRequestFormContentState
     _projectNameController.dispose();
     _workorderController.dispose();
     _locationController.dispose();
+    _mirNoController.dispose();
     _approvedByController.dispose();
     _remarksController.dispose();
     _dateController.dispose();
@@ -1548,6 +1567,7 @@ class _PurchaseRequestFormContentState
         _mirs = [];
         _sampleId = 'none';
         _mirNo = 'none';
+        _mirNoController.clear();
       });
       return;
     }
@@ -1587,6 +1607,7 @@ class _PurchaseRequestFormContentState
       }
       if (_mirNo != 'none' && !_mirs.any((m) => _mirValue(m) == _mirNo)) {
         _mirNo = 'none';
+        _mirNoController.clear();
       }
     });
   }
@@ -1610,12 +1631,6 @@ class _PurchaseRequestFormContentState
 
   String _mirValue(Map<String, dynamic> m) =>
       (m['mir_refrence_no'] ?? m['mir_id'] ?? m['id'] ?? '').toString();
-
-  String _mirLabel(Map<String, dynamic> m) {
-    final v = _mirValue(m);
-    if (v.isEmpty) return '-';
-    return v;
-  }
 
   void _refreshPrNumber() {}
 
@@ -1899,7 +1914,8 @@ class _PurchaseRequestFormContentState
               child: MadInput(
                 controller: _workorderController,
                 labelText: 'Work Order No',
-                hintText: 'WO number',
+                hintText: 'Auto-fetched from project',
+                enabled: false,
               ),
             ),
             const SizedBox(width: 12),
@@ -1924,27 +1940,13 @@ class _PurchaseRequestFormContentState
           hintText: 'Location',
         ),
         const SizedBox(height: 12),
-        MadSelect<String>(
+        MadInput(
+          controller: _mirNoController,
           labelText: 'MIR No',
-          value: _mirNo,
-          placeholder: _loadingMirs ? 'Loading MIR...' : 'Select MIR No',
-          options: [
-            const MadSelectOption(value: 'none', label: 'None'),
-            if (_mirNo != 'none' &&
-                !_mirs.any((m) => _mirValue(m) == _mirNo))
-              MadSelectOption(
-                value: _mirNo,
-                label: 'MIR $_mirNo (current)',
-              ),
-            ..._mirs.map(
-              (mir) => MadSelectOption(
-                value: _mirValue(mir),
-                label: _mirLabel(mir),
-              ),
-            ),
-          ],
-          disabled: _loadingMirs,
-          onChanged: (v) => setState(() => _mirNo = v ?? 'none'),
+          hintText: _loadingMirs ? 'Loading MIR...' : 'Optional',
+          onChanged: (v) => setState(() {
+            _mirNo = v.trim().isEmpty ? 'none' : v.trim();
+          }),
         ),
         const SizedBox(height: 12),
         MadInput(
@@ -2147,6 +2149,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   final TextEditingController _prNumberController = TextEditingController();
   final TextEditingController _workorderController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _mirNoController = TextEditingController();
   final TextEditingController _dateController = TextEditingController(
     text: DateFormat('yyyy-MM-dd').format(DateTime.now()),
   );
@@ -2193,6 +2196,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     _prNumberController.dispose();
     _workorderController.dispose();
     _locationController.dispose();
+    _mirNoController.dispose();
     _dateController.dispose();
     _approvedByController.dispose();
     _remarksController.dispose();
@@ -2258,7 +2262,31 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     if (name.isNotEmpty) {
       _projectNameController.text = name;
     }
+    _syncWorkOrderFromProject();
     _refreshPrNumber();
+  }
+
+  void _syncWorkOrderFromProject() {
+    if (_projectId.isEmpty) return;
+    final match = _projects.firstWhere(
+      (p) =>
+          (p['project_id']?.toString() ?? p['id']?.toString() ?? '') ==
+          _projectId,
+      orElse: () => const {},
+    );
+    final workOrder = [
+      match['wo_number'],
+      match['workorder_no'],
+      match['work_order_no'],
+      match['workOrderNo'],
+      match['woNo'],
+    ].map((value) => value?.toString().trim() ?? '').firstWhere(
+      (value) => value.isNotEmpty,
+      orElse: () => '',
+    );
+    if (workOrder.isNotEmpty) {
+      _workorderController.text = workOrder;
+    }
   }
 
   Future<void> _loadSamplesAndMirs() async {
@@ -2269,6 +2297,8 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         _mirs = [];
         _sampleId = 'none';
         _mirNo = 'none';
+        _mirNoController.clear();
+        _workorderController.clear();
       });
       return;
     }
@@ -2307,6 +2337,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       }
       if (_mirNo != 'none' && !_mirs.any((m) => _mirValue(m) == _mirNo)) {
         _mirNo = 'none';
+        _mirNoController.clear();
       }
     });
   }
@@ -2406,12 +2437,6 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
 
   String _mirValue(Map<String, dynamic> m) =>
       (m['mir_refrence_no'] ?? m['mir_id'] ?? m['id'] ?? '').toString();
-
-  String _mirLabel(Map<String, dynamic> m) {
-    final v = _mirValue(m);
-    if (v.isEmpty) return '-';
-    return v;
-  }
 
   List<dynamic> _parseArrayField(dynamic value) {
     if (value is List) return value;
@@ -2683,14 +2708,6 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         .where((o) => o.value.isNotEmpty)
         .toList();
 
-    final mirOptions = _mirs
-        .map(
-          (m) =>
-              MadSelectOption<String>(value: _mirValue(m), label: _mirLabel(m)),
-        )
-        .where((o) => o.value.isNotEmpty)
-        .toList();
-
     return ProtectedRoute(
       title: 'Create Purchase Request',
       route: '/purchase-requests/create',
@@ -2783,6 +2800,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                   _projectId = v ?? '';
                                   _sampleId = 'none';
                                   _mirNo = 'none';
+                                  _mirNoController.clear();
                                 });
                                 _syncProjectNameFromList();
                                 await _loadSamplesAndMirs();
@@ -2822,6 +2840,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                         _projectId = v ?? '';
                                         _sampleId = 'none';
                                         _mirNo = 'none';
+                                        _mirNoController.clear();
                                       });
                                       _syncProjectNameFromList();
                                       await _loadSamplesAndMirs();
@@ -2864,16 +2883,13 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                               const Text('Loading sample items...'),
                             ],
                             const SizedBox(height: 12),
-                            MadSelect<String>(
+                            MadInput(
+                              controller: _mirNoController,
                               labelText: 'MIR No',
-                              placeholder: _loadingMirs
-                                  ? 'Loading...'
-                                  : 'Optional',
-                              value: _mirNo == 'none' ? null : _mirNo,
-                              options: mirOptions,
-                              clearable: true,
-                              onChanged: (v) =>
-                                  setState(() => _mirNo = v ?? 'none'),
+                              hintText: _loadingMirs ? 'Loading...' : 'Optional',
+                              onChanged: (v) => setState(() {
+                                _mirNo = v.trim().isEmpty ? 'none' : v.trim();
+                              }),
                             ),
                           ] else
                             Row(
@@ -2895,17 +2911,15 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: MadSelect<String>(
+                                  child: MadInput(
+                                    controller: _mirNoController,
                                     labelText: 'MIR No',
-                                    placeholder: _loadingMirs
+                                    hintText: _loadingMirs
                                         ? 'Loading...'
                                         : 'Optional',
-                                    value: _mirNo == 'none' ? null : _mirNo,
-                                    options: mirOptions,
-                                    clearable: true,
-                                    searchable: true,
-                                    onChanged: (v) =>
-                                        setState(() => _mirNo = v ?? 'none'),
+                                    onChanged: (v) => setState(() {
+                                      _mirNo = v.trim().isEmpty ? 'none' : v.trim();
+                                    }),
                                   ),
                                 ),
                               ],
@@ -2915,7 +2929,8 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             MadInput(
                               controller: _workorderController,
                               labelText: 'Work Order No',
-                              hintText: 'WO number',
+                              hintText: 'Auto-fetched from project',
+                              enabled: false,
                             ),
                             const SizedBox(height: 12),
                             GestureDetector(
@@ -2935,7 +2950,8 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                   child: MadInput(
                                     controller: _workorderController,
                                     labelText: 'Work Order No',
-                                    hintText: 'WO number',
+                                    hintText: 'Auto-fetched from project',
+                                    enabled: false,
                                   ),
                                 ),
                                 const SizedBox(width: 12),

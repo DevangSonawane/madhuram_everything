@@ -934,8 +934,10 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                     runSpacing: 8,
                     children: [
                       for (int fieldIndex = 0; fieldIndex < fields.length; fieldIndex++)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             MadBadge(
                               text: '${fields[fieldIndex]['key'] ?? ''}: ${fields[fieldIndex]['value'] ?? ''}',

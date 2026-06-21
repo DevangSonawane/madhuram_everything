@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'api_client.dart';
 import 'file_service.dart';
@@ -325,11 +329,16 @@ class BOQExtractor {
       final String rawText = _extractRawText(document);
       document.dispose();
 
-    if (rawText.trim().isEmpty) {
-      return const BOQExtractionResult(error: 'No text found in PDF.');
-    }
+      if (rawText.trim().isNotEmpty) {
+        return extractFromText(rawText, client: client);
+      }
 
-      return extractFromText(rawText, client: client);
+      final ocrText = await _extractTextWithOcr(bytes);
+      if (ocrText.trim().isNotEmpty) {
+        return extractFromText(ocrText, client: client);
+      }
+
+      return const BOQExtractionResult(error: 'No text found in PDF.');
     } catch (e) {
       return BOQExtractionResult(error: 'Error reading PDF: $e');
     }
@@ -337,26 +346,71 @@ class BOQExtractor {
 
   static String _extractRawText(PdfDocument document) {
     final buffer = StringBuffer();
+    final extractor = PdfTextExtractor(document);
     for (var i = 0; i < document.pages.count; i++) {
-      final extractor = PdfTextExtractor(document);
-      final lines = extractor.extractTextLines(startPageIndex: i, endPageIndex: i);
-      if (lines.isNotEmpty) {
-        final ordered = [...lines]
-          ..sort((a, b) {
-            final topDelta = (a.bounds.top - b.bounds.top).abs();
-            if (topDelta > 1) return b.bounds.top.compareTo(a.bounds.top);
-            return a.bounds.left.compareTo(b.bounds.left);
-          });
-        for (final line in ordered) {
-          final text = _normalizeSpaces(line.text);
-          if (text.isNotEmpty) buffer.writeln(text);
+      try {
+        final lines = extractor.extractTextLines(startPageIndex: i, endPageIndex: i);
+        if (lines.isNotEmpty) {
+          final ordered = [...lines]
+            ..sort((a, b) {
+              final topDelta = (a.bounds.top - b.bounds.top).abs();
+              if (topDelta > 1) return b.bounds.top.compareTo(a.bounds.top);
+              return a.bounds.left.compareTo(b.bounds.left);
+            });
+          for (final line in ordered) {
+            final text = _normalizeSpaces(line.text);
+            if (text.isNotEmpty) buffer.writeln(text);
+          }
+          continue;
         }
-        continue;
+      } catch (_) {
+        // Some PDFs contain malformed name/dictionary objects that break the
+        // structured line extractor. Fall back to plain text extraction.
       }
-      final pageText = extractor.extractText(startPageIndex: i, endPageIndex: i);
-      if (pageText.trim().isNotEmpty) buffer.writeln(pageText);
+
+      try {
+        final pageText = extractor.extractText(startPageIndex: i, endPageIndex: i);
+        if (pageText.trim().isNotEmpty) buffer.writeln(pageText);
+      } catch (_) {
+        // Skip pages we cannot decode cleanly.
+      }
     }
     return buffer.toString();
+  }
+
+  static Future<String> _extractTextWithOcr(Uint8List bytes) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final buffer = StringBuffer();
+      var pageIndex = 0;
+
+      await for (final raster in Printing.raster(bytes, dpi: 2.0)) {
+        final pageFile = File('${tempDir.path}/boq_ocr_${DateTime.now().microsecondsSinceEpoch}_$pageIndex.png');
+        await pageFile.writeAsBytes(await raster.toPng(), flush: true);
+        try {
+          final inputImage = InputImage.fromFilePath(pageFile.path);
+          final recognizedText = await recognizer.processImage(inputImage);
+          final text = _normalizeSpaces(recognizedText.text);
+          if (text.isNotEmpty) buffer.writeln(text);
+        } catch (_) {
+          // Skip pages we cannot OCR cleanly.
+        } finally {
+          try {
+            if (await pageFile.exists()) {
+              await pageFile.delete();
+            }
+          } catch (_) {}
+        }
+        pageIndex += 1;
+        if (pageIndex >= 10) break;
+      }
+
+      await recognizer.close();
+      return buffer.toString();
+    } catch (_) {
+      return '';
+    }
   }
 
   static BOQExtractionResult? _resultFromRemoteResponse(

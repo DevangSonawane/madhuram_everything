@@ -26,9 +26,7 @@ class ProjectSelectionPage extends StatefulWidget {
 class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
   bool _isLoading = false;
   String? _error;
-  String _searchQuery = '';
   List<Project> _projects = [];
-  final _searchController = TextEditingController();
   bool _redirectingToLogin = false;
 
   @override
@@ -39,7 +37,6 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
 
   @override
   void dispose() {
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -162,13 +159,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
         }).toList();
       }
     }
-    if (_searchQuery.isEmpty) return list;
-    final query = _searchQuery.toLowerCase();
-    return list.where((p) {
-      return p.name.toLowerCase().contains(query) ||
-          (p.client?.toLowerCase().contains(query) ?? false) ||
-          (p.location?.toLowerCase().contains(query) ?? false);
-    }).toList();
+    return list;
   }
 
   @override
@@ -299,30 +290,6 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                         runAlignment: WrapAlignment.center,
                         children: [
                           MadButton(
-                            icon: LucideIcons.users,
-                            text: null,
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/vendors'),
-                            variant: ButtonVariant.outline,
-                            size: ButtonSize.icon,
-                          ),
-                          MadButton(
-                            icon: LucideIcons.search,
-                            text: null,
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/projects/quotes/search'),
-                            variant: ButtonVariant.outline,
-                            size: ButtonSize.icon,
-                          ),
-                          MadButton(
-                            icon: LucideIcons.fileSpreadsheet,
-                            text: null,
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/projects/quotes/add'),
-                            variant: ButtonVariant.outline,
-                            size: ButtonSize.icon,
-                          ),
-                          MadButton(
                             icon: LucideIcons.plus,
                             text: null,
                             onPressed: () => _showCreateProjectDialog(),
@@ -379,33 +346,6 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                     const Spacer(),
                     Row(
                       children: [
-                        MadButton(
-                          icon: LucideIcons.users,
-                          text: 'Vendors',
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/vendors'),
-                          variant: ButtonVariant.outline,
-                          size: ButtonSize.md,
-                        ),
-                        const SizedBox(width: 8),
-                        MadButton(
-                          icon: LucideIcons.search,
-                          text: 'Search',
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/projects/quotes/search'),
-                          variant: ButtonVariant.outline,
-                          size: ButtonSize.md,
-                        ),
-                        const SizedBox(width: 8),
-                        MadButton(
-                          icon: LucideIcons.fileSpreadsheet,
-                          text: 'Quotations',
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/projects/quotes/add'),
-                          variant: ButtonVariant.outline,
-                          size: ButtonSize.md,
-                        ),
-                        const SizedBox(width: 8),
                         MadButton(
                           icon: LucideIcons.plus,
                           text: 'New Project',
@@ -470,24 +410,6 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
           ),
         ),
 
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            responsive.value(mobile: 16, tablet: 20, desktop: 24),
-            responsive.value(mobile: 8, tablet: 10, desktop: 12),
-            responsive.value(mobile: 16, tablet: 20, desktop: 24),
-            responsive.value(mobile: 12, tablet: 14, desktop: 16),
-          ),
-          child: MadSearchInput(
-            controller: _searchController,
-            hintText: 'Search projects...',
-            width: double.infinity,
-            onChanged: (value) => setState(() => _searchQuery = value),
-            onClear: () => setState(() {
-              _searchQuery = '';
-              _searchController.clear();
-            }),
-          ),
-        ),
         Expanded(child: _buildContent(isDark, responsive, vm.isAdmin)),
       ],
     );
@@ -498,74 +420,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     bool isDark,
     Responsive responsive,
   ) {
-    final modules = [
-      _ModuleLink(
-        label: 'Vendors',
-        icon: LucideIcons.store,
-        route: '/vendors',
-      ),
-      _ModuleLink(
-        label: 'Search',
-        icon: LucideIcons.search,
-        route: '/projects/quotes/search',
-      ),
-      _ModuleLink(
-        label: 'Quotations',
-        icon: LucideIcons.fileSpreadsheet,
-        route: '/projects/quotes/add',
-      ),
-    ];
-
-    return Container(
-      width: 260,
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppTheme.sidebarDarkBackground
-            : AppTheme.sidebarBackground,
-        border: Border(
-          right: BorderSide(
-            color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
-            child: Text(
-              'Modules',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.4,
-                color: (isDark
-                        ? AppTheme.darkForeground
-                        : AppTheme.lightForeground)
-                    .withOpacity(0.5),
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: modules.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final module = modules[index];
-                return MadButton(
-                  text: module.label,
-                  icon: module.icon,
-                  size: ButtonSize.md,
-                  variant: ButtonVariant.ghost,
-                  onPressed: () => Navigator.pushNamed(context, module.route),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   Widget _buildContent(bool isDark, Responsive responsive, bool isAdmin) {
@@ -875,7 +730,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
               height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
             ),
             Text(
-              _searchQuery.isEmpty ? 'No projects yet' : 'No projects found',
+              'No projects yet',
               style: TextStyle(
                 fontSize: responsive.value(mobile: 16, tablet: 17, desktop: 18),
                 fontWeight: FontWeight.w600,
@@ -886,11 +741,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              _searchQuery.isEmpty
-                  ? (isAdmin
-                        ? 'Create one to get started.'
-                        : 'Please contact an administrator.')
-                  : 'Try a different search term',
+              isAdmin
+                  ? 'Create one to get started.'
+                  : 'Please contact an administrator.',
               style: TextStyle(
                 fontSize: responsive.value(mobile: 13, tablet: 13, desktop: 14),
                 color: isDark
@@ -1377,16 +1230,4 @@ class _ProjectSelectionViewModel {
         userRole,
         projectListRef,
       );
-}
-
-class _ModuleLink {
-  final String label;
-  final IconData icon;
-  final String route;
-
-  const _ModuleLink({
-    required this.label,
-    required this.icon,
-    required this.route,
-  });
 }

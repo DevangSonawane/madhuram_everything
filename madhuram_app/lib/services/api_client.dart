@@ -1083,26 +1083,27 @@ class ApiClient {
     Map<String, dynamic> data,
   ) async {
     final token = await _getToken();
-    final payload = Map<String, dynamic>.from(data);
-    for (final k in ['location', 'item_description', 'add_fields']) {
-      if (payload[k] != null && payload[k] is! String) {
-        payload[k] = jsonEncode(payload[k]);
-      }
-    }
     Map<String, dynamic>? lastError;
     for (final path in _sampleCreateCandidates) {
-      final uri = Uri.parse('$baseUrl$path');
-      final res = await _post(
-        uri,
-        headers: _authHeaders(token),
-        body: jsonEncode(payload),
-      );
-      final result = await _handleResponse(res);
-      if (result['success'] == true) {
-        return {...result, 'data': _unwrapData(result['data'])};
+      for (final stringifyJsonFields in [false, true]) {
+        final payload = _normalizeSamplePayload(
+          data,
+          stringifyJsonFields: stringifyJsonFields,
+        );
+        final uri = Uri.parse('$baseUrl$path');
+        final res = await _post(
+          uri,
+          headers: _authHeaders(token),
+          body: jsonEncode(payload),
+        );
+        final result = await _handleResponse(res);
+        if (result['success'] == true) {
+          return {...result, 'data': _unwrapData(result['data'])};
+        }
+        lastError = result;
+        if (result['status'] == 401 || result['status'] == 403) return result;
+        if (result['status'] == 404) break;
       }
-      lastError = result;
-      if (result['status'] != 404) return result;
     }
     return lastError ??
         {'success': false, 'error': 'Create path not found', 'status': 404};
@@ -1113,29 +1114,181 @@ class ApiClient {
     Map<String, dynamic> data,
   ) async {
     final token = await _getToken();
-    final payload = Map<String, dynamic>.from(data);
-    for (final k in ['location', 'item_description', 'add_fields']) {
-      if (payload[k] != null && payload[k] is! String) {
-        payload[k] = jsonEncode(payload[k]);
-      }
-    }
     Map<String, dynamic>? lastError;
     for (final path in _sampleByIdCandidates) {
-      final uri = Uri.parse('$baseUrl${path.replaceAll('{id}', id)}');
-      final res = await _put(
-        uri,
-        headers: _authHeaders(token),
-        body: jsonEncode(payload),
-      );
-      final result = await _handleResponse(res);
-      if (result['success'] == true) {
-        return {...result, 'data': _unwrapData(result['data'])};
+      for (final stringifyJsonFields in [false, true]) {
+        final payload = _normalizeSamplePayload(
+          data,
+          stringifyJsonFields: stringifyJsonFields,
+        );
+        final uri = Uri.parse('$baseUrl${path.replaceAll('{id}', id)}');
+        final res = await _put(
+          uri,
+          headers: _authHeaders(token),
+          body: jsonEncode(payload),
+        );
+        final result = await _handleResponse(res);
+        if (result['success'] == true) {
+          return {...result, 'data': _unwrapData(result['data'])};
+        }
+        lastError = result;
+        if (result['status'] == 401 || result['status'] == 403) return result;
+        if (result['status'] == 404) break;
       }
-      lastError = result;
-      if (result['status'] != 404) return result;
     }
     return lastError ??
         {'success': false, 'error': 'Update path not found', 'status': 404};
+  }
+
+  static Map<String, dynamic> _normalizeSamplePayload(
+    Map<String, dynamic> data, {
+    required bool stringifyJsonFields,
+  }) {
+    dynamic parseMaybeJson(dynamic value, dynamic fallback) {
+      if (value == null || value == '') return fallback;
+      if (value is String) {
+        try {
+          return jsonDecode(value);
+        } catch (_) {
+          return fallback;
+        }
+      }
+      return value;
+    }
+
+    int? toIntOrNull(dynamic value) {
+      if (value == null) return null;
+      final text = value.toString().trim();
+      if (text.isEmpty) return null;
+      return int.tryParse(text);
+    }
+
+    double? toDoubleOrNull(dynamic value) {
+      if (value == null) return null;
+      final text = value.toString().replaceAll(',', '').trim();
+      if (text.isEmpty) return null;
+      return double.tryParse(text);
+    }
+
+    dynamic fieldValue(Map<String, dynamic> item, List<dynamic> addFields, String key) {
+      for (final field in addFields) {
+        if (field is! Map) continue;
+        if (field['key']?.toString().trim() == key) {
+          return field['value'];
+        }
+      }
+      return item[key];
+    }
+
+    Map<String, dynamic>? normalizeItem(dynamic rawItem) {
+      if (rawItem is! Map) return null;
+      final item = Map<String, dynamic>.from(rawItem);
+      final addFieldsRaw = item['add_fields'] ?? item['addFields'];
+      final addFieldsParsed = parseMaybeJson(addFieldsRaw, <dynamic>[]);
+      final addFields = addFieldsParsed is List ? List<dynamic>.from(addFieldsParsed) : <dynamic>[];
+
+      final itemNameRaw =
+          item['item_name'] ??
+          item['itemName'] ??
+          fieldValue(item, addFields, 'item_name') ??
+          fieldValue(item, addFields, 'itemName') ??
+          item['description'] ??
+          fieldValue(item, addFields, 'description') ??
+          '';
+      final descriptionRaw =
+          item['description'] ??
+          item['item_description'] ??
+          fieldValue(item, addFields, 'description') ??
+          fieldValue(item, addFields, 'material_description') ??
+          fieldValue(item, addFields, 'item') ??
+          fieldValue(item, addFields, 'name') ??
+          itemNameRaw ??
+          '';
+      final qtyRaw =
+          item['quantity'] ??
+          fieldValue(item, addFields, 'selected_qty') ??
+          fieldValue(item, addFields, 'quantity') ??
+          fieldValue(item, addFields, 'qty') ??
+          fieldValue(item, addFields, 'req_qty') ??
+          '';
+      final valueRaw = item['value'] ?? fieldValue(item, addFields, 'value') ?? fieldValue(item, addFields, 'amount') ?? '';
+      final rateRaw = fieldValue(item, addFields, 'rate');
+      final hsnRaw = fieldValue(item, addFields, 'hsn') ?? fieldValue(item, addFields, 'item_code') ?? '';
+      final unitRaw = fieldValue(item, addFields, 'unit') ?? fieldValue(item, addFields, 'uom') ?? fieldValue(item, addFields, 'UOM') ?? '';
+
+      final normalized = <String, dynamic>{
+        'sr_no': toIntOrNull(item['sr_no'] ?? item['srNo'] ?? item['sr'] ?? fieldValue(item, addFields, 'sr_no') ?? fieldValue(item, addFields, 'srno')) ?? 0,
+        'item_name': itemNameRaw.toString().trim(),
+        'description': descriptionRaw.toString().trim(),
+        'quantity': toDoubleOrNull(qtyRaw),
+        'value': toDoubleOrNull(valueRaw),
+      };
+
+      final hsn = hsnRaw.toString().trim();
+      if (hsn.isNotEmpty) normalized['hsn'] = hsn;
+
+      final unit = (item['unit'] ?? item['uom'] ?? item['UOM'] ?? unitRaw ?? '').toString().trim();
+      if (unit.isNotEmpty) normalized['unit'] = unit;
+
+      final rate = toDoubleOrNull(item['rate'] ?? rateRaw);
+      if (rate != null) normalized['rate'] = rate;
+
+      final inventoryIdRaw = item['inventory_id'] ?? item['inventoryId'] ?? fieldValue(item, addFields, 'inventory_id') ?? fieldValue(item, addFields, 'inventoryId');
+      final inventoryId = toIntOrNull(inventoryIdRaw);
+      if (inventoryId != null) normalized['inventory_id'] = inventoryId;
+
+      final issuedQty = toDoubleOrNull(item['issued_qty'] ?? item['issuedQty']);
+      if (issuedQty != null) normalized['issued_qty'] = issuedQty;
+
+      return normalized['description'].toString().trim().isNotEmpty ? normalized : null;
+    }
+
+    final payload = <String, dynamic>{};
+
+    if (data.containsKey('sample_id')) {
+      payload['sample_id'] = toIntOrNull(data['sample_id']) ?? data['sample_id'];
+    }
+    if (data.containsKey('project_id')) {
+      payload['project_id'] = toIntOrNull(data['project_id']) ?? data['project_id'];
+    }
+    for (final key in ['building_name', 'site_name', 'work_done', 'sample_file']) {
+      if (data.containsKey(key)) payload[key] = data[key];
+    }
+
+    if (data.containsKey('location')) {
+      final loc = parseMaybeJson(data['location'], {});
+      final locMap = loc is Map ? Map<String, dynamic>.from(loc) : <String, dynamic>{};
+      final coordinates = (locMap['coordinates'] ?? locMap['cooordinates'] ?? '').toString();
+      payload['location'] = {
+        'floor': (locMap['floor'] ?? '').toString(),
+        'block': (locMap['block'] ?? '').toString(),
+        'wing': (locMap['wing'] ?? '').toString(),
+        'coordinates': coordinates,
+        'cooordinates': coordinates,
+      };
+    }
+
+    if (data.containsKey('item_description') || data.containsKey('items')) {
+      final itemRaw = data.containsKey('item_description') ? data['item_description'] : data['items'];
+      final parsed = parseMaybeJson(itemRaw, <dynamic>[]);
+      final list = parsed is List ? parsed : <dynamic>[];
+      payload['item_description'] = list.map(normalizeItem).whereType<Map<String, dynamic>>().toList();
+    }
+
+    if (data.containsKey('add_fields')) {
+      final parsed = parseMaybeJson(data['add_fields'], <dynamic>[]);
+      payload['add_fields'] = parsed is List ? List<dynamic>.from(parsed) : <dynamic>[];
+    }
+
+    if (stringifyJsonFields) {
+      for (final key in ['location', 'item_description', 'add_fields']) {
+        if (payload[key] != null && payload[key] is! String) {
+          payload[key] = jsonEncode(payload[key]);
+        }
+      }
+    }
+
+    return payload;
   }
 
   static Future<Map<String, dynamic>> deleteSample(String id) async {
