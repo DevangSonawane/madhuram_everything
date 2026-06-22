@@ -2038,6 +2038,14 @@ class ApiClient {
     return _handleResponse(res);
   }
 
+  static bool _isAutoAttendanceAbsenceBlockReason(dynamic reason) {
+    final text = reason?.toString().trim().toLowerCase() ?? '';
+    if (text.isEmpty) return false;
+    return RegExp(
+      r'(auto[-\s]?blocked?|consecutive\s+absent|absent\s+days?|absence)',
+    ).hasMatch(text);
+  }
+
   static Future<Map<String, dynamic>> getResolvedAttendanceBlockStatus(
     Map<String, dynamic>? user,
   ) async {
@@ -2052,6 +2060,10 @@ class ApiClient {
       };
     }
 
+    final directReason =
+        resolvedUser['attendance_block_reason']?.toString().trim() ??
+        resolvedUser['block_reason']?.toString().trim() ??
+        resolvedUser['reason']?.toString().trim();
     final directReleased = resolvedUser['attendance_block_released'] == true;
     final directBlockedFlag =
         resolvedUser['attendance_blocked'] == true ||
@@ -2062,14 +2074,27 @@ class ApiClient {
           return status == 'blocked' || status == 'active_block' || status == 'currently_blocked';
         })();
     if (directReleased || directBlockedFlag) {
+      final autoBlocked = !directReleased &&
+          directBlockedFlag &&
+          _isAutoAttendanceAbsenceBlockReason(directReason);
+      if (autoBlocked) {
+        return {
+          'success': true,
+          'blocked': false,
+          'released': true,
+          'history': const [],
+          'reason': null,
+          'latest_state': 'unblocked',
+          'latest_entry': null,
+          'match': null,
+        };
+      }
       return {
         'success': true,
         'blocked': directReleased ? false : directBlockedFlag,
         'released': directReleased,
         'history': const [],
-        'reason': resolvedUser['attendance_block_reason']?.toString().trim() ??
-            resolvedUser['block_reason']?.toString().trim() ??
-            resolvedUser['reason']?.toString().trim(),
+        'reason': directReason,
         'latest_state': directReleased
             ? 'unblocked'
             : (directBlockedFlag ? 'blocked' : 'unknown'),
@@ -2132,13 +2157,26 @@ class ApiClient {
 
     final resolvedHistory = _attendanceBlockResult(history);
     final latestState = resolvedHistory['latest_state']?.toString();
+    final reason = resolvedHistory['reason']?.toString().trim();
     final blocked = latestState == 'blocked' || (match != null && history.isEmpty);
+    if (blocked && _isAutoAttendanceAbsenceBlockReason(reason)) {
+      return {
+        'success': true,
+        'blocked': false,
+        'released': true,
+        'reason': null,
+        'history': resolvedHistory['history'],
+        'latest_state': 'unblocked',
+        'latest_entry': resolvedHistory['latest_entry'],
+        'match': match,
+      };
+    }
 
     return {
       'success': true,
       'blocked': blocked,
       'released': latestState == 'unblocked',
-      'reason': resolvedHistory['reason'],
+      'reason': reason,
       'history': resolvedHistory['history'],
       'latest_state': latestState,
       'latest_entry': resolvedHistory['latest_entry'],
