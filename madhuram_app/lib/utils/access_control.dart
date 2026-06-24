@@ -88,32 +88,6 @@ String normalizeRouteForAccess(String route) {
   return '/dashboard';
 }
 
-bool _isAutoAttendanceAbsenceBlockReason(dynamic reason) {
-  final text = reason?.toString().trim().toLowerCase() ?? '';
-  if (text.isEmpty) return false;
-  return RegExp(
-    r'(auto[-\s]?blocked?|consecutive\s+absent|absent\s+days?|absence)',
-  ).hasMatch(text);
-}
-
-bool isAttendanceBlockedUser(Map<String, dynamic>? user) {
-  if (user == null) return false;
-  if (user['attendance_block_released'] == true) {
-    return false;
-  }
-  final reason =
-      user['attendance_block_reason'] ??
-      user['block_reason'] ??
-      user['reason'];
-  if (_isAutoAttendanceAbsenceBlockReason(reason)) {
-    return false;
-  }
-  if (user.containsKey('attendance_blocked')) {
-    return user['attendance_blocked'] == true;
-  }
-  return user['is_blocked'] == true;
-}
-
 bool hasPageAccess(Map<String, dynamic>? user, String? pagePath) {
   if (pagePath == null || pagePath.isEmpty) return true;
   if (user?['role'] == 'admin') return true;

@@ -4,6 +4,7 @@ import '../../theme/app_theme.dart';
 import '../../store/app_state.dart';
 import '../../utils/access_control.dart';
 import '../../utils/responsive.dart';
+import '../../ui/menu_items.dart';
 import 'sidebar.dart';
 import 'app_header.dart';
 
@@ -182,52 +183,21 @@ class _MainLayoutState extends State<MainLayout> {
 
         final normalizedRoute = normalizeRouteForAccess(widget.currentRoute);
         final hasAccess = hasRouteAccess(vm.user, normalizedRoute);
+        final visibleRoute =
+            getFirstVisibleMenuRoute(user: vm.user) ?? '/profile';
+        final shouldRedirect = !hasAccess && visibleRoute != normalizedRoute;
+
+        if (shouldRedirect && !_redirectInProgress) {
+          _redirectInProgress = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Navigator.of(context).pushReplacementNamed(visibleRoute);
+          });
+        }
+
         final content = hasAccess
             ? widget.child
-            : WillPopScope(
-                onWillPop: () async {
-                  Navigator.of(context, rootNavigator: true)
-                      .pushNamedAndRemoveUntil(
-                        '/projects',
-                        (route) => false,
-                      );
-                  return false;
-                },
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.lock_outline, size: 56),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'You do not have permission to access this page.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context, rootNavigator: true)
-                                    .pushNamedAndRemoveUntil(
-                                      '/projects',
-                                      (route) => false,
-                                    );
-                              },
-                              child: const Text('Back to Projects'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
+            : const Center(child: CircularProgressIndicator());
 
         return _buildScaffold(
           isDark: isDark,

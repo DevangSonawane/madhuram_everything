@@ -216,3 +216,13 @@ List<MenuCategory> getMenuCategories({Map<String, dynamic>? user}) {
       .map((e) => MenuCategory(name: e.key, items: e.value))
       .toList();
 }
+
+/// First visible sidebar route the user can access.
+String? getFirstVisibleMenuRoute({Map<String, dynamic>? user}) {
+  for (final item in menuItems) {
+    if (item.hidden) continue;
+    if (!hasRouteAccess(user, item.route)) continue;
+    return item.route;
+  }
+  return null;
+}

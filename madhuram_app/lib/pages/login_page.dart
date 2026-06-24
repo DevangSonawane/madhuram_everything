@@ -78,42 +78,16 @@ class _LoginPageState extends State<LoginPage> {
         Map<String, dynamic> resolvedUser = user;
         if (userId.isNotEmpty) {
           final accessResult = await ApiClient.getAccessUser(userId);
-          final attendanceBlockResult =
-              await ApiClient.getResolvedAttendanceBlockStatus(user);
           if (accessResult['success'] == true &&
               accessResult['data'] is Map<String, dynamic>) {
             resolvedUser = AccessControlStore.resolveUserAccessControl(
-              {
-                ...user,
-                'attendance_blocked': attendanceBlockResult['blocked'] == true,
-                'attendance_block_released':
-                    attendanceBlockResult['released'] == true,
-                if (attendanceBlockResult['reason'] != null &&
-                    attendanceBlockResult['reason'].toString().trim().isNotEmpty)
-                  'attendance_block_reason':
-                      attendanceBlockResult['reason'].toString().trim(),
-                'attendance_block_history':
-                    attendanceBlockResult['history'] ?? const [],
-              },
+              user,
               accessControl: Map<String, dynamic>.from(
                 accessResult['data'] as Map,
               ),
             );
           } else {
-            resolvedUser = AccessControlStore.resolveUserAccessControl(
-              {
-                ...user,
-                'attendance_blocked': attendanceBlockResult['blocked'] == true,
-                'attendance_block_released':
-                    attendanceBlockResult['released'] == true,
-                if (attendanceBlockResult['reason'] != null &&
-                    attendanceBlockResult['reason'].toString().trim().isNotEmpty)
-                  'attendance_block_reason':
-                      attendanceBlockResult['reason'].toString().trim(),
-                'attendance_block_history':
-                    attendanceBlockResult['history'] ?? const [],
-              },
-            );
+            resolvedUser = AccessControlStore.resolveUserAccessControl(user);
           }
         } else {
           resolvedUser = AccessControlStore.resolveUserAccessControl(user);

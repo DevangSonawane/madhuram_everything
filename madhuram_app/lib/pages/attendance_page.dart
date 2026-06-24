@@ -70,11 +70,6 @@ class _AttendancePageState extends State<AttendancePage>
   String? _activeLeaveBanner;
   bool _leaveLoading = false;
   List<Map<String, dynamic>> _leaveRequests = const [];
-  bool _blockStatusLoading = false;
-  bool _isAdminBlocked = false;
-  String? _adminBlockReason;
-  List<Map<String, dynamic>> _adminBlockHistory = const [];
-  bool _attendanceBlockReleasedByAdmin = false;
   Timer? _accessRefreshTimer;
   bool _todayAttendanceLoading = false;
   bool _todayCheckedIn = false;
@@ -82,9 +77,6 @@ class _AttendancePageState extends State<AttendancePage>
   String? _todayAttendanceId;
 
   String _todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-  bool get _isAttendanceBlocked =>
-      !_attendanceBlockReleasedByAdmin && _isAdminBlocked;
 
   bool _hasCheckoutField(Map<String, dynamic> item) {
     final value =
@@ -193,7 +185,6 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _refreshAttendancePage() async {
     await AuthRefreshService.instance.forceRefreshUser();
     _syncUserContext(force: true);
-    await _refreshBlockStatus(silent: true);
     await _refreshTodayAttendanceStatus(silent: true);
     await _refreshLeaveStatus();
     await _ensureSelectedProjectHasLocationData();
@@ -238,7 +229,6 @@ class _AttendancePageState extends State<AttendancePage>
       _startAccessRefreshPolling();
       unawaited(_handleCameraPermissionOnResume());
       unawaited(_refreshLeaveStatus());
-      unawaited(_refreshBlockStatus());
       return;
     }
 
@@ -252,7 +242,6 @@ class _AttendancePageState extends State<AttendancePage>
     unawaited(_ensureSelectedProjectHasLocationData());
     unawaited(_refreshTodayAttendanceStatus());
     unawaited(_refreshLeaveStatus());
-    unawaited(_refreshBlockStatus());
   }
 
   DateTime? _tryParseDateOnly(dynamic value) {
@@ -324,239 +313,10 @@ class _AttendancePageState extends State<AttendancePage>
     }
   }
 
-  String? _resolveBlockUserKey(dynamic value) {
-    if (value == null) return null;
-    if (value is Map<String, dynamic>) {
-      final user = value['user'];
-      String? nestedId;
-      String? nestedUserId;
-      if (user is Map) {
-        final userMap = Map<String, dynamic>.from(user);
-        nestedId = userMap['id']?.toString();
-        nestedUserId = userMap['user_id']?.toString();
-      }
-      return value['user_id']?.toString() ??
-          value['userId']?.toString() ??
-          value['id']?.toString() ??
-          nestedId ??
-          nestedUserId ??
-          value['user_name']?.toString() ??
-          value['phone_number']?.toString();
-    }
-    if (value is Map) {
-      final map = Map<String, dynamic>.from(value);
-      return _resolveBlockUserKey(map);
-    }
-    return value.toString();
-  }
-
   String _normalizeLookupValue(dynamic value) {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty) return '';
     return text.toLowerCase();
-  }
-
-  bool _matchesBlockIdentity(String? candidate, List<String?> values) {
-    final normalizedCandidate = _normalizeLookupValue(candidate);
-    if (normalizedCandidate.isEmpty) return false;
-    for (final value in values) {
-      final normalizedValue = _normalizeLookupValue(value);
-      if (normalizedValue.isNotEmpty &&
-          normalizedValue == normalizedCandidate) {
-        return true;
-      }
-      if (normalizedValue.isNotEmpty &&
-          normalizedValue.replaceAll(RegExp(r'\D'), '') ==
-              normalizedCandidate.replaceAll(RegExp(r'\D'), '')) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  String _resolveBlockReason(Map<String, dynamic>? entry) {
-    if (entry == null) return '';
-    final reason =
-        entry['reason'] ??
-        entry['block_reason'] ??
-        entry['note'] ??
-        entry['message'];
-    return reason?.toString().trim() ?? '';
-  }
-
-  List<Map<String, dynamic>> _resolveBlockHistory(dynamic entry) {
-    if (entry == null) return const [];
-    final candidate = entry is Map<String, dynamic>
-        ? entry['block_history'] ?? entry['history'] ?? entry['blockHistory']
-        : null;
-    if (candidate is List) {
-      return candidate
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    }
-    return const [];
-  }
-
-  String _resolveBlockState(dynamic entry) {
-    if (entry is! Map) return 'unknown';
-    final item = Map<String, dynamic>.from(entry);
-    final status =
-        (item['status'] ??
-                item['block_status'] ??
-                item['blockStatus'] ??
-                item['state'] ??
-                '')
-            .toString()
-            .trim()
-            .toLowerCase()
-            .replaceAll(RegExp(r'[\s-]+'), '_');
-    if (status == 'unblocked' ||
-        status == 'unblock' ||
-        status == 'inactive' ||
-        status == 'removed' ||
-        status == 'released' ||
-        item['is_blocked'] == false ||
-        item['blocked'] == false ||
-        item['unblocked'] == true) {
-      return 'unblocked';
-    }
-    if (status == 'blocked' ||
-        status == 'block' ||
-        status == 'active_block' ||
-        status == 'currently_blocked' ||
-        item['is_blocked'] == true ||
-        item['blocked'] == true) {
-      return 'blocked';
-    }
-    return 'unknown';
-  }
-
-  int _resolveBlockTimestamp(dynamic entry) {
-    if (entry is! Map) return 0;
-    final item = Map<String, dynamic>.from(entry);
-    final raw =
-        item['created_at'] ??
-        item['createdAt'] ??
-        item['blocked_at'] ??
-        item['blockedAt'] ??
-        item['updated_at'] ??
-        item['updatedAt'] ??
-        item['timestamp'] ??
-        item['date'];
-    final parsed = DateTime.tryParse(raw?.toString() ?? '');
-    return parsed?.millisecondsSinceEpoch ?? 0;
-  }
-
-  ({
-    bool blocked,
-    bool released,
-    String? reason,
-    List<Map<String, dynamic>> history,
-  })
-  _resolveAttendanceBlockState(
-    Map<String, dynamic> match,
-    List<Map<String, dynamic>> history,
-  ) {
-    Map<String, dynamic>? latest;
-    var latestTimestamp = 0;
-    for (final entry in history) {
-      final state = _resolveBlockState(entry);
-      if (state == 'unknown') continue;
-      final timestamp = _resolveBlockTimestamp(entry);
-      if (latest == null ||
-          timestamp > latestTimestamp ||
-          (timestamp == latestTimestamp && state == 'unblocked')) {
-        latest = entry;
-        latestTimestamp = timestamp;
-      }
-    }
-
-    final latestState = _resolveBlockState(latest);
-    final reason = latest != null
-        ? _resolveBlockReason(latest)
-        : _resolveBlockReason(match);
-    final effectiveBlocked =
-        latestState == 'blocked' || (history.isEmpty && match.isNotEmpty);
-    final effectiveReleased = latestState == 'unblocked';
-    return (
-      blocked: effectiveBlocked,
-      released: effectiveReleased,
-      reason: reason,
-      history: history,
-    );
-  }
-
-  Future<void> _refreshBlockStatus({bool silent = true}) async {
-    if (_blockStatusLoading) return;
-    if (_userId == null || _userId!.trim().isEmpty) return;
-    _blockStatusLoading = true;
-    try {
-      final store = StoreProvider.of<AppState>(context);
-      final currentUser = store.state.auth.user;
-      Map<String, dynamic> resolvedUser = currentUser is Map<String, dynamic>
-          ? Map<String, dynamic>.from(currentUser)
-          : <String, dynamic>{};
-
-      final latestUserResult = await ApiClient.getUserById(_userId!);
-      if (latestUserResult['success'] == true &&
-          latestUserResult['data'] is Map<String, dynamic>) {
-        resolvedUser = {
-          ...resolvedUser,
-          ...Map<String, dynamic>.from(latestUserResult['data'] as Map),
-        };
-      }
-
-      final res = await ApiClient.getResolvedAttendanceBlockStatus(
-        resolvedUser,
-      );
-      if (!mounted) return;
-      if (res['success'] != true) {
-        setState(() {
-          _isAdminBlocked = false;
-          _adminBlockReason = null;
-          _adminBlockHistory = const [];
-          _attendanceBlockReleasedByAdmin = false;
-        });
-        return;
-      }
-
-      final blocked = res['blocked'] == true;
-      final released = res['released'] == true;
-      final parsedHistory = res['history'] is List
-          ? (res['history'] as List)
-                .whereType<Map>()
-                .map((e) => Map<String, dynamic>.from(e))
-                .toList()
-          : const <Map<String, dynamic>>[];
-      final reason = res['reason']?.toString().trim();
-      if (!mounted) return;
-      setState(() {
-        _isAdminBlocked = blocked;
-        _attendanceBlockReleasedByAdmin = released;
-        _adminBlockReason = blocked && reason != null && reason.isNotEmpty
-            ? reason
-            : null;
-        _adminBlockHistory = parsedHistory;
-        if (_mode != _AttendanceMode.select && (blocked || released)) {
-          _mode = _AttendanceMode.select;
-          _selfie = null;
-          _siteImage = null;
-          _position = null;
-          _locationName = null;
-          _locationCapturedAt = null;
-          _checkoutSelfie = null;
-          _checkoutSiteImage = null;
-          _checkoutPosition = null;
-          _checkoutLocationName = null;
-          _checkoutLocationCapturedAt = null;
-        }
-      });
-    } catch (_) {
-      // non-blocking
-    } finally {
-      _blockStatusLoading = false;
-    }
   }
 
   Future<void> _ensureSelectedProjectHasLocationData() async {
@@ -1099,13 +859,11 @@ class _AttendancePageState extends State<AttendancePage>
     final resolvedUserId = _resolveUserId(user);
     final resolvedPhone = _resolveUserPhone(user);
     final resolvedProjectId = _resolveProjectId(project);
-    final releasedByAdmin = user?['attendance_block_released'] == true;
     if (!force &&
         resolvedName == _userName &&
         resolvedUserId == _userId &&
         resolvedPhone == _userPhone &&
-        resolvedProjectId == _projectId &&
-        releasedByAdmin == _attendanceBlockReleasedByAdmin) {
+        resolvedProjectId == _projectId) {
       return;
     }
     setState(() {
@@ -1113,7 +871,6 @@ class _AttendancePageState extends State<AttendancePage>
       _userId = resolvedUserId;
       _userPhone = resolvedPhone;
       _projectId = resolvedProjectId;
-      _attendanceBlockReleasedByAdmin = releasedByAdmin;
     });
   }
 
@@ -1521,17 +1278,6 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _submitAttendance() async {
     if (_submitting) return;
     _syncUserContext(force: true);
-    await _refreshBlockStatus(silent: true);
-    if (_isAttendanceBlocked) {
-      showToast(
-        context,
-        _adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
-            ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
-            : 'Attendance is blocked by admin. Please contact the admin.',
-        variant: ToastVariant.error,
-      );
-      return;
-    }
     await _refreshTodayAttendanceStatus(silent: true);
 
     if (_todayCheckedIn) {
@@ -1651,6 +1397,9 @@ class _AttendancePageState extends State<AttendancePage>
         userName: userName,
       );
       if (selfieUpload['success'] != true) {
+        debugPrint(
+          '[Attendance] Check-in selfie upload failed: ${selfieUpload['error'] ?? selfieUpload}',
+        );
         showToast(
           context,
           selfieUpload['error']?.toString() ?? 'Unable to upload selfie.',
@@ -1674,6 +1423,9 @@ class _AttendancePageState extends State<AttendancePage>
         userName: userName,
       );
       if (siteUpload['success'] != true) {
+        debugPrint(
+          '[Attendance] Check-in site upload failed: ${siteUpload['error'] ?? siteUpload}',
+        );
         showToast(
           context,
           siteUpload['error']?.toString() ?? 'Unable to upload site photo.',
@@ -1711,6 +1463,7 @@ class _AttendancePageState extends State<AttendancePage>
       );
 
       final createResult = await ApiClient.createAttendance(payload);
+      debugPrint('[Attendance] Check-in createAttendance response: $createResult');
       if (createResult['success'] == true) {
         final createdId = _resolveAttendanceId(createResult['data']);
         if (createdId != null && createdId.trim().isNotEmpty) {
@@ -1751,6 +1504,9 @@ class _AttendancePageState extends State<AttendancePage>
           });
         }
       } else {
+        debugPrint(
+          '[Attendance] Check-in submit failed: ${createResult['error'] ?? createResult}',
+        );
         showToast(
           context,
           createResult['error']?.toString() ??
@@ -1945,17 +1701,6 @@ class _AttendancePageState extends State<AttendancePage>
   Future<void> _submitCheckout() async {
     if (_checkoutSubmitting) return;
     _syncUserContext(force: true);
-    await _refreshBlockStatus(silent: true);
-    if (_isAttendanceBlocked) {
-      showToast(
-        context,
-        _adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty
-            ? 'Attendance is blocked by admin: ${_adminBlockReason!}'
-            : 'Attendance is blocked by admin. Please contact the admin.',
-        variant: ToastVariant.error,
-      );
-      return;
-    }
     await _refreshTodayAttendanceStatus(silent: true);
     if (_todayCheckedOut) {
       showToast(
@@ -2089,6 +1834,9 @@ class _AttendancePageState extends State<AttendancePage>
       );
       debugPrint('[Attendance] Checkout selfie upload response: $selfieUpload');
       if (selfieUpload['success'] != true) {
+        debugPrint(
+          '[Attendance] Checkout selfie upload failed: ${selfieUpload['error'] ?? selfieUpload}',
+        );
         showToast(
           context,
           selfieUpload['error']?.toString() ?? 'Unable to upload selfie.',
@@ -2113,6 +1861,9 @@ class _AttendancePageState extends State<AttendancePage>
       );
       debugPrint('[Attendance] Checkout site upload response: $siteUpload');
       if (siteUpload['success'] != true) {
+        debugPrint(
+          '[Attendance] Checkout site upload failed: ${siteUpload['error'] ?? siteUpload}',
+        );
         showToast(
           context,
           siteUpload['error']?.toString() ?? 'Unable to upload site photo.',
@@ -2198,6 +1949,9 @@ class _AttendancePageState extends State<AttendancePage>
           });
         }
       } else {
+        debugPrint(
+          '[Attendance] Checkout submit failed: ${createResult['error'] ?? createResult}',
+        );
         showToast(
           context,
           createResult['error']?.toString() ?? 'Failed to submit checkout.',
@@ -2604,12 +2358,10 @@ class _AttendancePageState extends State<AttendancePage>
       );
       return d <= _attendanceAllowedRadiusMeters;
     }();
-    final isAttendanceBlocked = _isAttendanceBlocked;
     final checkInLockedForProject =
         _todayAttendanceLoading || _todayCheckedIn || _todayCheckedOut;
     final checkOutLockedForProject =
         _todayAttendanceLoading || !_todayCheckedIn || _todayCheckedOut;
-    final showAttendanceActions = !isAttendanceBlocked;
 
     return ProtectedRoute(
       title: 'Attendance',
@@ -2740,173 +2492,118 @@ class _AttendancePageState extends State<AttendancePage>
                 ),
                 const SizedBox(height: 24),
               ],
-              if (isAttendanceBlocked) ...[
-                MadCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
+              if (_mode == _AttendanceMode.select) ...[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
                       children: [
-                        const Icon(
-                          LucideIcons.shieldAlert,
-                          color: Color(0xFFDC2626),
+                        SizedBox(
+                          width: isMobile ? double.infinity : 320,
+                          child: MadCard(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(LucideIcons.logIn, size: 24),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Check In',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Capture selfie, site photo, and location.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark
+                                          ? AppTheme.darkMutedForeground
+                                          : AppTheme.lightMutedForeground,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  MadButton(
+                                    text: 'Start Check In',
+                                    icon: LucideIcons.arrowRight,
+                                    disabled: checkInLockedForProject,
+                                    onPressed: checkInLockedForProject
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _mode = _AttendanceMode.checkIn;
+                                              _selfie = null;
+                                              _siteImage = null;
+                                              _position = null;
+                                              _locationName = null;
+                                              _locationCapturedAt = null;
+                                            });
+                                          },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Attendance is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}\nHistory entries: ${_adminBlockHistory.length}',
-                            style: TextStyle(
-                              color: isDark
-                                  ? AppTheme.darkForeground
-                                  : AppTheme.lightForeground,
+                        SizedBox(
+                          width: isMobile ? double.infinity : 320,
+                          child: MadCard(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(LucideIcons.logOut, size: 24),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Check Out',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Capture selfie, site photo, and location.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: isDark
+                                          ? AppTheme.darkMutedForeground
+                                          : AppTheme.lightMutedForeground,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  MadButton(
+                                    text: 'Start Check Out',
+                                    icon: LucideIcons.arrowRight,
+                                    disabled: checkOutLockedForProject,
+                                    onPressed: checkOutLockedForProject
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _mode =
+                                                  _AttendanceMode.checkOut;
+                                              _checkoutSelfie = null;
+                                              _checkoutSiteImage = null;
+                                              _checkoutPosition = null;
+                                              _checkoutLocationName = null;
+                                              _checkoutLocationCapturedAt =
+                                                  null;
+                                            });
+                                          },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-              if (_mode == _AttendanceMode.select) ...[
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showAttendanceActions)
-                      Wrap(
-                        spacing: 16,
-                        runSpacing: 16,
-                        children: [
-                          SizedBox(
-                            width: isMobile ? double.infinity : 320,
-                            child: MadCard(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Icon(LucideIcons.logIn, size: 24),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                      'Check In',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Capture selfie, site photo, and location.',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: isDark
-                                            ? AppTheme.darkMutedForeground
-                                            : AppTheme.lightMutedForeground,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    MadButton(
-                                      text: 'Start Check In',
-                                      icon: LucideIcons.arrowRight,
-                                      disabled: checkInLockedForProject,
-                                      onPressed: checkInLockedForProject
-                                          ? null
-                                          : () {
-                                              setState(() {
-                                                _mode = _AttendanceMode.checkIn;
-                                                _selfie = null;
-                                                _siteImage = null;
-                                                _position = null;
-                                                _locationName = null;
-                                                _locationCapturedAt = null;
-                                              });
-                                            },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: isMobile ? double.infinity : 320,
-                            child: MadCard(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Icon(LucideIcons.logOut, size: 24),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                      'Check Out',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Capture selfie, site photo, and location.',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: isDark
-                                            ? AppTheme.darkMutedForeground
-                                            : AppTheme.lightMutedForeground,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    MadButton(
-                                      text: 'Start Check Out',
-                                      icon: LucideIcons.arrowRight,
-                                      disabled: checkOutLockedForProject,
-                                      onPressed: checkOutLockedForProject
-                                          ? null
-                                          : () {
-                                              setState(() {
-                                                _mode =
-                                                    _AttendanceMode.checkOut;
-                                                _checkoutSelfie = null;
-                                                _checkoutSiteImage = null;
-                                                _checkoutPosition = null;
-                                                _checkoutLocationName = null;
-                                                _checkoutLocationCapturedAt =
-                                                    null;
-                                              });
-                                            },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      MadCard(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                LucideIcons.shieldAlert,
-                                color: Color(0xFFDC2626),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _isAdminBlocked
-                                      ? 'Attendance access is blocked by admin.${_adminBlockReason != null && _adminBlockReason!.trim().isNotEmpty ? "\nReason: $_adminBlockReason" : ""}'
-                                      : 'Attendance access is blocked by admin. Please contact the admin.',
-                                  style: TextStyle(
-                                    color: isDark
-                                        ? AppTheme.darkForeground
-                                        : AppTheme.lightForeground,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
                     if (_todayAttendanceLoading) ...[
                       const SizedBox(height: 12),
                       Text(

@@ -112,25 +112,9 @@ class AuthRefreshService {
       return;
     }
 
-    final attendanceBlockResult =
-        await ApiClient.getResolvedAttendanceBlockStatus({
-          ...data,
-          'token': token,
-        });
-    if (!force && generationAtStart != _refreshGeneration) {
-      return;
-    }
     final mergedUser = {
       ...data,
       'token': token,
-      'attendance_blocked': attendanceBlockResult['blocked'] == true,
-      'attendance_block_released': attendanceBlockResult['released'] == true,
-      if (attendanceBlockResult['reason'] != null &&
-          attendanceBlockResult['reason'].toString().trim().isNotEmpty)
-        'attendance_block_reason': attendanceBlockResult['reason']
-            .toString()
-            .trim(),
-      'attendance_block_history': attendanceBlockResult['history'] ?? const [],
     };
     final resolvedUser = AccessControlStore.resolveUserAccessControl(
       mergedUser,
