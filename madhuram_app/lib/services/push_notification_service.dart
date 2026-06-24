@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:redux/redux.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:redux/redux.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../store/app_state.dart';
@@ -17,10 +20,20 @@ class PushNotificationService {
 
   static const String _deviceIdKey = 'push_device_id';
   static const String _registeredTokenKey = 'push_registered_fcm_token';
+  static const AndroidNotificationChannel _androidChannel =
+      AndroidNotificationChannel(
+    'madhuram_high_importance',
+    'Madhuram notifications',
+    description: 'Push notifications and attendance reminders',
+    importance: Importance.high,
+  );
   static const String _webVapidKey = String.fromEnvironment(
     'FCM_VAPID_KEY',
     defaultValue: 'dRRFHUoe28ZA1uCYjBB5GyCE2cUEszpS1_73Dd2N6YY',
   );
+
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
 
   StreamSubscription<AppState>? _storeSub;
   StreamSubscription<String>? _tokenRefreshSub;
@@ -29,10 +42,14 @@ class PushNotificationService {
 
   bool _firebaseReady = false;
   bool _listenersBound = false;
+  bool _localNotificationsReady = false;
   String? _activeUserId;
   String? _activeAuthToken;
   String? _currentFcmToken;
   String? _deviceId;
+  GlobalKey<NavigatorState>? _navigatorKey;
+  String? _pendingRoute;
+  Map<String, dynamic>? _pendingRouteArguments;
 
   Future<void> initialize(Store<AppState> store) async {
     debugPrint('[PushNotificationService] initialize()');
@@ -42,7 +59,9 @@ class PushNotificationService {
       _handleAuthStateChange(state.auth.user);
     });
 
+    await _ensureLocalNotificationsReady();
     await _handleAuthStateChange(store.state.auth.user);
+    await _processPendingNavigation();
   }
 
   Future<void> dispose() async {
@@ -56,10 +75,17 @@ class PushNotificationService {
     _messageOpenedSub = null;
     _firebaseReady = false;
     _listenersBound = false;
+    _localNotificationsReady = false;
     _activeUserId = null;
     _activeAuthToken = null;
     _currentFcmToken = null;
     _deviceId = null;
+    _pendingRoute = null;
+    _pendingRouteArguments = null;
+  }
+
+  void setNavigatorKey(GlobalKey<NavigatorState> navigatorKey) {
+    _navigatorKey = navigatorKey;
   }
 
   Future<void> handleLogout() async {
@@ -67,6 +93,12 @@ class PushNotificationService {
     await _unregisterToken();
     _activeUserId = null;
     _activeAuthToken = null;
+    _pendingRoute = null;
+    _pendingRouteArguments = null;
+  }
+
+  Future<void> flushPendingNavigation() async {
+    await _processPendingNavigation();
   }
 
   Future<void> _handleAuthStateChange(Map<String, dynamic>? user) async {
@@ -96,6 +128,7 @@ class PushNotificationService {
     }
 
     await _bindFirebaseListenersOnce();
+    await _handleInitialMessage();
     await _registerCurrentToken();
   }
 
@@ -113,6 +146,7 @@ class PushNotificationService {
 
     final messaging = FirebaseMessaging.instance;
     await messaging.setAutoInitEnabled(true);
+    await _ensureLocalNotificationsReady();
 
     _tokenRefreshSub = messaging.onTokenRefresh.listen((token) async {
       final userId = _activeUserId;
@@ -124,20 +158,122 @@ class PushNotificationService {
     });
 
     _messageSub = FirebaseMessaging.onMessage.listen((message) {
-      NotificationService.instance.refreshNotifications();
-      debugPrint(
-        '[PushNotificationService] Foreground message: '
-        '${message.notification?.title ?? message.data['title'] ?? 'Notification'}',
-      );
+      unawaited(_handleForegroundMessage(message));
     });
 
     _messageOpenedSub = FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      NotificationService.instance.refreshNotifications();
-      debugPrint(
-        '[PushNotificationService] Notification opened: '
-        '${message.notification?.title ?? message.data['title'] ?? 'Notification'}',
-      );
+      unawaited(_handleNotificationOpen(message, source: 'background'));
     });
+  }
+
+  Future<void> _ensureLocalNotificationsReady() async {
+    if (_localNotificationsReady) return;
+
+    const initSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
+
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        unawaited(_handleLocalNotificationResponse(response));
+      },
+    );
+
+    final androidPlugin = _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(_androidChannel);
+
+    _localNotificationsReady = true;
+
+    final launchDetails = await _localNotifications.getNotificationAppLaunchDetails();
+    final response = launchDetails?.notificationResponse;
+    if (launchDetails?.didNotificationLaunchApp == true &&
+        response?.payload != null &&
+        response!.payload!.isNotEmpty) {
+      await _handleLocalNotificationResponse(response);
+    }
+  }
+
+  Future<void> _handleInitialMessage() async {
+    try {
+      final message = await FirebaseMessaging.instance.getInitialMessage();
+      if (message == null) return;
+      await _handleNotificationOpen(message, source: 'terminated');
+    } catch (e) {
+      debugPrint('[PushNotificationService] getInitialMessage failed: $e');
+    }
+  }
+
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    NotificationService.instance.refreshNotifications();
+    debugPrint(
+      '[PushNotificationService] Foreground message: ${_messageTitle(message)}',
+    );
+    await _showLocalNotification(message);
+  }
+
+  Future<void> _handleNotificationOpen(
+    RemoteMessage message, {
+    required String source,
+  }) async {
+    NotificationService.instance.refreshNotifications();
+    debugPrint(
+      '[PushNotificationService] Notification opened ($source): '
+      '${_messageTitle(message)}',
+    );
+    await _navigateForMessage(message);
+  }
+
+  Future<void> _handleLocalNotificationResponse(
+    NotificationResponse response,
+  ) async {
+    final payload = response.payload;
+    if (payload == null || payload.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map<String, dynamic>) {
+        await _navigateFromPayload(decoded);
+      }
+    } catch (e) {
+      debugPrint('[PushNotificationService] Failed to parse local payload: $e');
+    }
+  }
+
+  Future<void> _showLocalNotification(RemoteMessage message) async {
+    if (kIsWeb) return;
+    if (!_localNotificationsReady) {
+      await _ensureLocalNotificationsReady();
+    }
+
+    final title = _messageTitle(message);
+    final body = _messageBody(message);
+    final payload = jsonEncode({
+      'route': _resolveRoute(message),
+      'data': message.data,
+    });
+
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _androidChannel.id,
+        _androidChannel.name,
+        channelDescription: _androidChannel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+      ),
+    );
+
+    await _localNotifications.show(
+      _stableNotificationId(message),
+      title,
+      body,
+      details,
+      payload: payload,
+    );
   }
 
   Future<void> _registerCurrentToken() async {
@@ -183,6 +319,7 @@ class PushNotificationService {
       return;
     }
     debugPrint('[PushNotificationService] obtained FCM token');
+    debugPrint('[PushNotificationService] FCM token: $token');
 
     await _registerToken(token);
   }
@@ -247,6 +384,48 @@ class PushNotificationService {
     await _clearStoredRegisteredToken();
   }
 
+  Future<void> _navigateForMessage(RemoteMessage message) async {
+    await _navigateFromPayload({
+      'route': _resolveRoute(message),
+      'data': message.data,
+    });
+  }
+
+  Future<void> _navigateFromPayload(Map<String, dynamic> payload) async {
+    final route = payload['route']?.toString().trim() ?? '';
+    if (route.isEmpty) return;
+
+    final navigator = _navigatorKey?.currentState;
+    if (navigator == null) {
+      _pendingRoute = route;
+      final data = payload['data'];
+      _pendingRouteArguments = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data)
+              : <String, dynamic>{};
+      return;
+    }
+
+    navigator.pushNamed(route, arguments: payload['data']);
+  }
+
+  Future<void> _processPendingNavigation() async {
+    final route = _pendingRoute;
+    if (route == null || route.isEmpty) return;
+
+    final navigator = _navigatorKey?.currentState;
+    if (navigator == null) return;
+
+    final arguments = _pendingRouteArguments ?? const <String, dynamic>{};
+    _pendingRoute = null;
+    _pendingRouteArguments = null;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _navigatorKey?.currentState?.pushNamed(route, arguments: arguments);
+    });
+  }
+
   static String? _resolveUserId(Map<String, dynamic>? user) {
     if (user == null) return null;
     final value = user['user_id'] ?? user['id'] ?? user['uid'];
@@ -289,6 +468,44 @@ class PushNotificationService {
       case TargetPlatform.fuchsia:
         return 'fuchsia';
     }
+  }
+
+  String _messageTitle(RemoteMessage message) {
+    return message.notification?.title ??
+        message.data['title']?.toString() ??
+        'Notification';
+  }
+
+  String _messageBody(RemoteMessage message) {
+    return message.notification?.body ?? message.data['body']?.toString() ?? '';
+  }
+
+  int _stableNotificationId(RemoteMessage message) {
+    final candidate = message.messageId ??
+        '${_messageTitle(message)}-${_messageBody(message)}-${DateTime.now().millisecondsSinceEpoch}';
+    return candidate.hashCode & 0x7fffffff;
+  }
+
+  String _resolveRoute(RemoteMessage message) {
+    final data = message.data;
+    final explicitRoute =
+        data['route']?.toString() ??
+        data['screen_route']?.toString() ??
+        data['navigate_to']?.toString();
+    if (explicitRoute != null && explicitRoute.trim().isNotEmpty) {
+      return explicitRoute.trim();
+    }
+
+    final type = data['type']?.toString().toLowerCase();
+    final entityType = data['entity_type']?.toString().toLowerCase();
+    final reminderType = data['reminder_type']?.toString().toLowerCase();
+    if (type == 'attendance_reminder' ||
+        reminderType == 'attendance' ||
+        entityType == 'attendance') {
+      return '/attendance/my';
+    }
+
+    return '/dashboard';
   }
 
   Future<String> _getDeviceId() async {

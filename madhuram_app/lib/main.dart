@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -90,6 +91,7 @@ import 'pages/audit_logs_page.dart';
 
 // Create store globally
 late Store<AppState> store;
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -180,12 +182,13 @@ void main() async {
   debugPrint('[Main] Auth refresh service initialized');
   await NotificationService.instance.initialize(store);
   debugPrint('[Main] Notification service initialized');
+  PushNotificationService.instance.setNavigatorKey(appNavigatorKey);
   await PushNotificationService.instance.initialize(store);
   debugPrint('[Main] Push notification service initialized');
   await AttendanceReminderService.instance.initialize(store);
   debugPrint('[Main] Attendance reminder service initialized');
 
-  runApp(MyApp(store: store));
+  runApp(MyApp(store: store, navigatorKey: appNavigatorKey));
 }
 
 /// Restore authentication state from storage.
@@ -268,15 +271,33 @@ void _restoreProjectsInBackground(String savedProjectId) {
       });
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final Store<AppState> store;
+  final GlobalKey<NavigatorState> navigatorKey;
 
-  const MyApp({super.key, required this.store});
+  const MyApp({
+    super.key,
+    required this.store,
+    required this.navigatorKey,
+  });
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(PushNotificationService.instance.flushPendingNavigation());
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return StoreProvider<AppState>(
-      store: store,
+      store: widget.store,
       child: StoreConnector<AppState, AppThemeMode>(
         distinct: true,
         converter: (store) => store.state.theme.mode,
@@ -293,6 +314,7 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: 'Madhuram',
             debugShowCheckedModeBanner: false,
+            navigatorKey: widget.navigatorKey,
             theme: AppTheme.lightTheme(),
             darkTheme: AppTheme.darkTheme(),
             themeMode: effectiveTheme == AppThemeMode.dark
