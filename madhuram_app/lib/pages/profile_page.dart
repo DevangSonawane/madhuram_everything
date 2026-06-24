@@ -191,7 +191,8 @@ class _ProfilePageState extends State<ProfilePage> {
       },
       builder: (context, vm) {
         final shouldLoadUsers =
-            vm.canViewUserManagementTab || vm.canViewAccessControlTab;
+            vm.canViewUserManagementTab ||
+            vm.canViewAccessControlTab;
         if (shouldLoadUsers && !_attemptedUsersLoad) {
           _attemptedUsersLoad = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -205,11 +206,21 @@ class _ProfilePageState extends State<ProfilePage> {
         ];
         final tabViews = <Widget>[
           _buildProfileTab(isDark, responsive),
-          _buildSettingsTab(isDark, responsive, vm.isOperationalManager),
+          _buildSettingsTab(
+            isDark,
+            responsive,
+            vm.isOperationalManager,
+          ),
         ];
         if (vm.canViewUserManagementTab) {
           tabs.add(const Tab(text: 'User Management'));
-          tabViews.add(_buildUsersTab(isDark, responsive, vm.isAdmin));
+          tabViews.add(
+            _buildUsersTab(
+              isDark,
+              responsive,
+              vm.isAdmin,
+            ),
+          );
         }
         if (vm.canViewAccessControlTab) {
           tabs.add(const Tab(text: 'Access Control'));
@@ -1813,11 +1824,11 @@ class _ProfilePermissionsViewModel {
 
   @override
   int get hashCode => Object.hash(
-        isAdmin,
-        isOperationalManager,
-        canViewUserManagementTab,
-        canViewAccessControlTab,
-      );
+      isAdmin,
+      isOperationalManager,
+      canViewUserManagementTab,
+      canViewAccessControlTab,
+    );
 }
 
 class _ProfileAuthViewModel {

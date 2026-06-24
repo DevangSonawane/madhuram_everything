@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:redux/redux.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../store/app_state.dart';
@@ -16,7 +17,10 @@ class PushNotificationService {
 
   static const String _deviceIdKey = 'push_device_id';
   static const String _registeredTokenKey = 'push_registered_fcm_token';
-  static const String _webVapidKey = String.fromEnvironment('FCM_VAPID_KEY');
+  static const String _webVapidKey = String.fromEnvironment(
+    'FCM_VAPID_KEY',
+    defaultValue: 'dRRFHUoe28ZA1uCYjBB5GyCE2cUEszpS1_73Dd2N6YY',
+  );
 
   StreamSubscription<AppState>? _storeSub;
   StreamSubscription<String>? _tokenRefreshSub;
@@ -31,8 +35,10 @@ class PushNotificationService {
   String? _deviceId;
 
   Future<void> initialize(Store<AppState> store) async {
+    debugPrint('[PushNotificationService] initialize()');
     _storeSub?.cancel();
     _storeSub = store.onChange.listen((state) {
+      debugPrint('[PushNotificationService] store changed, checking auth state');
       _handleAuthStateChange(state.auth.user);
     });
 
@@ -57,6 +63,7 @@ class PushNotificationService {
   }
 
   Future<void> handleLogout() async {
+    debugPrint('[PushNotificationService] handleLogout()');
     await _unregisterToken();
     _activeUserId = null;
     _activeAuthToken = null;
@@ -64,9 +71,14 @@ class PushNotificationService {
 
   Future<void> _handleAuthStateChange(Map<String, dynamic>? user) async {
     final userId = _resolveUserId(user);
-    final authToken = user?['token']?.toString();
+    final authToken = _resolveAuthToken(user);
+    debugPrint(
+      '[PushNotificationService] auth state userId=${userId ?? "null"} '
+      'token=${authToken == null ? "null" : "present"}',
+    );
 
     if (userId == _activeUserId && authToken == _activeAuthToken) {
+      debugPrint('[PushNotificationService] auth unchanged, skipping');
       return;
     }
 
@@ -74,6 +86,7 @@ class PushNotificationService {
     _activeAuthToken = authToken;
 
     if (userId == null || userId.isEmpty || authToken == null || authToken.isEmpty) {
+      debugPrint('[PushNotificationService] missing user or auth token, unregistering');
       await _unregisterToken();
       return;
     }
@@ -88,6 +101,7 @@ class PushNotificationService {
 
   Future<bool> _ensureFirebaseReady() async {
     if (_firebaseReady) return true;
+    debugPrint('[PushNotificationService] marking Firebase ready');
     _firebaseReady = true;
     return true;
   }
@@ -95,6 +109,7 @@ class PushNotificationService {
   Future<void> _bindFirebaseListenersOnce() async {
     if (_listenersBound) return;
     _listenersBound = true;
+    debugPrint('[PushNotificationService] binding Firebase listeners');
 
     final messaging = FirebaseMessaging.instance;
     await messaging.setAutoInitEnabled(true);
@@ -129,6 +144,20 @@ class PushNotificationService {
     if (!_firebaseReady) return;
 
     final messaging = FirebaseMessaging.instance;
+    debugPrint('[PushNotificationService] requesting notification permission');
+
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final androidPermission = await Permission.notification.request();
+      debugPrint(
+        '[PushNotificationService] Android permission status: '
+        '${androidPermission.isGranted ? "granted" : androidPermission.toString()}',
+      );
+      if (!androidPermission.isGranted) {
+        debugPrint('[PushNotificationService] Android notification permission denied.');
+        return;
+      }
+    }
+
     final permission = await messaging.requestPermission(
       alert: true,
       badge: true,
@@ -143,12 +172,17 @@ class PushNotificationService {
       debugPrint('[PushNotificationService] Push permission denied.');
       return;
     }
+    debugPrint(
+      '[PushNotificationService] FCM permission status: '
+      '${permission.authorizationStatus}',
+    );
 
     final token = await _getFcmToken(messaging);
     if (token == null || token.isEmpty) {
       debugPrint('[PushNotificationService] Unable to obtain FCM token.');
       return;
     }
+    debugPrint('[PushNotificationService] obtained FCM token');
 
     await _registerToken(token);
   }
@@ -169,6 +203,7 @@ class PushNotificationService {
     final userId = _activeUserId;
     final authToken = _activeAuthToken;
     if (userId == null || userId.isEmpty || authToken == null || authToken.isEmpty) {
+      debugPrint('[PushNotificationService] token registration skipped, no active auth');
       return;
     }
 
@@ -187,6 +222,7 @@ class PushNotificationService {
     );
 
     if (response['success'] == true) {
+      debugPrint('[PushNotificationService] token registration success');
       _currentFcmToken = token;
       await _setStoredRegisteredToken(token);
       return;
@@ -201,9 +237,11 @@ class PushNotificationService {
   Future<void> _unregisterToken() async {
     final token = _currentFcmToken ?? await _getStoredRegisteredToken();
     if (token == null || token.isEmpty) {
+      debugPrint('[PushNotificationService] unregister skipped, no token stored');
       return;
     }
 
+    debugPrint('[PushNotificationService] unregistering stored token');
     await ApiClient.removeFcmToken(token);
     _currentFcmToken = null;
     await _clearStoredRegisteredToken();
@@ -213,6 +251,26 @@ class PushNotificationService {
     if (user == null) return null;
     final value = user['user_id'] ?? user['id'] ?? user['uid'];
     return value?.toString();
+  }
+
+  static String? _resolveAuthToken(Map<String, dynamic>? user) {
+    if (user == null) return null;
+
+    final direct = user['token'] ?? user['access_token'] ?? user['accessToken'];
+    if (direct is String && direct.trim().isNotEmpty) {
+      return direct;
+    }
+
+    final nested = user['data'];
+    if (nested is Map) {
+      final nestedToken =
+          nested['token'] ?? nested['access_token'] ?? nested['accessToken'];
+      if (nestedToken is String && nestedToken.trim().isNotEmpty) {
+        return nestedToken;
+      }
+    }
+
+    return null;
   }
 
   static String get _platformName {

@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:redux/redux.dart';
@@ -18,6 +19,7 @@ import 'firebase_options.dart';
 import 'services/auth_storage.dart';
 import 'services/http_overrides.dart';
 import 'services/api_client.dart';
+import 'services/attendance_reminder_service.dart';
 import 'services/notification_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/auth_refresh_service.dart';
@@ -89,6 +91,17 @@ import 'pages/audit_logs_page.dart';
 // Create store globally
 late Store<AppState> store;
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  debugPrint(
+    '[Main] Background message received: '
+    '${message.notification?.title ?? message.data['title'] ?? 'Notification'}',
+  );
+}
+
 /// Named routes with fade transition (used by onGenerateRoute and routes)
 final Map<String, Widget Function(BuildContext)> _appRoutes = {
   '/login': (context) => const LoginPage(),
@@ -140,6 +153,7 @@ final Map<String, Widget Function(BuildContext)> _appRoutes = {
 void main() async {
   // Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('[Main] App bootstrap starting');
 
   // Allow self-signed certs in dev mode
   assert(() {
@@ -149,16 +163,27 @@ void main() async {
 
   // Create the Redux store ONCE at app startup
   store = Store<AppState>(appReducer, initialState: AppState.initial());
+  debugPrint('[Main] Redux store created');
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  debugPrint('[Main] Firebase background handler registered');
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  debugPrint('[Main] Firebase initialized');
 
   // Restore auth state from storage before running app
   await _restoreAuthState();
+  debugPrint('[Main] Auth state restore complete');
   await AuthRefreshService.instance.initialize(store);
+  debugPrint('[Main] Auth refresh service initialized');
   await NotificationService.instance.initialize(store);
+  debugPrint('[Main] Notification service initialized');
   await PushNotificationService.instance.initialize(store);
+  debugPrint('[Main] Push notification service initialized');
+  await AttendanceReminderService.instance.initialize(store);
+  debugPrint('[Main] Attendance reminder service initialized');
 
   runApp(MyApp(store: store));
 }
