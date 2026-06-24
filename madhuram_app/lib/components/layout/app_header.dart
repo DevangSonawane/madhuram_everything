@@ -6,6 +6,7 @@ import '../../store/app_state.dart';
 import '../../store/auth_actions.dart';
 import '../../services/auth_storage.dart';
 import '../../services/notification_service.dart';
+import '../../services/push_notification_service.dart';
 import '../../utils/responsive.dart';
 
 /// Header matching React's Header.jsx - Responsive version
@@ -375,6 +376,7 @@ class AppHeader extends StatelessWidget {
           ],
           onSelected: (value) async {
             if (value == 'logout') {
+              await PushNotificationService.instance.handleLogout();
               await AuthStorage.clear();
               if (!context.mounted) return;
               final store = StoreProvider.of<AppState>(context);

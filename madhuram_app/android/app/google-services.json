@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "611582097916",
+    "project_id": "madhuram-1f7aa",
+    "storage_bucket": "madhuram-1f7aa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:611582097916:android:11d28cd9ffe72079a2da79",
+        "android_client_info": {
+          "package_name": "com.example.madhuram_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBum5omsyzT42iWca2f25KYWv8_2BM6SKc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

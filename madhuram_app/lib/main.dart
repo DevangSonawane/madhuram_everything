@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_redux/flutter_redux.dart';
 import 'package:redux/redux.dart';
@@ -11,12 +12,14 @@ import 'store/project_actions.dart';
 
 // Models
 import 'models/project.dart';
+import 'firebase_options.dart';
 
 // Services
 import 'services/auth_storage.dart';
 import 'services/http_overrides.dart';
 import 'services/api_client.dart';
 import 'services/notification_service.dart';
+import 'services/push_notification_service.dart';
 import 'services/auth_refresh_service.dart';
 import 'services/access_control_store.dart';
 
@@ -147,10 +150,15 @@ void main() async {
   // Create the Redux store ONCE at app startup
   store = Store<AppState>(appReducer, initialState: AppState.initial());
 
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   // Restore auth state from storage before running app
   await _restoreAuthState();
   await AuthRefreshService.instance.initialize(store);
   await NotificationService.instance.initialize(store);
+  await PushNotificationService.instance.initialize(store);
 
   runApp(MyApp(store: store));
 }

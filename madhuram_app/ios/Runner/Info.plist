@@ -55,5 +55,9 @@
 	<string>This app needs photo library access to select images for file uploads.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app may save captured photos before upload.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

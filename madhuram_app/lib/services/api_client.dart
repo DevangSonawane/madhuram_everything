@@ -324,6 +324,148 @@ class ApiClient {
   }
 
   // ============================================================================
+  // Firebase Push Notifications
+  // ============================================================================
+  static Future<Map<String, dynamic>> registerFcmToken({
+    required String userId,
+    required String fcmToken,
+    required String platform,
+    required String deviceId,
+  }) async {
+    if (userId.trim().isEmpty || fcmToken.trim().isEmpty) {
+      return {
+        'success': false,
+        'error': 'userId and fcmToken are required to register a push token',
+        'status': 400,
+      };
+    }
+
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/notifications/register-token');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'user_id': userId,
+        'fcm_token': fcmToken,
+        'platform': platform,
+        'device_id': deviceId,
+      }),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> removeFcmToken(String fcmToken) async {
+    if (fcmToken.trim().isEmpty) {
+      return {
+        'success': false,
+        'error': 'fcmToken is required to remove a push token',
+        'status': 400,
+      };
+    }
+
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/notifications/remove-token');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({'fcm_token': fcmToken}),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> sendPushNotification({
+    required String userId,
+    required String title,
+    required String body,
+    String? type,
+    String? entityType,
+    String? entityId,
+    Map<String, dynamic>? data,
+    String? sentBy,
+    String? sentByName,
+  }) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/notifications/send');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'user_id': userId,
+        'title': title,
+        'body': body,
+        if (type != null) 'type': type,
+        if (entityType != null) 'entity_type': entityType,
+        if (entityId != null) 'entity_id': entityId,
+        if (data != null) 'data': data,
+        if (sentBy != null) 'sent_by': sentBy,
+        if (sentByName != null) 'sent_by_name': sentByName,
+      }),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> sendBulkPushNotification({
+    required List<String> userIds,
+    required String title,
+    required String body,
+    String? type,
+    String? entityType,
+    String? entityId,
+    Map<String, dynamic>? data,
+    String? sentBy,
+    String? sentByName,
+  }) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/notifications/send-bulk');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'user_ids': userIds,
+        'title': title,
+        'body': body,
+        if (type != null) 'type': type,
+        if (entityType != null) 'entity_type': entityType,
+        if (entityId != null) 'entity_id': entityId,
+        if (data != null) 'data': data,
+        if (sentBy != null) 'sent_by': sentBy,
+        if (sentByName != null) 'sent_by_name': sentByName,
+      }),
+    );
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> sendPushNotificationToAll({
+    required String title,
+    required String body,
+    String? type,
+    String? entityType,
+    String? entityId,
+    Map<String, dynamic>? data,
+    String? sentBy,
+    String? sentByName,
+  }) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/notifications/send-all');
+    final res = await _post(
+      uri,
+      headers: _authHeaders(token),
+      body: jsonEncode({
+        'title': title,
+        'body': body,
+        if (type != null) 'type': type,
+        if (entityType != null) 'entity_type': entityType,
+        if (entityId != null) 'entity_id': entityId,
+        if (data != null) 'data': data,
+        if (sentBy != null) 'sent_by': sentBy,
+        if (sentByName != null) 'sent_by_name': sentByName,
+      }),
+    );
+    return _handleResponse(res);
+  }
+
+  // ============================================================================
   // Users
   // ============================================================================
   static Future<Map<String, dynamic>> getUsers() async {
