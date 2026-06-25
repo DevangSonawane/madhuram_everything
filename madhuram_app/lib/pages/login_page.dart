@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
-import '../store/auth_actions.dart';
 import '../services/api_client.dart';
 import '../services/auth_storage.dart';
 import '../services/access_control_store.dart';
 import '../components/ui/mad_button.dart';
 import '../components/ui/mad_input.dart';
+import '../providers/legacy_session_providers.dart';
+import '../utils/app_navigation.dart';
+import '../utils/riverpod_context.dart';
 import '../utils/responsive.dart';
 
 /// Login page matching React's Login.jsx - Responsive version
-class LoginPage extends StatefulWidget {
+class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends ConsumerState<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
@@ -47,9 +48,6 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
 
-    final store = StoreProvider.of<AppState>(context);
-    store.dispatch(LoginStart());
-
     try {
       final result = await ApiClient.login(
         _emailController.text.trim(),
@@ -62,7 +60,6 @@ class _LoginPageState extends State<LoginPage> {
         final user = await AuthStorage.getUser();
         if (user == null || user.isEmpty) {
           final error = 'Login failed: missing user/token in response.';
-          store.dispatch(LoginFailure(error));
           if (mounted) {
             setState(() => _error = error);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -93,9 +90,11 @@ class _LoginPageState extends State<LoginPage> {
           resolvedUser = AccessControlStore.resolveUserAccessControl(user);
         }
         await AuthStorage.setUser(resolvedUser);
-        store.dispatch(LoginSuccess(resolvedUser));
+        context.riverpodContainer.read(authSessionProvider.notifier).sync(
+              resolvedUser,
+            );
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/projects');
+          context.appGo('/projects');
         }
       } else {
         final status = result['status']?.toString();
@@ -103,7 +102,6 @@ class _LoginPageState extends State<LoginPage> {
         final error = (result['error']?.toString().isNotEmpty == true)
             ? result['error'].toString()
             : 'Login failed';
-        store.dispatch(LoginFailure(error));
         if (mounted) {
           setState(() => _error = error);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -121,7 +119,6 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       final error = 'Unable to login right now. $e';
-      store.dispatch(LoginFailure(error));
       if (mounted) {
         setState(() => _error = error);
       }

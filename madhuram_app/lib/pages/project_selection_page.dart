@@ -1,29 +1,31 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
-import '../store/project_actions.dart';
 import '../services/api_client.dart';
 import '../services/auth_storage.dart';
 import '../services/file_service.dart';
 import '../services/work_order_extractor.dart';
 import '../components/ui/components.dart';
+import '../utils/app_navigation.dart';
 import '../utils/responsive.dart';
+import '../services/access_control_store.dart';
 import '../models/project.dart';
+import '../providers/legacy_session_providers.dart';
+import '../utils/riverpod_context.dart';
 
 /// Project Selection page - Responsive version
-class ProjectSelectionPage extends StatefulWidget {
+class ProjectSelectionPage extends ConsumerStatefulWidget {
   const ProjectSelectionPage({super.key});
 
   @override
-  State<ProjectSelectionPage> createState() => _ProjectSelectionPageState();
+  ConsumerState<ProjectSelectionPage> createState() => _ProjectSelectionPageState();
 }
 
-class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
+class _ProjectSelectionPageState extends ConsumerState<ProjectSelectionPage> {
   bool _isLoading = false;
   String? _error;
   List<Project> _projects = [];
@@ -42,27 +44,53 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
 
   Future<void> _checkAuthAndLoadProjects() async {
     if (!mounted) return;
-
-    final store = StoreProvider.of<AppState>(context, listen: false);
-
-    // Check if authenticated
-    if (!store.state.auth.isAuthenticated) {
+    if (!context.appAuth.isAuthenticated) {
       _redirectingToLogin = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/login');
+        context.appGo('/login');
       });
       return;
     }
 
+    await _refreshCurrentUserSession();
     await _loadProjects();
+  }
+
+  Future<void> _refreshCurrentUserSession() async {
+    final user = context.appAuth.user;
+    final rawUserId = user?['user_id'] ?? user?['id'] ?? user?['uid'];
+    final userId = rawUserId?.toString().trim() ?? '';
+    if (userId.isEmpty) return;
+
+    try {
+      final result = await ApiClient.getAccessUser(userId);
+      if (!mounted || result['success'] != true) return;
+
+      final data = result['data'];
+      if (data is! Map) return;
+
+      final mergedUser = <String, dynamic>{
+        if (user != null) ...user,
+        ...Map<String, dynamic>.from(data),
+      };
+      final resolvedUser = AccessControlStore.resolveUserAccessControl(mergedUser);
+      await AuthStorage.setUser(resolvedUser);
+      context.riverpodContainer.read(authSessionProvider.notifier).sync(
+            resolvedUser,
+          );
+    } catch (_) {
+      // Keep the existing session if the refresh fails.
+    }
   }
 
   Future<void> _loadProjects() async {
     if (!mounted) return;
-
-    final store = StoreProvider.of<AppState>(context, listen: false);
-    store.dispatch(FetchProjectsStart());
+    context.riverpodContainer.read(projectSessionProvider.notifier).sync(
+          projects: _projects.map((p) => p.toMap()).toList(),
+          selectedProject: context.appProject.selectedProject,
+          isLoading: true,
+        );
     setState(() {
       _isLoading = true;
       _error = null;
@@ -82,14 +110,22 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
             .toList();
         final projects = projectMaps.map((e) => Project.fromJson(e)).toList();
 
-        store.dispatch(FetchProjectsSuccess(projectMaps));
+        context.riverpodContainer.read(projectSessionProvider.notifier).sync(
+              projects: projectMaps,
+              selectedProject: context.appProject.selectedProject,
+              isLoading: false,
+            );
         setState(() {
           _projects = projects;
           _isLoading = false;
           _error = null;
         });
       } else {
-        store.dispatch(FetchProjectsFailure('API failure'));
+        context.riverpodContainer.read(projectSessionProvider.notifier).sync(
+              projects: const [],
+              selectedProject: context.appProject.selectedProject,
+              isLoading: false,
+            );
         setState(() {
           _projects = [];
           _isLoading = false;
@@ -99,7 +135,11 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     } catch (e) {
       debugPrint('[ProjectSelection] API error: $e');
       if (!mounted) return;
-      store.dispatch(FetchProjectsFailure('$e'));
+      context.riverpodContainer.read(projectSessionProvider.notifier).sync(
+            projects: const [],
+            selectedProject: context.appProject.selectedProject,
+            isLoading: false,
+          );
       setState(() {
         _projects = [];
         _isLoading = false;
@@ -119,15 +159,20 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
       return;
     }
 
-    final store = StoreProvider.of<AppState>(context, listen: false);
     // Convert Project to Map for Redux state storage
-    store.dispatch(SelectProject(project.toMap()));
+    final selectedProject = project.toMap();
+    context.riverpodContainer.read(projectSessionProvider.notifier).sync(
+          projects: _projects.map((p) => p.toMap()).toList(),
+          selectedProject: selectedProject,
+          isLoading: _isLoading,
+        );
 
     // Save selected project ID to storage for persistence (like React app)
     AuthStorage.setSelectedProjectId(project.id);
 
-    // Navigate to dashboard
-    Navigator.pushReplacementNamed(context, '/dashboard');
+    if (!mounted) return;
+    context.appGo('/dashboard');
+
   }
 
   List<Project> get _filteredProjects {
@@ -139,6 +184,9 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     );
 
     if (!canViewAllProjects) {
+      if (_currentUserProjectList == null) {
+        return list;
+      }
       if (assignedProjectIds.isEmpty) {
         list = <Project>[];
       } else {
@@ -164,40 +212,31 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, _ProjectSelectionViewModel>(
-      distinct: true,
-      converter: (store) => _ProjectSelectionViewModel(
-        isAuthenticated: store.state.auth.isAuthenticated,
-        userName: store.state.auth.userName ?? 'User',
-        isAdmin: store.state.auth.isAdmin,
-        userRole: store.state.auth.userRole,
-        projectListRef: store.state.auth.user?['project_list'],
-      ),
-      onWillChange: (prev, next) {
-        if (!mounted) return;
-        if (prev?.isAuthenticated == true && !next.isAuthenticated) {
-          _redirectingToLogin = true;
-          Navigator.pushReplacementNamed(context, '/login');
-        }
-      },
-      builder: (context, vm) {
-        if (!vm.isAuthenticated || _redirectingToLogin) {
-          return const Scaffold(body: SizedBox.shrink());
-        }
+    final auth = ref.watch(authSessionProvider);
+    final isAuthenticated = auth.isAuthenticated;
 
-        return _buildPage(context, vm);
-      },
-    );
+    if (!isAuthenticated || _redirectingToLogin) {
+      return const Scaffold(body: SizedBox.shrink());
+    }
+
+    return _buildPage(context, auth);
   }
 
-  Widget _buildPage(BuildContext context, _ProjectSelectionViewModel vm) {
+  Widget _buildPage(BuildContext context, AuthSessionView auth) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final responsive = Responsive(context);
-    _currentUserRole = vm.userRole;
-    _currentUserProjectList = vm.projectListRef;
+    _currentUserRole = auth.userRole;
+    _currentUserProjectList =
+        auth.user?['project_list'] ??
+        auth.user?['projectList'] ??
+        auth.user?['project'] ??
+        auth.user?['projects'] ??
+        auth.user?['assigned_projects'] ??
+        auth.user?['assignedProjectIds'] ??
+        auth.user?['project_ids'];
 
-    final mainContent = _buildMainContent(context, vm, isDark, responsive);
+    final mainContent = _buildMainContent(context, auth, isDark, responsive);
     final showModuleSidebar = responsive.isDesktop;
 
     return Scaffold(
@@ -219,7 +258,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
 
   Widget _buildMainContent(
     BuildContext context,
-    _ProjectSelectionViewModel vm,
+    AuthSessionView auth,
     bool isDark,
     Responsive responsive,
   ) {
@@ -364,7 +403,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
                 ),
               ),
               Text(
-                'Welcome, ${vm.userName}',
+                'Welcome, ${auth.userName ?? 'User'}',
                 style: TextStyle(
                   fontSize: responsive.value(
                     mobile: 24,
@@ -410,7 +449,7 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
           ),
         ),
 
-        Expanded(child: _buildContent(isDark, responsive, vm.isAdmin)),
+        Expanded(child: _buildContent(isDark, responsive, auth.isAdmin)),
       ],
     );
   }
@@ -1194,40 +1233,4 @@ class _ProjectSelectionPageState extends State<ProjectSelectionPage> {
     } catch (_) {}
     return null;
   }
-}
-
-class _ProjectSelectionViewModel {
-  final bool isAuthenticated;
-  final String userName;
-  final bool isAdmin;
-  final String? userRole;
-  final Object? projectListRef;
-
-  _ProjectSelectionViewModel({
-    required this.isAuthenticated,
-    required this.userName,
-    required this.isAdmin,
-    required this.userRole,
-    required this.projectListRef,
-  });
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _ProjectSelectionViewModel &&
-            isAuthenticated == other.isAuthenticated &&
-            userName == other.userName &&
-            isAdmin == other.isAdmin &&
-            userRole == other.userRole &&
-            projectListRef == other.projectListRef;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        isAuthenticated,
-        userName,
-        isAdmin,
-        userRole,
-        projectListRef,
-      );
 }

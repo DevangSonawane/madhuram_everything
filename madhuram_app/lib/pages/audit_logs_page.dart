@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import '../utils/responsive.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
+import '../utils/riverpod_context.dart';
 
 /// Audit log entry model (entity/action type tracking)
 class AuditLog {
@@ -82,8 +81,7 @@ class _AuditLogsPageFullState extends State<AuditLogsPageFull> {
   }
 
   Future<void> _loadLogs() async {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId = store.state.project.selectedProjectId ?? '';
+    final projectId = context.appProject.selectedProjectId ?? '';
     if (projectId.isEmpty) {
       setState(() {
         _logs = [];

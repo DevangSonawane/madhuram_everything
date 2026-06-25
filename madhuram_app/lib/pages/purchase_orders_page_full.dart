@@ -1,12 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../services/excel_service.dart';
 import '../services/file_service.dart';
@@ -14,6 +12,7 @@ import '../services/pdf_service.dart';
 import '../models/purchase_order.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
+import '../utils/riverpod_context.dart';
 import '../utils/responsive.dart';
 
 const _poDraftKey = 'po_draft';
@@ -380,9 +379,8 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
   }
 
   String _resolveCurrentProjectId() {
-    final store = StoreProvider.of<AppState>(context);
-    return store.state.project.selectedProjectId ??
-        store.state.project.selectedProject?['project_id']?.toString() ??
+    return context.appProject.selectedProjectId ??
+        context.appProject.selectedProject?['project_id']?.toString() ??
         '';
   }
 
@@ -665,10 +663,8 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
   }
 
   Widget _buildManualEntryTab(bool isDark, bool isMobile, {Key? key}) {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId =
-        store.state.project.selectedProjectId ??
-        store.state.project.selectedProject?['project_id']?.toString() ??
+    final projectId = context.appProject.selectedProjectId ??
+        context.appProject.selectedProject?['project_id']?.toString() ??
         '';
     return _ManualPOForm(
       key: key,
@@ -1543,10 +1539,9 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                             );
                             return;
                           }
-                          final store = StoreProvider.of<AppState>(context);
                           final projectIdRaw =
-                              store.state.project.selectedProjectId ??
-                              store.state.project.selectedProject?['project_id']
+                              context.appProject.selectedProjectId ??
+                              context.appProject.selectedProject?['project_id']
                                   ?.toString();
                           final projectId = int.tryParse('$projectIdRaw');
                           final payload = _buildPoApiPayloadFromUi(
@@ -1645,10 +1640,8 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
   }
 
   Future<void> _openCreatePOPage() async {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId =
-        store.state.project.selectedProjectId ??
-        store.state.project.selectedProject?['project_id']?.toString() ??
+    final projectId = context.appProject.selectedProjectId ??
+        context.appProject.selectedProject?['project_id']?.toString() ??
         '';
 
     await Navigator.push(

@@ -4,13 +4,12 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../services/api_client.dart';
@@ -18,6 +17,8 @@ import '../services/file_service.dart';
 import '../services/pdf_service.dart';
 import '../models/user.dart';
 import '../utils/responsive.dart';
+import '../providers/legacy_session_providers.dart';
+import '../utils/riverpod_context.dart';
 
 class PurchaseRequestItem {
   String materialDescription;
@@ -302,15 +303,16 @@ class _PRItemRowState extends State<_PRItemRow> {
 }
 
 /// Purchase Requests page matching React's PurchaseRequests page.
-class PurchaseRequestsPageFull extends StatefulWidget {
+class PurchaseRequestsPageFull extends ConsumerStatefulWidget {
   const PurchaseRequestsPageFull({super.key});
 
   @override
-  State<PurchaseRequestsPageFull> createState() =>
+  ConsumerState<PurchaseRequestsPageFull> createState() =>
       _PurchaseRequestsPageFullState();
 }
 
-class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
+class _PurchaseRequestsPageFullState
+    extends ConsumerState<PurchaseRequestsPageFull> {
   bool _isLoading = false;
   List<PurchaseRequest> _requests = [];
   String? _error;
@@ -343,12 +345,10 @@ class _PurchaseRequestsPageFullState extends State<PurchaseRequestsPageFull> {
       _error = null;
     });
     try {
-      final store = StoreProvider.of<AppState>(context);
-      final selectedProjectId = store
-          .state
-          .project
-          .selectedProject?['project_id']
-          ?.toString();
+      final projectSession = ref.read(projectSessionProvider);
+      final selectedProjectId =
+          projectSession.selectedProject?['project_id']?.toString() ??
+          projectSession.selectedProjectId;
 
       Map<String, dynamic> result;
       final sampleId = _sampleFilter.trim();
@@ -1508,8 +1508,7 @@ class _PurchaseRequestFormContentState
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_appliedProjectDefaults) return;
-    final store = StoreProvider.of<AppState>(context);
-    final selectedProject = store.state.project.selectedProject;
+      final selectedProject = context.appProject.selectedProject;
     final defaultProjectId = selectedProject?['project_id']?.toString() ?? '';
     final defaultProjectName =
         selectedProject?['project_name']?.toString() ?? '';
@@ -2175,9 +2174,11 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_appliedInitialProject) return;
-    final store = StoreProvider.of<AppState>(context);
+    final selectedProject = context.appProject.selectedProject;
     final selectedProjectId =
-        store.state.project.selectedProject?['project_id']?.toString() ?? '';
+        selectedProject?['project_id']?.toString() ??
+        context.appProject.selectedProjectId ??
+        '';
     if (_projectId.isEmpty && selectedProjectId.isNotEmpty) {
       _projectId = selectedProjectId;
       WidgetsBinding.instance.addPostFrameCallback((_) {

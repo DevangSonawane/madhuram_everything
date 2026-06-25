@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
 import 'quotes_preview_page.dart';
+import '../utils/app_navigation.dart';
+import '../utils/riverpod_context.dart';
 
 class QuotesListPage extends StatefulWidget {
   const QuotesListPage({super.key});
@@ -129,10 +129,9 @@ class _QuotesListPageState extends State<QuotesListPage> {
         }
       }
 
-      final store = StoreProvider.of<AppState>(context);
       final selectedProjectId =
-          _resolveProjectId(store.state.project.selectedProject) ??
-          store.state.project.selectedProjectId;
+          _resolveProjectId(context.appProject.selectedProject) ??
+          context.appProject.selectedProjectId;
 
       final filtered =
           (selectedProjectId == null || selectedProjectId.trim().isEmpty)
@@ -201,7 +200,7 @@ class _QuotesListPageState extends State<QuotesListPage> {
       showSidebar: false,
       headerLeadingIcon: LucideIcons.arrowLeft,
       onHeaderLeadingPressed: () =>
-          Navigator.pushReplacementNamed(context, '/projects'),
+          context.appGo('/projects'),
       requireProject: true,
       child: RefreshIndicator(
         onRefresh: () => _load(showToastOnError: true),

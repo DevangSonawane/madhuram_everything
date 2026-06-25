@@ -1,41 +1,42 @@
 import 'dart:async';
 
-import 'package:redux/redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../store/app_state.dart';
-import '../store/auth_actions.dart';
 import 'access_control_store.dart';
 import 'api_client.dart';
 import 'auth_storage.dart';
+import '../providers/legacy_session_providers.dart';
+import '../utils/state_signature.dart';
 
 class AuthRefreshService {
   AuthRefreshService._();
   static final AuthRefreshService instance = AuthRefreshService._();
 
-  Store<AppState>? _store;
-  StreamSubscription<AppState>? _storeSub;
+  ProviderContainer? _container;
+  ProviderSubscription<AuthSessionView>? _authSubscription;
   Timer? _refreshTimer;
 
   String? _activeUserId;
   String? _activeToken;
   int _refreshGeneration = 0;
 
-  Future<void> initialize(Store<AppState> store) async {
-    _store = store;
-    _storeSub?.cancel();
-    _storeSub = store.onChange.listen((state) {
-      _handleAuthStateChange(state.auth.user);
-    });
+  Future<void> initialize(ProviderContainer container) async {
+    _container = container;
+    _authSubscription?.close();
+    _authSubscription = container.listen<AuthSessionView>(
+      authSessionProvider,
+      (_, next) => _handleAuthStateChange(next.user),
+    );
 
-    _handleAuthStateChange(store.state.auth.user);
+    _handleAuthStateChange(container.read(authSessionProvider).user);
   }
 
   Future<void> dispose() async {
-    _storeSub?.cancel();
-    _storeSub = null;
+    _authSubscription?.close();
+    _authSubscription = null;
     _refreshTimer?.cancel();
     _refreshTimer = null;
-    _store = null;
+    _container = null;
     _activeUserId = null;
     _activeToken = null;
     _refreshGeneration += 1;
@@ -76,11 +77,11 @@ class AuthRefreshService {
   }
 
   Future<void> refreshUser({bool force = false}) async {
-    final store = _store;
-    if (store == null) return;
+    final container = _container;
+    if (container == null) return;
     final generationAtStart = _refreshGeneration;
 
-    final current = store.state.auth.user;
+    final current = container.read(authSessionProvider).user;
     final userId = _resolveUserId(current);
     final token = current?['token']?.toString();
     if (userId == null || userId.isEmpty || token == null || token.isEmpty) {
@@ -121,9 +122,13 @@ class AuthRefreshService {
       accessControl: accessControl,
     );
 
+    if (sameMapState(current, resolvedUser)) {
+      return;
+    }
+
     await AuthStorage.setUser(resolvedUser);
     if (force || generationAtStart == _refreshGeneration) {
-      store.dispatch(LoginSuccess(resolvedUser));
+      container.read(authSessionProvider.notifier).sync(resolvedUser);
     }
   }
 

@@ -6,13 +6,13 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:redux/redux.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../store/app_state.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
+import '../providers/legacy_session_providers.dart';
 
 class PushNotificationService {
   PushNotificationService._();
@@ -35,7 +35,7 @@ class PushNotificationService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  StreamSubscription<AppState>? _storeSub;
+  ProviderSubscription<AuthSessionView>? _authSubscription;
   StreamSubscription<String>? _tokenRefreshSub;
   StreamSubscription<RemoteMessage>? _messageSub;
   StreamSubscription<RemoteMessage>? _messageOpenedSub;
@@ -51,22 +51,25 @@ class PushNotificationService {
   String? _pendingRoute;
   Map<String, dynamic>? _pendingRouteArguments;
 
-  Future<void> initialize(Store<AppState> store) async {
+  Future<void> initialize(ProviderContainer container) async {
     debugPrint('[PushNotificationService] initialize()');
-    _storeSub?.cancel();
-    _storeSub = store.onChange.listen((state) {
-      debugPrint('[PushNotificationService] store changed, checking auth state');
-      _handleAuthStateChange(state.auth.user);
-    });
+    _authSubscription?.close();
+    _authSubscription = container.listen<AuthSessionView>(
+      authSessionProvider,
+      (_, next) {
+        debugPrint('[PushNotificationService] auth changed, checking state');
+        _handleAuthStateChange(next.user);
+      },
+    );
 
     await _ensureLocalNotificationsReady();
-    await _handleAuthStateChange(store.state.auth.user);
+    await _handleAuthStateChange(container.read(authSessionProvider).user);
     await _processPendingNavigation();
   }
 
   Future<void> dispose() async {
-    _storeSub?.cancel();
-    _storeSub = null;
+    _authSubscription?.close();
+    _authSubscription = null;
     await _tokenRefreshSub?.cancel();
     _tokenRefreshSub = null;
     await _messageSub?.cancel();

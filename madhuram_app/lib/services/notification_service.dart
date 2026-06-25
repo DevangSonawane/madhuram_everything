@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:redux/redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../store/app_state.dart';
-import '../store/notification_actions.dart';
+import '../providers/legacy_session_providers.dart';
 import 'api_client.dart';
 
 class NotificationService {
@@ -16,8 +16,8 @@ class NotificationService {
     defaultValue: false,
   );
 
-  Store<AppState>? _store;
-  StreamSubscription<AppState>? _storeSub;
+  ProviderContainer? _container;
+  ProviderSubscription<AuthSessionView>? _authSubscription;
   WebSocketChannel? _channel;
   StreamSubscription? _socketSub;
   Timer? _heartbeat;
@@ -27,62 +27,65 @@ class NotificationService {
   String? _activeUserId;
   String? _activeToken;
 
-  Future<void> initialize(Store<AppState> store) async {
-    _store = store;
-    _storeSub?.cancel();
-    _storeSub = store.onChange.listen((state) {
-      _handleAuthStateChange(state.auth.user);
-    });
+  Future<void> initialize(ProviderContainer container) async {
+    _container = container;
+    _authSubscription?.close();
+    _authSubscription = container.listen<AuthSessionView>(
+      authSessionProvider,
+      (_, next) => _handleAuthStateChange(next.user),
+    );
 
-    await _handleAuthStateChange(store.state.auth.user);
+    await _handleAuthStateChange(container.read(authSessionProvider).user);
     _startPolling();
   }
 
   Future<void> dispose() async {
-    _storeSub?.cancel();
-    _storeSub = null;
+    _authSubscription?.close();
+    _authSubscription = null;
     _pollTimer?.cancel();
     _pollTimer = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _disconnectSocket();
-    _store = null;
+    _container = null;
     _activeUserId = null;
     _activeToken = null;
   }
 
   Future<void> refreshNotifications() async {
-    final store = _store;
-    if (store == null) return;
+    final container = _container;
+    if (container == null) return;
 
-    final user = store.state.auth.user;
+    final user = container.read(authSessionProvider).user;
     final userId = _resolveUserId(user);
     if (userId == null || userId.isEmpty) {
-      store.dispatch(FetchNotificationsSuccess(const []));
+      container.read(notificationSessionProvider.notifier).clear();
       return;
     }
 
-    store.dispatch(FetchNotificationsStart());
+    container.read(notificationSessionProvider.notifier).setLoading(true);
     final result = await ApiClient.getNotifications(
       userId: userId,
       limit: 30,
       offset: 0,
     );
     if (result['success'] != true) {
-      store.dispatch(FetchNotificationsSuccess(const []));
+      container
+          .read(notificationSessionProvider.notifier)
+          .replaceAll(const <NotificationItem>[]);
       return;
     }
 
     final data = result['data'];
     final payloadList = _extractNotifications(data);
     final items = payloadList.map(_toNotificationItem).toList();
-    store.dispatch(FetchNotificationsSuccess(items));
+    container.read(notificationSessionProvider.notifier).replaceAll(items);
   }
 
   Future<void> markAsRead(String notificationId) async {
-    final store = _store;
-    if (store == null || notificationId.isEmpty) return;
-    store.dispatch(MarkNotificationAsRead(notificationId));
+    final container = _container;
+    if (container == null || notificationId.isEmpty) return;
+    container.read(notificationSessionProvider.notifier).markRead(notificationId);
     final result = await ApiClient.markNotificationRead(notificationId);
     if (result['success'] != true) {
       await refreshNotifications();
@@ -90,11 +93,11 @@ class NotificationService {
   }
 
   Future<void> markAllAsRead() async {
-    final store = _store;
-    if (store == null) return;
-    final userId = _resolveUserId(store.state.auth.user);
+    final container = _container;
+    if (container == null) return;
+    final userId = _resolveUserId(container.read(authSessionProvider).user);
     if (userId == null || userId.isEmpty) return;
-    store.dispatch(MarkAllNotificationsAsRead());
+    container.read(notificationSessionProvider.notifier).markAllRead();
     final result = await ApiClient.markAllNotificationsRead(userId: userId);
     if (result['success'] != true) {
       await refreshNotifications();
@@ -102,9 +105,9 @@ class NotificationService {
   }
 
   Future<void> deleteNotification(String notificationId) async {
-    final store = _store;
-    if (store == null || notificationId.isEmpty) return;
-    store.dispatch(RemoveNotification(notificationId));
+    final container = _container;
+    if (container == null || notificationId.isEmpty) return;
+    container.read(notificationSessionProvider.notifier).remove(notificationId);
     final result = await ApiClient.deleteNotification(notificationId);
     if (result['success'] != true) {
       await refreshNotifications();
@@ -124,7 +127,7 @@ class NotificationService {
 
     if (userId == null || userId.isEmpty || token == null || token.isEmpty) {
       _disconnectSocket();
-      _store?.dispatch(ClearNotifications());
+      _container?.read(notificationSessionProvider.notifier).clear();
       return;
     }
 
@@ -197,8 +200,8 @@ class NotificationService {
   }
 
   void _handleSocketMessage(dynamic raw) {
-    final store = _store;
-    if (store == null || raw == null) return;
+    final container = _container;
+    if (container == null || raw == null) return;
 
     Map<String, dynamic>? msg;
     try {
@@ -223,7 +226,7 @@ class NotificationService {
           data['user_id'].toString() != _activeUserId) {
         return;
       }
-      store.dispatch(UpsertNotification(next));
+      container.read(notificationSessionProvider.notifier).upsert(next);
     }
   }
 

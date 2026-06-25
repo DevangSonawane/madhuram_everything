@@ -2,12 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../components/ui/mad_card.dart';
 import '../components/ui/mad_button.dart';
@@ -15,16 +14,18 @@ import '../components/ui/stat_card.dart';
 import '../components/layout/main_layout.dart';
 import '../utils/responsive.dart';
 import '../utils/access_control.dart';
+import '../utils/app_navigation.dart';
+import '../providers/legacy_session_providers.dart';
 
 /// Dashboard page aligned with React dashboard endpoints and metrics
-class DashboardPage extends StatefulWidget {
+class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
 
   @override
-  State<DashboardPage> createState() => _DashboardPageState();
+  ConsumerState<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends ConsumerState<DashboardPage> {
   static const bool _enableRealtimeSocket = bool.fromEnvironment(
     'ENABLE_DASHBOARD_SOCKET',
     defaultValue: false,
@@ -51,14 +52,12 @@ class _DashboardPageState extends State<DashboardPage> {
   Timer? _activityHeartbeat;
   Timer? _activityReconnectTimer;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    final store = StoreProvider.of<AppState>(context);
-    final user = store.state.auth.user;
-    final selectedProject = store.state.project.selectedProject;
-
+  void _syncSessionScope({
+    required AuthSessionView auth,
+    required ProjectSessionView project,
+  }) {
+    final user = auth.user;
+    final selectedProject = project.selectedProject;
     final userId = _resolveUserId(user);
     final projectId = _resolveProjectId(selectedProject);
     final token = user?['token']?.toString();
@@ -471,12 +470,11 @@ class _DashboardPageState extends State<DashboardPage> {
     _activityReconnectTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
 
-      final store = StoreProvider.of<AppState>(context, listen: false);
-      final latestUserId = _resolveUserId(store.state.auth.user);
-      final latestToken = store.state.auth.user?['token']?.toString();
-      final latestProjectId = _resolveProjectId(
-        store.state.project.selectedProject,
-      );
+      final latestAuth = ref.read(authSessionProvider);
+      final latestProject = ref.read(projectSessionProvider);
+      final latestUserId = _resolveUserId(latestAuth.user);
+      final latestToken = latestAuth.user?['token']?.toString();
+      final latestProjectId = _resolveProjectId(latestProject.selectedProject);
 
       if (latestUserId != userId ||
           latestToken != token ||
@@ -552,23 +550,26 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, _DashboardViewModel>(
-      distinct: true,
-      converter: (store) => _DashboardViewModel(
-        isAuthenticated: store.state.auth.isAuthenticated,
-        user: store.state.auth.user,
-        selectedProject: store.state.project.selectedProject,
-      ),
-      builder: (context, vm) {
-        return _buildDashboard(context, vm);
-      },
-    );
+    final auth = ref.watch(authSessionProvider);
+    final project = ref.watch(projectSessionProvider);
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncSessionScope(auth: auth, project: project);
+      });
+    }
+    return _buildDashboard(context, auth, project);
   }
 
-  Widget _buildDashboard(BuildContext context, _DashboardViewModel vm) {
+  Widget _buildDashboard(
+    BuildContext context,
+    AuthSessionView auth,
+    ProjectSessionView project,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
-    final canViewAttendance = hasPageAccess(vm.user, '/attendance');
+    final user = auth.user;
+    final canViewAttendance = hasPageAccess(user, '/attendance');
 
     final stats = _stats;
     final cardData = [
@@ -616,7 +617,7 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(context, vm, isDark, responsive),
+            _buildHeader(context, auth, project, isDark, responsive),
             SizedBox(
               height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
             ),
@@ -645,7 +646,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 context,
                 isDark,
                 responsive,
-                vm,
+                project,
               ),
 
             if (canViewAttendance)
@@ -698,12 +699,14 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildHeader(
     BuildContext context,
-    _DashboardViewModel vm,
+    AuthSessionView auth,
+    ProjectSessionView project,
     bool isDark,
     Responsive responsive,
   ) {
-    final userId = _resolveUserId(vm.user);
-    final projectId = _resolveProjectId(vm.selectedProject);
+    final userId = _resolveUserId(auth.user);
+    final projectId = _resolveProjectId(project.selectedProject);
+    final projectName = project.selectedProjectName ?? 'selected project';
 
     Future<void> refresh() async {
       if (userId == null || userId.isEmpty) return;
@@ -742,7 +745,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   const SizedBox(height: 4),
                   Text(
                     projectId != null && projectId.isNotEmpty
-                        ? 'Live project metrics for ${vm.projectName}.'
+                        ? 'Live project metrics for $projectName.'
                         : 'Live overall operational metrics.',
                     style: TextStyle(
                       fontSize: responsive.value(
@@ -776,7 +779,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     text: 'New Request',
                     icon: LucideIcons.plus,
                     onPressed: () =>
-                        Navigator.pushNamed(context, '/purchase-requests'),
+                        context.appPush('/purchase-requests'),
                   ),
                 ],
               ),
@@ -804,7 +807,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   icon: LucideIcons.plus,
                   size: ButtonSize.sm,
                   onPressed: () =>
-                      Navigator.pushNamed(context, '/purchase-requests'),
+                      context.appPush('/purchase-requests'),
                 ),
               ),
             ],
@@ -1147,8 +1150,9 @@ class _DashboardPageState extends State<DashboardPage> {
     BuildContext context,
     bool isDark,
     Responsive responsive,
-    _DashboardViewModel vm,
+    ProjectSessionView project,
   ) {
+    final projectName = project.selectedProjectName ?? 'selected project';
     return MadCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1159,7 +1163,7 @@ class _DashboardPageState extends State<DashboardPage> {
               'Your latest attendance submissions for this project.',
             ),
             action: GestureDetector(
-              onTap: () => Navigator.pushNamed(context, '/attendance/my'),
+              onTap: () => context.appPush('/attendance/my'),
               child: Text(
                 'View all',
                 style: TextStyle(
@@ -1180,7 +1184,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 ? Padding(
                     padding: const EdgeInsets.all(12),
                     child: Text(
-                      'No attendance records found.',
+                      'No attendance records found for $projectName.',
                       style: TextStyle(
                         color: isDark
                             ? AppTheme.darkMutedForeground
@@ -1392,33 +1396,4 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
-}
-
-class _DashboardViewModel {
-  final bool isAuthenticated;
-  final Map<String, dynamic>? user;
-  final Map<String, dynamic>? selectedProject;
-
-  _DashboardViewModel({
-    required this.isAuthenticated,
-    required this.user,
-    required this.selectedProject,
-  });
-
-  String get projectName =>
-      selectedProject?['name']?.toString() ??
-      selectedProject?['project_name']?.toString() ??
-      'selected project';
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _DashboardViewModel &&
-            isAuthenticated == other.isAuthenticated &&
-            user == other.user &&
-            selectedProject == other.selectedProject;
-  }
-
-  @override
-  int get hashCode => Object.hash(isAuthenticated, user, selectedProject);
 }

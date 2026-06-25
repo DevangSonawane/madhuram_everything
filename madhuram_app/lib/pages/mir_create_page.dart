@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -7,9 +6,9 @@ import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
 import '../services/file_service.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../utils/riverpod_context.dart';
 
 class MIRCreatePage extends StatefulWidget {
   const MIRCreatePage({super.key});
@@ -74,9 +73,8 @@ class _MIRCreatePageState extends State<MIRCreatePage> {
   }
 
   String _selectedProjectId() {
-    final store = StoreProvider.of<AppState>(context);
-    return store.state.project.selectedProject?['project_id']?.toString() ??
-        store.state.project.selectedProjectId ??
+    return context.appProject.selectedProject?['project_id']?.toString() ??
+        context.appProject.selectedProjectId ??
         '';
   }
 

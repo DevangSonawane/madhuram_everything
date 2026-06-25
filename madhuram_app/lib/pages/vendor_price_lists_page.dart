@@ -7,6 +7,7 @@ import '../models/vendor.dart';
 import '../models/vendor_price_list.dart';
 import '../services/api_client.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
 
 class VendorPriceListsPage extends StatefulWidget {
   final String vendorId;
@@ -102,10 +103,9 @@ class _VendorPriceListsPageState extends State<VendorPriceListsPage> {
   }
 
   Future<void> _openCreatePage() async {
-    final created = await Navigator.pushNamed(
-      context,
+    final created = await context.appPush(
       '/vendors/price-lists/create',
-      arguments: {'vendorId': widget.vendorId, 'projectId': widget.projectId},
+      extra: {'vendorId': widget.vendorId, 'projectId': widget.projectId},
     );
     if (created == true && mounted) {
       await _loadData();
@@ -113,10 +113,9 @@ class _VendorPriceListsPageState extends State<VendorPriceListsPage> {
   }
 
   Future<void> _openViewPage(String priceListId) async {
-    await Navigator.pushNamed(
-      context,
+    await context.appPush(
       '/vendors/price-lists/view',
-      arguments: {
+      extra: {
         'vendorId': widget.vendorId,
         'projectId': widget.projectId,
         'priceListId': priceListId,

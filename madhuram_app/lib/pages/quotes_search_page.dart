@@ -1,14 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/riverpod_context.dart';
 
 class QuotesSearchPage extends StatefulWidget {
   const QuotesSearchPage({super.key});
@@ -46,10 +45,9 @@ class _QuotesSearchPageState extends State<QuotesSearchPage> {
       _searched = true;
     });
 
-    final store = StoreProvider.of<AppState>(context);
     final projectId =
-        store.state.project.selectedProject?['project_id']?.toString() ??
-        store.state.project.selectedProjectId;
+        context.appProject.selectedProject?['project_id']?.toString() ??
+        context.appProject.selectedProjectId;
 
     try {
       final result = await ApiClient.searchInventoryTrace(

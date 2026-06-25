@@ -19,27 +19,27 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/project.dart';
 import '../services/api_client.dart';
+import '../utils/app_navigation.dart';
 import '../services/auth_refresh_service.dart';
 import '../services/auth_storage.dart';
 import '../services/file_service.dart';
-import '../store/app_state.dart';
-import '../store/project_actions.dart';
 import '../theme/app_theme.dart';
+import '../providers/legacy_session_providers.dart';
 import '../utils/responsive.dart';
 
-class AttendancePage extends StatefulWidget {
+class AttendancePage extends ConsumerStatefulWidget {
   const AttendancePage({super.key});
 
   @override
-  State<AttendancePage> createState() => _AttendancePageState();
+  ConsumerState<AttendancePage> createState() => _AttendancePageState();
 }
 
-class _AttendancePageState extends State<AttendancePage>
+class _AttendancePageState extends ConsumerState<AttendancePage>
     with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   File? _selfie;
@@ -75,6 +75,9 @@ class _AttendancePageState extends State<AttendancePage>
   bool _todayCheckedIn = false;
   bool _todayCheckedOut = false;
   String? _todayAttendanceId;
+
+  AuthSessionView get _authSession => ref.read(authSessionProvider);
+  ProjectSessionView get _projectSession => ref.read(projectSessionProvider);
 
   String _todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -321,15 +324,14 @@ class _AttendancePageState extends State<AttendancePage>
 
   Future<void> _ensureSelectedProjectHasLocationData() async {
     if (_projectHydrationFuture != null) return _projectHydrationFuture;
-    final store = StoreProvider.of<AppState>(context);
-    final selected = store.state.project.selectedProject;
+    final selected = _projectSession.selectedProject;
     final projectId =
         selected?['project_id']?.toString() ?? selected?['id']?.toString();
     if (projectId == null || projectId.trim().isEmpty) return;
     if (_hydratedProjectId == projectId) return;
 
     // Fast path: if the full project list is already in Redux, use it without any network call.
-    final cached = store.state.project.projects;
+    final cached = _projectSession.projects;
     if (cached.isNotEmpty) {
       final match = cached.firstWhere(
         (p) =>
@@ -353,7 +355,11 @@ class _AttendancePageState extends State<AttendancePage>
               'lat=${hydratedLatLng.lat} lng=${hydratedLatLng.lng}',
             );
           }
-          store.dispatch(SelectProject(hydrated));
+          ref.read(projectSessionProvider.notifier).sync(
+                projects: _projectSession.projects,
+                selectedProject: hydrated,
+                isLoading: _projectSession.isLoading,
+              );
           _hydratedProjectId = projectId;
           if (mounted) setState(() {});
           return;
@@ -416,7 +422,11 @@ class _AttendancePageState extends State<AttendancePage>
           }
           final hydratedLatLng = _resolveProjectLatLng(hydrated);
           if (hydratedLatLng != null) {
-            store.dispatch(SelectProject(hydrated));
+            ref.read(projectSessionProvider.notifier).sync(
+                  projects: _projectSession.projects,
+                  selectedProject: hydrated,
+                  isLoading: _projectSession.isLoading,
+                );
             _hydratedProjectId = projectId;
             if (mounted) setState(() {});
             return;
@@ -425,7 +435,7 @@ class _AttendancePageState extends State<AttendancePage>
 
         // Fallback: some deployments return full `location_data` only in the project list.
         // If Redux already has projects, don't refetch the whole list again.
-        if (store.state.project.projects.isNotEmpty) return;
+        if (_projectSession.projects.isNotEmpty) return;
 
         final listRes = await ApiClient.getProjects().timeout(
           const Duration(seconds: 8),
@@ -442,7 +452,11 @@ class _AttendancePageState extends State<AttendancePage>
               .map((e) => Map<String, dynamic>.from(e))
               .toList();
           // Cache for subsequent pages / fast-path hydration.
-          store.dispatch(FetchProjectsSuccess(list));
+          ref.read(projectSessionProvider.notifier).sync(
+                projects: list,
+                selectedProject: _projectSession.selectedProject,
+                isLoading: false,
+              );
           final match = list.firstWhere(
             (p) =>
                 (p['project_id']?.toString() ?? p['id']?.toString() ?? '') ==
@@ -465,7 +479,11 @@ class _AttendancePageState extends State<AttendancePage>
               );
             }
             if (hydratedLatLng != null) {
-              store.dispatch(SelectProject(hydrated));
+              ref.read(projectSessionProvider.notifier).sync(
+                    projects: list,
+                    selectedProject: hydrated,
+                    isLoading: false,
+                  );
               _hydratedProjectId = projectId;
               if (mounted) setState(() {});
               return;
@@ -789,8 +807,7 @@ class _AttendancePageState extends State<AttendancePage>
         _locationName = null;
       });
 
-      final store = StoreProvider.of<AppState>(context);
-      final project = store.state.project.selectedProject;
+    final project = _projectSession.selectedProject;
       final projectLatLng = _resolveProjectLatLng(project);
       if (projectLatLng == null) {
         unawaited(_ensureSelectedProjectHasLocationData());
@@ -852,9 +869,8 @@ class _AttendancePageState extends State<AttendancePage>
   }
 
   void _syncUserContext({bool force = false}) {
-    final store = StoreProvider.of<AppState>(context);
-    final user = store.state.auth.user;
-    final project = store.state.project.selectedProject;
+    final user = _authSession.user;
+    final project = _projectSession.selectedProject;
     final resolvedName = _resolveUserName(user);
     final resolvedUserId = _resolveUserId(user);
     final resolvedPhone = _resolveUserPhone(user);
@@ -1315,8 +1331,7 @@ class _AttendancePageState extends State<AttendancePage>
       return;
     }
 
-    final store = StoreProvider.of<AppState>(context);
-    final project = store.state.project.selectedProject;
+    final project = _projectSession.selectedProject;
     final projectLatLng = _resolveProjectLatLng(project);
     if (_debugGeoFence) {
       debugPrint(
@@ -1385,7 +1400,7 @@ class _AttendancePageState extends State<AttendancePage>
 
     setState(() => _submitting = true);
     try {
-      final user = store.state.auth.user;
+      final user = _authSession.user;
       final userId = _resolveUserId(user);
       final userName = _resolveUserName(user);
       final userPhone = _resolveUserPhone(user);
@@ -1606,8 +1621,7 @@ class _AttendancePageState extends State<AttendancePage>
         _checkoutLocationName = null;
       });
 
-      final store = StoreProvider.of<AppState>(context);
-      final project = store.state.project.selectedProject;
+      final project = _projectSession.selectedProject;
       final projectLatLng = _resolveProjectLatLng(project);
       if (projectLatLng == null) {
         unawaited(_ensureSelectedProjectHasLocationData());
@@ -1735,8 +1749,7 @@ class _AttendancePageState extends State<AttendancePage>
       return;
     }
 
-    final store = StoreProvider.of<AppState>(context);
-    final project = store.state.project.selectedProject;
+    final project = _projectSession.selectedProject;
     final projectLatLng = _resolveProjectLatLng(project);
     if (_debugGeoFence) {
       debugPrint(
@@ -1819,7 +1832,7 @@ class _AttendancePageState extends State<AttendancePage>
       return;
     }
     try {
-      final user = store.state.auth.user;
+      final user = _authSession.user;
       final userId = _resolveUserId(user);
       final userName = _resolveUserName(user);
       final userIdValue = userId;
@@ -2074,8 +2087,7 @@ class _AttendancePageState extends State<AttendancePage>
         ? AppTheme.darkMutedForeground
         : AppTheme.lightMutedForeground;
 
-    final store = StoreProvider.of<AppState>(context);
-    final project = store.state.project.selectedProject;
+    final project = _projectSession.selectedProject;
     final projectLatLng = _resolveProjectLatLng(project);
     final distanceMeters = (projectLatLng != null && _position != null)
         ? _haversineDistanceMeters(
@@ -2198,8 +2210,7 @@ class _AttendancePageState extends State<AttendancePage>
         ? AppTheme.darkMutedForeground
         : AppTheme.lightMutedForeground;
 
-    final store = StoreProvider.of<AppState>(context);
-    final project = store.state.project.selectedProject;
+    final project = _projectSession.selectedProject;
     final projectLatLng = _resolveProjectLatLng(project);
     final distanceMeters = (projectLatLng != null && _checkoutPosition != null)
         ? _haversineDistanceMeters(
@@ -2324,8 +2335,7 @@ class _AttendancePageState extends State<AttendancePage>
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
 
-    final store = StoreProvider.of<AppState>(context);
-    final selectedProject = store.state.project.selectedProject;
+    final selectedProject = _projectSession.selectedProject;
     final projectLatLng = _resolveProjectLatLng(selectedProject);
     if (projectLatLng == null) {
       unawaited(_ensureSelectedProjectHasLocationData());
@@ -2674,12 +2684,7 @@ class _AttendancePageState extends State<AttendancePage>
                               MadButton(
                                 text: 'View Attendance',
                                 icon: LucideIcons.arrowRight,
-                                onPressed: () {
-                                  Navigator.pushNamed(
-                                    context,
-                                    '/attendance/my',
-                                  );
-                                },
+                                onPressed: () => context.appPush('/attendance/my'),
                               ),
                             ],
                           ),

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart' hide Material;
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/inventory.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
 import '../utils/formatters.dart';
 import '../utils/responsive.dart';
+import '../utils/riverpod_context.dart';
 
 class AddInventoryPage extends StatefulWidget {
   final bool fullScreen;
@@ -105,9 +105,8 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
       return false;
     }
 
-    final store = StoreProvider.of<AppState>(context);
-    final selectedProjectId = store.state.project.selectedProjectId;
-    final user = store.state.auth.user ?? <String, dynamic>{};
+    final selectedProjectId = context.appProject.selectedProjectId;
+    final user = context.appAuth.user ?? <String, dynamic>{};
     final userId =
         (user['user_id'] ?? user['id'] ?? user['uid'])?.toString();
     final userName = (user['user_name'] ??
@@ -696,7 +695,7 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
       route: isFullScreen ? '/projects/inventory/full' : '/inventory/add',
       headerLeadingIcon: LucideIcons.arrowLeft,
       onHeaderLeadingPressed: () =>
-          Navigator.pushReplacementNamed(context, '/projects'),
+          context.appGo('/projects'),
       requireProject: false,
       child: SingleChildScrollView(
         child: Column(
@@ -976,28 +975,19 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                 text: 'Back',
                 variant: ButtonVariant.outline,
                 icon: LucideIcons.arrowLeft,
-                onPressed: () => Navigator.pushReplacementNamed(
-                  context,
-                  '/projects/inventory/add',
-                ),
+                onPressed: () => context.appGo('/projects/inventory/add'),
               )
             else ...[
               MadButton(
                 text: 'History',
                 variant: ButtonVariant.outline,
                 icon: LucideIcons.history,
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  '/projects/inventory/history',
-                ),
+                onPressed: () => context.appPush('/projects/inventory/history'),
               ),
               MadButton(
                 text: 'Full screen',
                 variant: ButtonVariant.outline,
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  '/projects/inventory/full',
-                ),
+                onPressed: () => context.appPush('/projects/inventory/full'),
               ),
             ],
           ],
@@ -1074,28 +1064,19 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                 text: 'Back',
                 variant: ButtonVariant.outline,
                 icon: LucideIcons.arrowLeft,
-                onPressed: () => Navigator.pushReplacementNamed(
-                  context,
-                  '/projects/inventory/add',
-                ),
+                onPressed: () => context.appGo('/projects/inventory/add'),
               )
             else ...[
               MadButton(
                 text: 'History',
                 variant: ButtonVariant.outline,
                 icon: LucideIcons.history,
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  '/projects/inventory/history',
-                ),
+                onPressed: () => context.appPush('/projects/inventory/history'),
               ),
               MadButton(
                 text: 'Full screen',
                 variant: ButtonVariant.outline,
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  '/projects/inventory/full',
-                ),
+                onPressed: () => context.appPush('/projects/inventory/full'),
               ),
             ],
             SizedBox(
@@ -1384,10 +1365,9 @@ class _AddInventoryPageState extends State<AddInventoryPage> {
                   text: 'Track History',
                   size: ButtonSize.sm,
                   variant: ButtonVariant.outline,
-                  onPressed: () => Navigator.pushNamed(
-                    context,
+                  onPressed: () => context.appPush(
                     '/projects/inventory/item-history',
-                    arguments: item.id,
+                    extra: item.id,
                   ),
                 ),
                 MadButton(

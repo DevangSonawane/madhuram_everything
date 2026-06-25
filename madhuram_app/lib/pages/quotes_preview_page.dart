@@ -6,6 +6,7 @@ import '../components/ui/components.dart';
 import '../services/api_client.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../utils/app_navigation.dart';
 
 class QuotesPreviewPage extends StatefulWidget {
   final String quotationId;
@@ -134,7 +135,7 @@ class _QuotesPreviewPageState extends State<QuotesPreviewPage> {
       showSidebar: false,
       headerLeadingIcon: LucideIcons.arrowLeft,
       onHeaderLeadingPressed: () =>
-          Navigator.pushReplacementNamed(context, '/projects'),
+          context.appGo('/projects'),
       requireProject: true,
       child: RefreshIndicator(
         onRefresh: () => _load(showToastOnError: true),

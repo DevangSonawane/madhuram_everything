@@ -9,6 +9,7 @@ import '../services/api_client.dart';
 import '../services/file_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../utils/app_navigation.dart';
 
 class ChallanDetailPage extends StatefulWidget {
   final String challanId;
@@ -229,14 +230,14 @@ class _ChallanDetailPageState extends State<ChallanDetailPage> {
 
   void _openMIR() {
     if (_challan == null) return;
-    Navigator.pushNamed(context, '/mir', arguments: {
+    context.appPush('/mir', extra: {
       'challan_number': _challan!.challanNumber,
     });
   }
 
   void _openITR() {
     if (_challan == null) return;
-    Navigator.pushNamed(context, '/itr', arguments: {
+    context.appPush('/itr', extra: {
       'challan_number': _challan!.challanNumber,
     });
   }

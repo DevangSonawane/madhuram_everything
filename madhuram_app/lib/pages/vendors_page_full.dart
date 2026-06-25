@@ -1,25 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/vendor.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
 import '../utils/responsive.dart';
+import '../providers/legacy_session_providers.dart';
 
-class VendorsPageFull extends StatefulWidget {
+class VendorsPageFull extends ConsumerStatefulWidget {
   final bool embedded;
 
   const VendorsPageFull({super.key, this.embedded = false});
 
   @override
-  State<VendorsPageFull> createState() => _VendorsPageFullState();
+  ConsumerState<VendorsPageFull> createState() => _VendorsPageFullState();
 }
 
-class _VendorsPageFullState extends State<VendorsPageFull> {
+class _VendorsPageFullState extends ConsumerState<VendorsPageFull> {
   static const List<String> _statusOptions = ['active', 'inactive', 'blocked'];
 
   final TextEditingController _searchController = TextEditingController();
@@ -219,7 +220,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
   }
 
   Future<void> _goToAddVendorPage() async {
-    final created = await Navigator.pushNamed(context, '/vendors/new');
+    final created = await context.appPush('/vendors/new');
     if (!mounted) return;
     if (created == true) {
       await _loadVendors();
@@ -227,10 +228,9 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
   }
 
   void _openVendorPriceLists(Vendor vendor, {bool openLatest = false}) {
-    Navigator.pushNamed(
-      context,
+    context.appPush(
       openLatest ? '/vendors/view-price' : '/vendors/price-lists',
-      arguments: {
+      extra: {
         'vendorId': vendor.id,
         'projectId': vendor.projectId ?? _selectedProjectId,
         'openLatest': openLatest,
@@ -701,7 +701,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                         if (Navigator.of(context).canPop()) {
                           Navigator.of(context).pop();
                         } else {
-                          Navigator.pushNamed(context, '/projects');
+                          context.appPush('/projects');
                         }
                       },
                     ),
@@ -711,7 +711,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                       icon: LucideIcons.arrowRightLeft,
                       variant: ButtonVariant.outline,
                       onPressed: () =>
-                          Navigator.pushNamed(context, '/vendor-comparison'),
+                          context.appPush('/vendor-comparison'),
                     ),
                     const SizedBox(width: 12),
                     MadButton(
@@ -734,7 +734,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
                 if (Navigator.of(context).canPop()) {
                   Navigator.of(context).pop();
                 } else {
-                  Navigator.pushNamed(context, '/projects');
+                  context.appPush('/projects');
                 }
               },
             ),
@@ -745,7 +745,7 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
               variant: ButtonVariant.outline,
               width: double.infinity,
               onPressed: () =>
-                  Navigator.pushNamed(context, '/vendor-comparison'),
+                  context.appPush('/vendor-comparison'),
             ),
             const SizedBox(height: 10),
             MadButton(
@@ -1572,62 +1572,40 @@ class _VendorsPageFullState extends State<VendorsPageFull> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
+    final projectId = ref.watch(projectSessionProvider).selectedProjectId;
+    _selectedProjectId = projectId;
 
-    return StoreConnector<AppState, _VendorsViewModel>(
-      distinct: true,
-      converter: (store) =>
-          _VendorsViewModel(projectId: store.state.project.selectedProjectId),
-      builder: (context, vm) {
-        _selectedProjectId = vm.projectId;
+    if (_lastLoadedProjectId != _selectedProjectId) {
+      _lastLoadedProjectId = _selectedProjectId;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadVendors());
+    }
 
-        if (_lastLoadedProjectId != _selectedProjectId) {
-          _lastLoadedProjectId = _selectedProjectId;
-          WidgetsBinding.instance.addPostFrameCallback((_) => _loadVendors());
-        }
-
-        final content = SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHero(isDark, responsive.isMobile),
-              const SizedBox(height: 16),
-              _buildStatsRow(responsive),
-              const SizedBox(height: 16),
-              _buildDirectoryCard(
-                isDark,
-                responsive,
-              ),
-            ],
+    final content = SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHero(isDark, responsive.isMobile),
+          const SizedBox(height: 16),
+          _buildStatsRow(responsive),
+          const SizedBox(height: 16),
+          _buildDirectoryCard(
+            isDark,
+            responsive,
           ),
-        );
+        ],
+      ),
+    );
 
-        if (widget.embedded) {
-          return content;
-        }
+    if (widget.embedded) {
+      return content;
+    }
 
-        return ProtectedRoute(
-          title: 'Vendors',
-          route: '/vendors',
-          showSidebar: false,
-          requireProject: false,
-          child: content,
-        );
-      },
+    return ProtectedRoute(
+      title: 'Vendors',
+      route: '/vendors',
+      showSidebar: false,
+      requireProject: false,
+      child: content,
     );
   }
-}
-
-class _VendorsViewModel {
-  final String? projectId;
-
-  const _VendorsViewModel({required this.projectId});
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _VendorsViewModel && projectId == other.projectId;
-  }
-
-  @override
-  int get hashCode => projectId.hashCode;
 }

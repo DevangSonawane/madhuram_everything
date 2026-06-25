@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
-import '../../store/app_state.dart';
 import '../../utils/access_control.dart';
+import '../../utils/app_navigation.dart';
 import '../../utils/responsive.dart';
+import '../../providers/legacy_session_providers.dart';
 import '../../ui/menu_items.dart';
 import 'sidebar.dart';
 import 'app_header.dart';
 
 /// Main layout matching React's MainLayout.jsx - Responsive version
-class MainLayout extends StatefulWidget {
+class MainLayout extends ConsumerStatefulWidget {
   final String title;
   final Widget child;
   final String currentRoute;
@@ -30,10 +31,10 @@ class MainLayout extends StatefulWidget {
   });
 
   @override
-  State<MainLayout> createState() => _MainLayoutState();
+  ConsumerState<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MainLayoutState extends State<MainLayout> {
+class _MainLayoutState extends ConsumerState<MainLayout> {
   bool _isSidebarCollapsed = false;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _redirectInProgress = false;
@@ -49,7 +50,7 @@ class _MainLayoutState extends State<MainLayout> {
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
       Navigator.pop(context);
     }
-    Navigator.pushReplacementNamed(context, route);
+    context.appGo(route);
   }
 
   Widget _buildScaffold({
@@ -135,110 +136,64 @@ class _MainLayoutState extends State<MainLayout> {
     final isDark = theme.brightness == Brightness.dark;
     final responsive = Responsive(context);
 
-    return StoreConnector<AppState, _MainLayoutViewModel>(
-      distinct: true,
-      converter: (store) => _MainLayoutViewModel(
-        isAuthenticated: store.state.auth.isAuthenticated,
-        hasSelectedProject: store.state.project.selectedProject != null,
-        projectName: store.state.project.selectedProjectName,
-        user: store.state.auth.user,
-      ),
-      onInitialBuild: (vm) {
+    final auth = ref.watch(authSessionProvider);
+    final project = ref.watch(projectSessionProvider);
+    final user = auth.user;
+    final isAuthenticated = auth.isAuthenticated;
+    final hasSelectedProject = project.selectedProject != null;
+
+    if (!isAuthenticated) {
+      if (!_redirectInProgress) {
+        _redirectInProgress = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.appGo('/login');
+        });
+      }
+      return Scaffold(
+        backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+        body: const SizedBox.shrink(),
+      );
+    }
+
+    if (widget.requireProject && !hasSelectedProject) {
+      if (!_redirectInProgress) {
+        _redirectInProgress = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.appGo('/projects');
+        });
+      }
+      return Scaffold(
+        backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+        body: const SizedBox.shrink(),
+      );
+    }
+
+    _redirectInProgress = false;
+
+    final normalizedRoute = normalizeRouteForAccess(widget.currentRoute);
+    final hasAccess = hasRouteAccess(user, normalizedRoute);
+    final visibleRoute = getFirstVisibleMenuRoute(user: user) ?? '/profile';
+
+    if (!hasAccess && visibleRoute != normalizedRoute && !_redirectInProgress) {
+      _redirectInProgress = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (_redirectInProgress) return;
-        if (!vm.isAuthenticated) {
-          _redirectInProgress = true;
-          Navigator.pushReplacementNamed(context, '/login');
-          return;
-        }
-        if (widget.requireProject && !vm.hasSelectedProject) {
-          _redirectInProgress = true;
-          Navigator.pushReplacementNamed(context, '/projects');
-        }
-      },
-      onWillChange: (prev, next) {
-        if (!mounted) return;
-        if (_redirectInProgress) return;
+        context.appGo(visibleRoute);
+      });
+    }
 
-        if (!next.isAuthenticated) {
-          _redirectInProgress = true;
-          Navigator.pushReplacementNamed(context, '/login');
-          return;
-        }
+    final content = hasAccess
+        ? widget.child
+        : const Center(child: CircularProgressIndicator());
 
-        if (widget.requireProject && !next.hasSelectedProject) {
-          _redirectInProgress = true;
-          Navigator.pushReplacementNamed(context, '/projects');
-        }
-      },
-      builder: (context, vm) {
-        if (!vm.isAuthenticated || (widget.requireProject && !vm.hasSelectedProject)) {
-          return Scaffold(
-            backgroundColor: isDark
-                ? AppTheme.darkBackground
-                : AppTheme.lightBackground,
-            body: const SizedBox.shrink(),
-          );
-        }
-
-        final normalizedRoute = normalizeRouteForAccess(widget.currentRoute);
-        final hasAccess = hasRouteAccess(vm.user, normalizedRoute);
-        final visibleRoute =
-            getFirstVisibleMenuRoute(user: vm.user) ?? '/profile';
-        final shouldRedirect = !hasAccess && visibleRoute != normalizedRoute;
-
-        if (shouldRedirect && !_redirectInProgress) {
-          _redirectInProgress = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            Navigator.of(context).pushReplacementNamed(visibleRoute);
-          });
-        }
-
-        final content = hasAccess
-            ? widget.child
-            : const Center(child: CircularProgressIndicator());
-
-        return _buildScaffold(
-          isDark: isDark,
-          responsive: responsive,
-          content: content,
-        );
-      },
+    return _buildScaffold(
+      isDark: isDark,
+      responsive: responsive,
+      content: content,
     );
   }
-}
-
-class _MainLayoutViewModel {
-  final bool isAuthenticated;
-  final bool hasSelectedProject;
-  final String? projectName;
-  final Map<String, dynamic>? user;
-
-  _MainLayoutViewModel({
-    required this.isAuthenticated,
-    required this.hasSelectedProject,
-    this.projectName,
-    this.user,
-  });
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _MainLayoutViewModel &&
-            isAuthenticated == other.isAuthenticated &&
-            hasSelectedProject == other.hasSelectedProject &&
-            projectName == other.projectName &&
-            user == other.user;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        isAuthenticated,
-        hasSelectedProject,
-        projectName,
-        user,
-      );
 }
 
 /// Protected route wrapper - wraps pages with MainLayout

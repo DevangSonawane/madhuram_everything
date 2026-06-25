@@ -1,14 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/challan.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
+import '../utils/riverpod_context.dart';
 
 class ChallansPageFull extends StatefulWidget {
   const ChallansPageFull({super.key});
@@ -100,8 +100,7 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
   }
 
   Future<void> _loadChallans() async {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId = store.state.project.selectedProjectId ?? '';
+    final projectId = context.appProject.selectedProjectId ?? '';
 
     if (projectId.isEmpty) {
       if (!mounted) return;
@@ -187,7 +186,7 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMobile = MediaQuery.of(context).size.width < 768;
     final selectedProjectId =
-        StoreProvider.of<AppState>(context).state.project.selectedProjectId ?? '';
+        context.appProject.selectedProjectId ?? '';
     if (selectedProjectId != _lastProjectId) {
       _lastProjectId = selectedProjectId;
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadChallans());
@@ -228,7 +227,7 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                 child: MadButton(
                   text: 'Record New Delivery',
                   icon: LucideIcons.truck,
-                  onPressed: () => Navigator.pushNamed(context, '/challans/new')
+                  onPressed: () => context.appPush('/challans/new')
                       .then((_) => _loadChallans()),
                 ),
               ),
@@ -351,7 +350,7 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                 MadButton(
                   text: 'Record New Delivery',
                   icon: LucideIcons.truck,
-                  onPressed: () => Navigator.pushNamed(context, '/challans/new')
+                  onPressed: () => context.appPush('/challans/new')
                       .then((_) => _loadChallans()),
                 ),
               ],
@@ -543,10 +542,9 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                           variant: ButtonVariant.outline,
                           onPressed: dc.id.isEmpty
                               ? null
-                              : () => Navigator.pushNamed(
-                                    context,
+                              : () => context.appPush(
                                     '/challans/detail',
-                                    arguments: dc.id,
+                                    extra: dc.id,
                                   ),
                         ),
                       ),
@@ -566,10 +564,9 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                                 variant: ButtonVariant.outline,
                                 onPressed: dc.challanNumber.isEmpty
                                     ? null
-                                    : () => Navigator.pushNamed(
-                                          context,
+                                    : () => context.appPush(
                                           '/mir/create',
-                                          arguments: {
+                                          extra: {
                                             'challan': dc.challanNumber,
                                           },
                                         ),
@@ -697,10 +694,9 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                         variant: ButtonVariant.outline,
                         onPressed: dc.id.isEmpty
                             ? null
-                            : () => Navigator.pushNamed(
-                                  context,
+                            : () => context.appPush(
                                   '/challans/detail',
-                                  arguments: dc.id,
+                                  extra: dc.id,
                                 ),
                       ),
                     ),
@@ -717,10 +713,9 @@ class _ChallansPageFullState extends State<ChallansPageFull> {
                               variant: ButtonVariant.outline,
                               onPressed: dc.challanNumber.isEmpty
                                   ? null
-                                  : () => Navigator.pushNamed(
-                                        context,
+                                  : () => context.appPush(
                                         '/mir/create',
-                                        arguments: {
+                                        extra: {
                                           'challan': dc.challanNumber,
                                         },
                                       ),

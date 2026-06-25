@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import '../theme/app_theme.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../utils/responsive.dart';
-import '../store/app_state.dart';
+import '../providers/legacy_session_providers.dart';
 
 /// Material Approval Sheet item (client approval workflow)
 class MASItem {
@@ -49,13 +49,13 @@ class MASItem {
 }
 
 /// Material Approval Sheet page - client approval workflow (matches React MAS.jsx)
-class MASPageFull extends StatefulWidget {
+class MASPageFull extends ConsumerStatefulWidget {
   const MASPageFull({super.key});
   @override
-  State<MASPageFull> createState() => _MASPageFullState();
+  ConsumerState<MASPageFull> createState() => _MASPageFullState();
 }
 
-class _MASPageFullState extends State<MASPageFull> {
+class _MASPageFullState extends ConsumerState<MASPageFull> {
   final List<MASItem> _items = [];
   String? _selectedProject;
   String _statusTab = 'all';
@@ -71,24 +71,19 @@ class _MASPageFullState extends State<MASPageFull> {
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
 
-    return StoreConnector<AppState, _MASViewModel>(
-      distinct: true,
-      converter: (store) => _MASViewModel(
-        projects: store.state.project.projects,
-        selectedProjectId: store.state.project.selectedProjectId,
-      ),
-      builder: (context, vm) {
-        _selectedProject ??= vm.selectedProjectId;
-        final projectOptions = vm.projects.map((p) {
-          final id = p['id']?.toString() ?? p['project_id']?.toString() ?? '';
-          final name = p['name']?.toString() ?? p['project_name']?.toString() ?? 'Project $id';
-          return MadSelectOption<String>(value: id, label: name);
-        }).toList();
+    final projectSession = ref.watch(projectSessionProvider);
+    _selectedProject ??= projectSession.selectedProjectId;
+    final projectOptions = projectSession.projects.map((p) {
+      final id = p['id']?.toString() ?? p['project_id']?.toString() ?? '';
+      final name =
+          p['name']?.toString() ?? p['project_name']?.toString() ?? 'Project $id';
+      return MadSelectOption<String>(value: id, label: name);
+    }).toList();
 
-        return ProtectedRoute(
-          title: 'Material Approval Sheet',
-          route: '/mas',
-          child: Column(
+    return ProtectedRoute(
+      title: 'Material Approval Sheet',
+      route: '/mas',
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -220,11 +215,9 @@ class _MASPageFullState extends State<MASPageFull> {
                       ],
                     ),
                   ),
-          ),
-        ],
-      ),
-        );
-      },
+                ),
+              ],
+            ),
     );
   }
 
@@ -527,25 +520,4 @@ class _MASPageFullState extends State<MASPageFull> {
       if (ok == true && mounted) setState(() => _items.removeWhere((e) => e.id == item.id));
     });
   }
-}
-
-class _MASViewModel {
-  final List<Map<String, dynamic>> projects;
-  final String? selectedProjectId;
-
-  _MASViewModel({
-    required this.projects,
-    required this.selectedProjectId,
-  });
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _MASViewModel &&
-            projects == other.projects &&
-            selectedProjectId == other.selectedProjectId;
-  }
-
-  @override
-  int get hashCode => Object.hash(projects, selectedProjectId);
 }

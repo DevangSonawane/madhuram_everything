@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
-import '../../store/app_state.dart';
-import '../../store/auth_actions.dart';
 import '../../services/auth_storage.dart';
 import '../../services/notification_service.dart';
 import '../../services/push_notification_service.dart';
+import '../../providers/legacy_session_providers.dart';
+import '../../utils/app_navigation.dart';
+import '../../utils/riverpod_context.dart';
 import '../../utils/responsive.dart';
 
 /// Header matching React's Header.jsx - Responsive version
@@ -116,7 +117,7 @@ class AppHeader extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(
-            onTap: () => Navigator.pushReplacementNamed(context, '/dashboard'),
+            onTap: () => context.appGo('/dashboard'),
             child: Text(
               'Dashboard',
               style: TextStyle(
@@ -189,10 +190,9 @@ class AppHeader extends StatelessWidget {
     bool isDark,
     Responsive responsive,
   ) {
-    return StoreConnector<AppState, int>(
-      distinct: true,
-      converter: (store) => store.state.notification.unreadCount,
-      builder: (context, unreadCount) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final unreadCount = ref.watch(notificationSessionProvider).unreadCount;
         return IconButton(
           onPressed: onNotificationPressed ?? () => _showNotifications(context),
           padding: EdgeInsets.zero,
@@ -228,7 +228,7 @@ class AppHeader extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
+              ),
             ],
           ),
         );
@@ -241,14 +241,11 @@ class AppHeader extends StatelessWidget {
     bool isDark,
     Responsive responsive,
   ) {
-    return StoreConnector<AppState, _HeaderUserViewModel>(
-      distinct: true,
-      converter: (store) => _HeaderUserViewModel(
-        userName: store.state.auth.userName ?? 'User',
-        userEmail: store.state.auth.userEmail ?? '',
-      ),
-      builder: (context, vm) {
-        final userName = vm.userName;
+    return Consumer(
+      builder: (context, ref, _) {
+        final auth = ref.watch(authSessionProvider);
+        final userName = auth.userName ?? 'User';
+        final userEmail = auth.userEmail ?? '';
         final initials = userName
             .split(' ')
             .map((e) => e.isNotEmpty ? e[0] : '')
@@ -302,7 +299,7 @@ class AppHeader extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   Text(
-                    vm.userEmail,
+                    userEmail,
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark
@@ -379,11 +376,13 @@ class AppHeader extends StatelessWidget {
               await PushNotificationService.instance.handleLogout();
               await AuthStorage.clear();
               if (!context.mounted) return;
-              final store = StoreProvider.of<AppState>(context);
-              store.dispatch(Logout());
-              Navigator.of(context).pushReplacementNamed('/login');
+              context.riverpodContainer.read(authSessionProvider.notifier).clear();
+              context.riverpodContainer.read(projectSessionProvider.notifier).clear();
+              context.riverpodContainer.read(themeSessionProvider.notifier).clear();
+              context.riverpodContainer.read(notificationSessionProvider.notifier).clear();
+              context.appGo('/login');
             } else if (value == 'profile' || value == 'settings') {
-              Navigator.of(context).pushNamed('/profile');
+              context.appPush('/profile');
             }
           },
         );
@@ -404,10 +403,9 @@ class AppHeader extends StatelessWidget {
       builder: (ctx) {
         final isDark = Theme.of(ctx).brightness == Brightness.dark;
 
-        return StoreConnector<AppState, NotificationState>(
-          distinct: true,
-          converter: (s) => s.state.notification,
-          builder: (ctx, notifState) {
+        return Consumer(
+          builder: (ctx, ref, _) {
+            final notifState = ref.watch(notificationSessionProvider);
             final notifications = notifState.notifications;
 
             return Container(
@@ -530,9 +528,9 @@ class AppHeader extends StatelessWidget {
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.close, size: 16),
-                                      onPressed: () => NotificationService
-                                          .instance
-                                          .deleteNotification(n.id),
+                              onPressed: () => NotificationService
+                                  .instance
+                                  .deleteNotification(n.id),
                                     ),
                                   ],
                                 ),
@@ -552,22 +550,4 @@ class AppHeader extends StatelessWidget {
       },
     );
   }
-}
-
-class _HeaderUserViewModel {
-  final String userName;
-  final String userEmail;
-
-  const _HeaderUserViewModel({required this.userName, required this.userEmail});
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _HeaderUserViewModel &&
-            userName == other.userName &&
-            userEmail == other.userEmail;
-  }
-
-  @override
-  int get hashCode => Object.hash(userName, userEmail);
 }

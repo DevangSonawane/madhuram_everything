@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../utils/riverpod_context.dart';
 
 class VendorCreatePage extends StatefulWidget {
   const VendorCreatePage({super.key});
@@ -113,15 +112,12 @@ class _VendorCreatePageState extends State<VendorCreatePage> {
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
 
-    return StoreConnector<AppState, String?>(
-      distinct: true,
-      converter: (store) => store.state.project.selectedProjectId,
-      builder: (context, selectedProjectId) {
-        if (_projectController.text.isEmpty && (selectedProjectId?.isNotEmpty ?? false)) {
-          _projectController.text = selectedProjectId!;
-        }
+    final selectedProjectId = context.appProject.selectedProjectId;
+    if (_projectController.text.isEmpty && (selectedProjectId?.isNotEmpty ?? false)) {
+      _projectController.text = selectedProjectId!;
+    }
 
-        return ProtectedRoute(
+    return ProtectedRoute(
           title: 'Add Vendor',
           route: '/vendors',
           headerLeadingIcon: Icons.arrow_back,
@@ -244,7 +240,5 @@ class _VendorCreatePageState extends State<VendorCreatePage> {
             ),
           ),
         );
-      },
-    );
   }
 }

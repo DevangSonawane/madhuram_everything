@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../utils/responsive.dart';
+import '../providers/legacy_session_providers.dart';
 
 /// Projects list page with full CRUD - matches React Projects.jsx
-class ProjectsPage extends StatefulWidget {
+class ProjectsPage extends ConsumerStatefulWidget {
   const ProjectsPage({super.key});
 
   @override
-  State<ProjectsPage> createState() => _ProjectsPageState();
+  ConsumerState<ProjectsPage> createState() => _ProjectsPageState();
 }
 
-class _ProjectsPageState extends State<ProjectsPage> {
+class _ProjectsPageState extends ConsumerState<ProjectsPage> {
   List<Map<String, dynamic>> _projects = [];
   bool _isLoading = true;
   String? _error;
@@ -115,17 +115,16 @@ class _ProjectsPageState extends State<ProjectsPage> {
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
 
-    return StoreConnector<AppState, _ProjectsViewModel>(
-      distinct: true,
-      converter: (store) => _ProjectsViewModel(
-        isAdmin: store.state.auth.isAdmin,
-        userRole: store.state.auth.userRole,
-      ),
-      builder: (context, vm) {
-        return ProtectedRoute(
-          title: 'Projects',
-          route: '/projects',
-          child: Column(
+    final auth = ref.watch(authSessionProvider);
+    final vm = _ProjectsViewModel(
+      isAdmin: auth.isAdmin,
+      userRole: auth.userRole,
+    );
+
+    return ProtectedRoute(
+      title: 'Projects',
+      route: '/projects',
+      child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -274,8 +273,6 @@ class _ProjectsPageState extends State<ProjectsPage> {
             ],
           ),
         );
-      },
-    );
   }
 
   Widget _buildMobileList(bool isDark, _ProjectsViewModel vm) {

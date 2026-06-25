@@ -9,6 +9,7 @@ import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
 import '../utils/responsive.dart';
 
 class SampleEditPage extends StatefulWidget {
@@ -37,11 +38,7 @@ class _SampleEditPageState extends State<SampleEditPage> {
   final List<_AdditionalControllers> _additional = [];
 
   void _goToPreview() {
-    Navigator.pushReplacementNamed(
-      context,
-      '/samples/preview',
-      arguments: widget.sampleId,
-    );
+    context.appGo('/samples/preview', extra: widget.sampleId);
   }
 
   Future<Uint8List> _loadPdfBytes(String url) async {

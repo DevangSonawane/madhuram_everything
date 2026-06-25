@@ -5,26 +5,21 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:redux/redux.dart';
 
 import 'package:madhuram_app/main.dart';
-import 'package:madhuram_app/store/app_state.dart';
-import 'package:madhuram_app/store/auth_reducer.dart';
+import 'package:madhuram_app/pages/login_page.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
-    // Create a test store
-    final store = Store<AppState>(appReducer, initialState: AppState.initial());
-    final navigatorKey = GlobalKey<NavigatorState>();
-
-    // Build our app and trigger a frame.
     await tester.pumpWidget(
-      MyApp(store: store, navigatorKey: navigatorKey),
+      const ProviderScope(
+        child: MyApp(),
+      ),
     );
+    await tester.pumpAndSettle();
 
-    // Verify that login page is shown
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.byType(LoginPage), findsOneWidget);
   });
 }

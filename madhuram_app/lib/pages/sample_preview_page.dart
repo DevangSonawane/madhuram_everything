@@ -10,6 +10,7 @@ import '../components/ui/components.dart';
 import '../services/api_client.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../utils/app_navigation.dart';
 
 class SamplePreviewPage extends StatefulWidget {
   final String sampleId;
@@ -35,7 +36,7 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
   Future<void> _goBack() async {
     final popped = await Navigator.maybePop(context);
     if (!popped && mounted) {
-      Navigator.pushReplacementNamed(context, '/samples');
+      context.appGo('/samples');
     }
   }
 
@@ -216,7 +217,7 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
                       icon: LucideIcons.pencil,
                       onPressed: sample == null
                           ? null
-                          : () => Navigator.pushReplacementNamed(context, '/samples/edit', arguments: widget.sampleId),
+                          : () => context.appGo('/samples/edit', extra: widget.sampleId),
                     ),
                   ],
                 ),

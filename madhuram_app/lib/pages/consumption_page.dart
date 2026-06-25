@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../models/stock_area.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../utils/responsive.dart';
+import '../utils/riverpod_context.dart';
 
 /// Consumption tracking page matching React's Consumption page
 class ConsumptionPage extends StatefulWidget {
@@ -43,8 +42,7 @@ class _ConsumptionPageState extends State<ConsumptionPage> {
   }
 
   Future<void> _loadConsumptions() async {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId = store.state.project.selectedProjectId ?? '';
+    final projectId = context.appProject.selectedProjectId ?? '';
 
     if (projectId.isEmpty) {
       setState(() {

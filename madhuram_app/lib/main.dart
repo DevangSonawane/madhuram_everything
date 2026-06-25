@@ -2,18 +2,10 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
-import 'package:redux/redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'dart:io';
 
-// Store
-import 'store/app_state.dart';
-import 'store/auth_reducer.dart';
-import 'store/auth_actions.dart';
-import 'store/project_actions.dart';
-
-// Models
-import 'models/project.dart';
 import 'firebase_options.dart';
 
 // Services
@@ -25,12 +17,12 @@ import 'services/notification_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/auth_refresh_service.dart';
 import 'services/access_control_store.dart';
+import 'providers/legacy_session_providers.dart';
+import 'store/app_state.dart';
+import 'utils/state_signature.dart';
 
 // Theme
 import 'theme/app_theme.dart';
-
-// Animations
-import 'utils/animations.dart';
 
 // UI
 import 'components/ui/components.dart';
@@ -89,9 +81,210 @@ import 'pages/documents_page.dart';
 import 'pages/reports_page.dart';
 import 'pages/audit_logs_page.dart';
 
-// Create store globally
-late Store<AppState> store;
+late final ProviderContainer appProviderContainer;
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+class _GoRouterRefreshNotifier extends ChangeNotifier {
+  void refresh() => notifyListeners();
+}
+
+String? _projectSelectionRedirect({
+  required String location,
+  required AuthSessionView auth,
+  required ProjectSessionView project,
+}) {
+  final isLoggedIn = auth.isAuthenticated;
+  final hasProject = project.selectedProject != null;
+  final isRoot = location == '/';
+  final isLogin = location == '/login';
+  final isProjects = location == '/projects';
+
+  if (!isLoggedIn) {
+    if (isLogin) return null;
+    return '/login';
+  }
+
+  if (isRoot) {
+    return hasProject ? '/dashboard' : '/projects';
+  }
+
+  if (isLogin) {
+    return '/projects';
+  }
+
+  if (!hasProject) {
+    return isProjects ? null : '/projects';
+  }
+
+  return null;
+}
+
+final appRouterProvider = Provider<GoRouter>((ref) {
+  final refreshNotifier = _GoRouterRefreshNotifier();
+  ref.listen(authSessionProvider, (previous, next) => refreshNotifier.refresh());
+  ref.listen(projectSessionProvider, (previous, next) => refreshNotifier.refresh());
+  ref.onDispose(refreshNotifier.dispose);
+
+  return GoRouter(
+    navigatorKey: appNavigatorKey,
+    initialLocation: '/',
+    refreshListenable: refreshNotifier,
+    redirect: (context, state) {
+      final auth = ref.read(authSessionProvider);
+      final project = ref.read(projectSessionProvider);
+      final next = _projectSelectionRedirect(
+        location: state.uri.path,
+        auth: auth,
+        project: project,
+      );
+      return next;
+    },
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const SizedBox.shrink(),
+      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(path: '/projects', builder: (context, state) => const ProjectSelectionPage()),
+      GoRoute(path: '/dashboard', builder: (context, state) => const DashboardPage()),
+      GoRoute(path: '/attendance', builder: (context, state) => const AttendancePage()),
+      GoRoute(path: '/attendance/my', builder: (context, state) => const MyAttendancePage()),
+      GoRoute(path: '/boq', builder: (context, state) => const BOQPage()),
+      GoRoute(path: '/samples', builder: (context, state) => const SamplesPageFull()),
+      GoRoute(path: '/projects/quotes/add', builder: (context, state) => const QuotesListPage()),
+      GoRoute(path: '/purchase-requests', builder: (context, state) => const PurchaseRequestsPageFull()),
+      GoRoute(path: '/purchase-requests/create', builder: (context, state) => const PurchaseRequestCreatePage()),
+      GoRoute(path: '/vendor-comparison', builder: (context, state) => const VendorComparisonPageFull()),
+      GoRoute(path: '/purchase-orders', builder: (context, state) => const PurchaseOrdersPageFull()),
+      GoRoute(path: '/vendors', builder: (context, state) => const VendorsPageFull()),
+      GoRoute(path: '/vendors/new', builder: (context, state) => const VendorCreatePage()),
+      GoRoute(path: '/challans', builder: (context, state) => const ChallansPageFull()),
+      GoRoute(path: '/challans/new', builder: (context, state) => const NewChallanPage()),
+      GoRoute(path: '/mer', builder: (context, state) => const MERPageFull()),
+      GoRoute(path: '/mir', builder: (context, state) => const MIRPageFull()),
+      GoRoute(path: '/mir/create', builder: (context, state) => const MIRCreatePage()),
+      GoRoute(path: '/itr', builder: (context, state) => const ITRPageFull()),
+      GoRoute(path: '/billing', builder: (context, state) => const BillingPageFull()),
+      GoRoute(path: '/stock-areas', builder: (context, state) => const StockAreasPage()),
+      GoRoute(path: '/materials', builder: (context, state) => const MaterialsPage()),
+      GoRoute(path: '/inventory/add', builder: (context, state) => const AddInventoryPage()),
+      GoRoute(path: '/inventory', builder: (context, state) => const AddInventoryPage()),
+      GoRoute(path: '/projects/inventory/add', builder: (context, state) => const AddInventoryPage()),
+      GoRoute(path: '/projects/inventory/full', builder: (context, state) => const AddInventoryPage(fullScreen: true)),
+      GoRoute(path: '/projects/inventory/history', builder: (context, state) => const InventoryHistoryPage()),
+      GoRoute(path: '/projects/quotes/search', builder: (context, state) => const QuotesSearchPage()),
+      GoRoute(path: '/stock-transfers', builder: (context, state) => const StockTransfersPage()),
+      GoRoute(path: '/consumption', builder: (context, state) => const ConsumptionPage()),
+      GoRoute(path: '/returns', builder: (context, state) => const ReturnsPage()),
+      GoRoute(path: '/documents', builder: (context, state) => const DocumentsPageFull()),
+      GoRoute(path: '/reports', builder: (context, state) => const ReportsPageFull()),
+      GoRoute(path: '/audit-logs', builder: (context, state) => const AuditLogsPageFull()),
+      GoRoute(path: '/profile', builder: (context, state) => const ProfilePage()),
+      GoRoute(path: '/users', builder: (context, state) => const ProfilePage()),
+      GoRoute(path: '/settings', builder: (context, state) => const ProfilePage()),
+      GoRoute(path: '/purchase-orders/preview', builder: (context, state) => const PurchaseOrdersPageFull()),
+      GoRoute(path: '/mir/preview', builder: (context, state) => const MIRPageFull()),
+      GoRoute(path: '/itr/preview', builder: (context, state) => const ITRPageFull()),
+      GoRoute(
+        path: '/challans/detail',
+        builder: (context, state) => ChallanDetailPage(challanId: (state.extra as String?) ?? ''),
+      ),
+      GoRoute(
+        path: '/challans/new/details',
+        builder: (context, state) {
+          final args = state.extra as Map<String, dynamic>? ?? {};
+          final poRaw = args['poItems'];
+          final deliveryRaw = args['deliveryItems'];
+
+          List<Map<String, String>> mapItems(dynamic raw) {
+            if (raw is! List) return const [];
+            return raw
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .map(
+                  (item) => {
+                    'name': item['name']?.toString() ?? '',
+                    'description': item['description']?.toString() ?? '',
+                    'width': item['width']?.toString() ?? '',
+                    'length': item['length']?.toString() ?? '',
+                    'quantity': item['quantity']?.toString() ?? '',
+                    'price': item['price']?.toString() ?? '',
+                  },
+                )
+                .toList();
+          }
+
+          return ChallanItemsDetailPage(
+            poItems: mapItems(poRaw),
+            deliveryItems: mapItems(deliveryRaw),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/projects/inventory/item-history',
+        builder: (context, state) => InventoryItemHistoryPage(
+          inventoryId: (state.extra as String?) ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/samples/preview',
+        builder: (context, state) => SamplePreviewPage(sampleId: (state.extra as String?) ?? ''),
+      ),
+      GoRoute(
+        path: '/samples/edit',
+        builder: (context, state) => SampleEditPage(sampleId: (state.extra as String?) ?? ''),
+      ),
+      GoRoute(
+        path: '/samples/create',
+        builder: (context, state) => SampleCreatePage(
+          initialProjectId: (state.extra as String?) ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/vendors/price-lists',
+        builder: (context, state) {
+          final args = state.extra as Map<String, dynamic>? ?? {};
+          return VendorPriceListsPage(
+            vendorId: (args['vendorId'] ?? '').toString(),
+            projectId: args['projectId']?.toString(),
+            openLatestOnLoad: args['openLatest'] == true,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/vendors/price-lists/create',
+        builder: (context, state) {
+          final args = state.extra as Map<String, dynamic>? ?? {};
+          return VendorPriceListCreatePage(
+            vendorId: (args['vendorId'] ?? '').toString(),
+            projectId: args['projectId']?.toString(),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/vendors/price-lists/view',
+        builder: (context, state) {
+          final args = state.extra as Map<String, dynamic>? ?? {};
+          return VendorPriceListViewPage(
+            vendorId: (args['vendorId'] ?? '').toString(),
+            priceListId: (args['priceListId'] ?? '').toString(),
+            projectId: args['projectId']?.toString(),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/vendors/view-price',
+        builder: (context, state) {
+          final args = state.extra as Map<String, dynamic>? ?? {};
+          return VendorViewPricePage(
+            vendorId: (args['vendorId'] ?? '').toString(),
+            projectId: args['projectId']?.toString(),
+          );
+        },
+      ),
+    ],
+  );
+});
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -104,54 +297,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   );
 }
 
-/// Named routes with fade transition (used by onGenerateRoute and routes)
-final Map<String, Widget Function(BuildContext)> _appRoutes = {
-  '/login': (context) => const LoginPage(),
-  '/projects': (context) => const ProjectSelectionPage(),
-  '/dashboard': (context) => const DashboardPage(),
-  '/attendance': (context) => const AttendancePage(),
-  '/attendance/my': (context) => const MyAttendancePage(),
-  '/boq': (context) => const BOQPage(),
-  // '/mas': (context) => const MASPageFull(),
-  '/samples': (context) => const SamplesPageFull(),
-  '/projects/quotes/add': (context) => const QuotesListPage(),
-  '/purchase-requests': (context) => const PurchaseRequestsPageFull(),
-  '/purchase-requests/create': (context) => const PurchaseRequestCreatePage(),
-  '/vendor-comparison': (context) => const VendorComparisonPageFull(),
-  '/purchase-orders': (context) => const PurchaseOrdersPageFull(),
-  '/vendors': (context) => const VendorsPageFull(),
-  '/vendors/new': (context) => const VendorCreatePage(),
-  '/challans': (context) => const ChallansPageFull(),
-  '/challans/new': (context) => const NewChallanPage(),
-  '/mer': (context) => const MERPageFull(),
-  '/mir': (context) => const MIRPageFull(),
-  '/mir/create': (context) => const MIRCreatePage(),
-  '/itr': (context) => const ITRPageFull(),
-  '/billing': (context) => const BillingPageFull(),
-  '/stock-areas': (context) => const StockAreasPage(),
-  '/materials': (context) => const MaterialsPage(),
-  '/inventory/add': (context) => const AddInventoryPage(),
-  '/inventory': (context) => const AddInventoryPage(),
-  '/projects/inventory/add': (context) => const AddInventoryPage(),
-  '/projects/inventory/full': (context) => const AddInventoryPage(
-        fullScreen: true,
-      ),
-  '/projects/inventory/history': (context) => const InventoryHistoryPage(),
-  '/projects/quotes/search': (context) => const QuotesSearchPage(),
-  '/stock-transfers': (context) => const StockTransfersPage(),
-  '/consumption': (context) => const ConsumptionPage(),
-  '/returns': (context) => const ReturnsPage(),
-  '/documents': (context) => const DocumentsPageFull(),
-  '/reports': (context) => const ReportsPageFull(),
-  '/audit-logs': (context) => const AuditLogsPageFull(),
-  '/profile': (context) => const ProfilePage(),
-  '/users': (context) => const ProfilePage(),
-  '/settings': (context) => const ProfilePage(),
-  '/purchase-orders/preview': (context) => const PurchaseOrdersPageFull(),
-  '/mir/preview': (context) => const MIRPageFull(),
-  '/itr/preview': (context) => const ITRPageFull(),
-};
-
 void main() async {
   // Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
@@ -163,9 +308,7 @@ void main() async {
     return true;
   }());
 
-  // Create the Redux store ONCE at app startup
-  store = Store<AppState>(appReducer, initialState: AppState.initial());
-  debugPrint('[Main] Redux store created');
+  appProviderContainer = ProviderContainer();
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   debugPrint('[Main] Firebase background handler registered');
@@ -175,20 +318,30 @@ void main() async {
   );
   debugPrint('[Main] Firebase initialized');
 
-  // Restore auth state from storage before running app
+  runApp(
+    UncontrolledProviderScope(
+      container: appProviderContainer,
+      child: const MyApp(),
+    ),
+  );
+
+  unawaited(_bootstrapAfterRun());
+}
+
+Future<void> _bootstrapAfterRun() async {
+  // Restore auth state and initialize background services after the first frame
+  // so a slow network call cannot keep the splash/logo screen stuck.
   await _restoreAuthState();
   debugPrint('[Main] Auth state restore complete');
-  await AuthRefreshService.instance.initialize(store);
+  await AuthRefreshService.instance.initialize(appProviderContainer);
   debugPrint('[Main] Auth refresh service initialized');
-  await NotificationService.instance.initialize(store);
+  await NotificationService.instance.initialize(appProviderContainer);
   debugPrint('[Main] Notification service initialized');
   PushNotificationService.instance.setNavigatorKey(appNavigatorKey);
-  await PushNotificationService.instance.initialize(store);
+  await PushNotificationService.instance.initialize(appProviderContainer);
   debugPrint('[Main] Push notification service initialized');
-  await AttendanceReminderService.instance.initialize(store);
+  await AttendanceReminderService.instance.initialize(appProviderContainer);
   debugPrint('[Main] Attendance reminder service initialized');
-
-  runApp(MyApp(store: store, navigatorKey: appNavigatorKey));
 }
 
 /// Restore authentication state from storage.
@@ -201,7 +354,10 @@ Future<void> _restoreAuthState() async {
       final user = await AuthStorage.getUser();
       if (user != null) {
         var resolvedUser = AccessControlStore.resolveUserAccessControl(user);
-        store.dispatch(LoginSuccess(resolvedUser));
+        final authNotifier = appProviderContainer.read(authSessionProvider.notifier);
+        if (!sameMapState(appProviderContainer.read(authSessionProvider).user, resolvedUser)) {
+          authNotifier.sync(resolvedUser);
+        }
 
         final userId =
             (resolvedUser['user_id'] ?? resolvedUser['id'] ?? '').toString();
@@ -215,7 +371,7 @@ Future<void> _restoreAuthState() async {
                 : null,
           );
           await AuthStorage.setUser(resolvedUser);
-          store.dispatch(LoginSuccess(resolvedUser));
+          authNotifier.sync(resolvedUser);
         }
 
         // Restore selected project from local storage WITHOUT calling API.
@@ -223,14 +379,14 @@ Future<void> _restoreAuthState() async {
         // ProjectSelectionPage loads.
         final savedProjectId = await AuthStorage.getSelectedProjectId();
         if (savedProjectId != null && savedProjectId.isNotEmpty) {
-          // Create a minimal project map so MainLayout sees a selected project
-          // and doesn't redirect to /projects.  The full project data will be
-          // loaded when the user visits any page that needs it.
-          store.dispatch(
-            SelectProject({
+          final projectNotifier = appProviderContainer.read(projectSessionProvider.notifier);
+          projectNotifier.sync(
+            projects: appProviderContainer.read(projectSessionProvider).projects,
+            selectedProject: {
               'project_id': savedProjectId,
               'project_name': 'Loading…',
-            }),
+            },
+            isLoading: false,
           );
 
           // Fire-and-forget: try to fetch full project list in background
@@ -254,15 +410,29 @@ void _restoreProjectsInBackground(String savedProjectId) {
           final projectMaps = projectList
               .map((e) => e as Map<String, dynamic>)
               .toList();
-          store.dispatch(FetchProjectsSuccess(projectMaps));
+          final projectNotifier = appProviderContainer.read(projectSessionProvider.notifier);
+          final current = appProviderContainer.read(projectSessionProvider);
+          if (stateSignature(current.projects) != stateSignature(projectMaps)) {
+            projectNotifier.sync(
+              projects: projectMaps,
+              selectedProject: current.selectedProject,
+              isLoading: current.isLoading,
+            );
+          }
 
-          final projects = projectMaps.map((m) => Project.fromJson(m)).toList();
-          final savedProject = projects.firstWhere(
-            (p) => p.id == savedProjectId,
-            orElse: () => Project(id: '', name: ''),
+          final savedProject = projectMaps.firstWhere(
+            (project) =>
+                project['id']?.toString() == savedProjectId ||
+                project['project_id']?.toString() == savedProjectId,
+            orElse: () => <String, dynamic>{},
           );
-          if (savedProject.id.isNotEmpty) {
-            store.dispatch(SelectProject(savedProject.toMap()));
+          if (savedProject.isNotEmpty &&
+              !sameMapState(appProviderContainer.read(projectSessionProvider).selectedProject, savedProject)) {
+            projectNotifier.sync(
+              projects: projectMaps,
+              selectedProject: savedProject,
+              isLoading: false,
+            );
           }
         }
       })
@@ -271,21 +441,14 @@ void _restoreProjectsInBackground(String savedProjectId) {
       });
 }
 
-class MyApp extends StatefulWidget {
-  final Store<AppState> store;
-  final GlobalKey<NavigatorState> navigatorKey;
-
-  const MyApp({
-    super.key,
-    required this.store,
-    required this.navigatorKey,
-  });
+class MyApp extends ConsumerStatefulWidget {
+  const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  ConsumerState<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends ConsumerState<MyApp> {
   @override
   void initState() {
     super.initState();
@@ -296,324 +459,61 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreProvider<AppState>(
-      store: widget.store,
-      child: StoreConnector<AppState, AppThemeMode>(
-        distinct: true,
-        converter: (store) => store.state.theme.mode,
-        builder: (context, themeMode) {
-          // Determine actual theme mode
-          final platformBrightness =
-              WidgetsBinding.instance.platformDispatcher.platformBrightness;
-          final effectiveTheme = themeMode == AppThemeMode.system
-              ? (platformBrightness == Brightness.dark
-                    ? AppThemeMode.dark
-                    : AppThemeMode.light)
-              : themeMode;
+    return Consumer(
+      builder: (context, ref, _) {
+        final themeMode = ref.watch(themeSessionProvider).mode;
+        final router = ref.watch(appRouterProvider);
+        final platformBrightness =
+            WidgetsBinding.instance.platformDispatcher.platformBrightness;
+        final effectiveTheme = themeMode == AppThemeMode.system
+            ? (platformBrightness == Brightness.dark
+                  ? AppThemeMode.dark
+                  : AppThemeMode.light)
+            : themeMode;
 
-          return MaterialApp(
-            title: 'Madhuram',
-            debugShowCheckedModeBanner: false,
-            navigatorKey: widget.navigatorKey,
-            theme: AppTheme.lightTheme(),
-            darkTheme: AppTheme.darkTheme(),
-            themeMode: effectiveTheme == AppThemeMode.dark
-                ? ThemeMode.dark
-                : ThemeMode.light,
-            builder: (context, child) {
-              final mq = MediaQuery.of(context);
-              final double current = mq.textScaler.scale(1.0);
-              final double clamped = current.clamp(0.85, 1.15);
-              return ToastContainer(
-                child: MediaQuery(
-                  data: mq.copyWith(textScaler: TextScaler.linear(clamped)),
-                  child: child ?? const SizedBox.shrink(),
-                ),
-              );
-            },
-            home: const AppRouter(),
-            onGenerateRoute: (settings) {
-              if (settings.name == '/boq') {
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      const BOQPage(),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/projects/inventory/full') {
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      const AddInventoryPage(fullScreen: true),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/projects/inventory/history') {
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      const InventoryHistoryPage(),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/challans/detail') {
-                final id = settings.arguments?.toString() ?? '';
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      ChallanDetailPage(challanId: id),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/challans/new/details') {
-                final args = settings.arguments as Map<String, dynamic>? ?? {};
-                final poRaw = args['poItems'];
-                final deliveryRaw = args['deliveryItems'];
-
-                List<Map<String, String>> mapItems(dynamic raw) {
-                  if (raw is! List) return const [];
-                  return raw
-                      .whereType<Map>()
-                      .map((item) => Map<String, dynamic>.from(item))
-                      .map(
-                        (item) => {
-                          'name': item['name']?.toString() ?? '',
-                          'description': item['description']?.toString() ?? '',
-                          'width': item['width']?.toString() ?? '',
-                          'length': item['length']?.toString() ?? '',
-                          'quantity': item['quantity']?.toString() ?? '',
-                          'price': item['price']?.toString() ?? '',
-                        },
-                      )
-                      .toList();
-                }
-
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      ChallanItemsDetailPage(
-                        poItems: mapItems(poRaw),
-                        deliveryItems: mapItems(deliveryRaw),
-                      ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/projects/inventory/item-history') {
-                final id = settings.arguments?.toString() ?? '';
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      InventoryItemHistoryPage(inventoryId: id),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/samples/preview') {
-                final id = settings.arguments?.toString() ?? '';
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      SamplePreviewPage(sampleId: id),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/samples/edit') {
-                final id = settings.arguments?.toString() ?? '';
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      SampleEditPage(sampleId: id),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/samples/create') {
-                final projectId = settings.arguments?.toString() ?? '';
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      SampleCreatePage(initialProjectId: projectId),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/vendors/price-lists') {
-                final args = settings.arguments as Map<String, dynamic>? ?? {};
-                final vendorId = (args['vendorId'] ?? '').toString();
-                final projectId = args['projectId']?.toString();
-                final openLatest = args['openLatest'] == true;
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      VendorPriceListsPage(
-                        vendorId: vendorId,
-                        projectId: projectId,
-                        openLatestOnLoad: openLatest,
-                      ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/vendors/price-lists/create') {
-                final args = settings.arguments as Map<String, dynamic>? ?? {};
-                final vendorId = (args['vendorId'] ?? '').toString();
-                final projectId = args['projectId']?.toString();
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      VendorPriceListCreatePage(
-                        vendorId: vendorId,
-                        projectId: projectId,
-                      ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/vendors/price-lists/view') {
-                final args = settings.arguments as Map<String, dynamic>? ?? {};
-                final vendorId = (args['vendorId'] ?? '').toString();
-                final priceListId = (args['priceListId'] ?? '').toString();
-                final projectId = args['projectId']?.toString();
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      VendorPriceListViewPage(
-                        vendorId: vendorId,
-                        priceListId: priceListId,
-                        projectId: projectId,
-                      ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              if (settings.name == '/vendors/view-price') {
-                final args = settings.arguments as Map<String, dynamic>? ?? {};
-                final vendorId = (args['vendorId'] ?? '').toString();
-                final projectId = args['projectId']?.toString();
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      VendorViewPricePage(
-                        vendorId: vendorId,
-                        projectId: projectId,
-                      ),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              final builder = _appRoutes[settings.name];
-              if (builder != null) {
-                return PageRouteBuilder<void>(
-                  settings: settings,
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      builder(context),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: AppAnimations.normal,
-                );
-              }
-              return null;
-            },
-            routes: _appRoutes,
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// App Router - handles initial routing based on auth state
-class AppRouter extends StatelessWidget {
-  const AppRouter({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return StoreConnector<AppState, _AppRouterViewModel>(
-      distinct: true,
-      converter: (store) => _AppRouterViewModel(
-        isAuthenticated: store.state.auth.isAuthenticated,
-        hasSelectedProject: store.state.project.selectedProject != null,
-      ),
-      builder: (context, vm) {
-        if (!vm.isAuthenticated) {
-          return const LoginPage();
-        }
-
-        if (!vm.hasSelectedProject) {
-          return const ProjectSelectionPage();
-        }
-
-        return const DashboardPage();
+        return MaterialApp.router(
+          title: 'Madhuram',
+          debugShowCheckedModeBanner: false,
+          routerConfig: router,
+          theme: AppTheme.lightTheme(),
+          darkTheme: AppTheme.darkTheme(),
+          themeMode: effectiveTheme == AppThemeMode.dark
+              ? ThemeMode.dark
+              : ThemeMode.light,
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
+            final double current = mq.textScaler.scale(1.0);
+            final double clamped = current.clamp(0.85, 1.15);
+            return ToastContainer(
+              child: MediaQuery(
+                data: mq.copyWith(textScaler: TextScaler.linear(clamped)),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            );
+          },
+        );
       },
     );
   }
 }
 
-class _AppRouterViewModel {
-  final bool isAuthenticated;
-  final bool hasSelectedProject;
-
-  _AppRouterViewModel({
-    required this.isAuthenticated,
-    required this.hasSelectedProject,
-  });
+/// App Router - handles initial routing based on auth state
+class AppRouter extends ConsumerWidget {
+  const AppRouter({super.key});
 
   @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _AppRouterViewModel &&
-            isAuthenticated == other.isAuthenticated &&
-            hasSelectedProject == other.hasSelectedProject;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authSessionProvider);
+    final project = ref.watch(projectSessionProvider);
+
+    if (!auth.isAuthenticated) {
+      return const LoginPage();
+    }
+
+    if (project.selectedProject == null) {
+      return const ProjectSelectionPage();
+    }
+
+    return const DashboardPage();
   }
-
-  @override
-  int get hashCode => Object.hash(isAuthenticated, hasSelectedProject);
 }

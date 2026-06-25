@@ -1,15 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:intl/intl.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
+import '../utils/riverpod_context.dart';
 
 class VendorComparisonPageFull extends StatefulWidget {
   const VendorComparisonPageFull({super.key});
@@ -196,14 +196,10 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final projectId = context.appProject.selectedProjectId;
+    _selectedProjectId = projectId;
 
-    return StoreConnector<AppState, String?>(
-      distinct: true,
-      converter: (store) => store.state.project.selectedProjectId,
-      builder: (context, projectId) {
-        _selectedProjectId = projectId;
-
-        return ProtectedRoute(
+    return ProtectedRoute(
           title: 'Price List Comparison',
           route: '/vendor-comparison',
           showSidebar: false,
@@ -220,8 +216,6 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
             ],
           ),
         );
-      },
-    );
   }
 
   Widget _buildHero(bool isDark) {
@@ -278,7 +272,7 @@ class _VendorComparisonPageFullState extends State<VendorComparisonPageFull> {
               if (Navigator.of(context).canPop()) {
                 Navigator.of(context).pop();
               } else {
-                Navigator.pushNamed(context, '/projects');
+                context.appPush('/projects');
               }
             },
           ),

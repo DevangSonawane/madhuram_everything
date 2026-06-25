@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:redux/redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
-import '../store/app_state.dart';
 import 'api_client.dart';
+import '../providers/legacy_session_providers.dart';
 
 class AttendanceReminderService {
   AttendanceReminderService._();
@@ -17,41 +17,52 @@ class AttendanceReminderService {
   static const Duration _pollInterval = Duration(minutes: 30);
   static const String _sentPrefix = 'attendance_reminder_sent_';
 
-  Store<AppState>? _store;
-  StreamSubscription<AppState>? _storeSub;
+  ProviderContainer? _container;
+  ProviderSubscription<AuthSessionView>? _authSubscription;
+  ProviderSubscription<ProjectSessionView>? _projectSubscription;
   Timer? _pollTimer;
   bool _running = false;
   String? _lastScopeKey;
 
-  Future<void> initialize(Store<AppState> store) async {
-    _store = store;
-    _storeSub?.cancel();
-    _storeSub = store.onChange.listen((state) {
-      unawaited(_evaluateAndSendIfNeeded(state));
-    });
+  Future<void> initialize(ProviderContainer container) async {
+    _container = container;
+    _authSubscription?.close();
+    _projectSubscription?.close();
+    _authSubscription = container.listen<AuthSessionView>(
+      authSessionProvider,
+      (previous, next) => unawaited(_evaluateAndSendIfNeeded()),
+    );
+    _projectSubscription = container.listen<ProjectSessionView>(
+      projectSessionProvider,
+      (previous, next) => unawaited(_evaluateAndSendIfNeeded()),
+    );
 
-    await _evaluateAndSendIfNeeded(store.state);
+    await _evaluateAndSendIfNeeded();
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(_pollInterval, (_) {
-      final currentStore = _store;
-      if (currentStore == null) return;
-      unawaited(_evaluateAndSendIfNeeded(currentStore.state));
+      unawaited(_evaluateAndSendIfNeeded());
     });
   }
 
   Future<void> dispose() async {
-    _storeSub?.cancel();
-    _storeSub = null;
+    _authSubscription?.close();
+    _authSubscription = null;
+    _projectSubscription?.close();
+    _projectSubscription = null;
     _pollTimer?.cancel();
     _pollTimer = null;
-    _store = null;
+    _container = null;
     _lastScopeKey = null;
     _running = false;
   }
 
-  Future<void> _evaluateAndSendIfNeeded(AppState state) async {
+  Future<void> _evaluateAndSendIfNeeded() async {
+    final container = _container;
+    if (container == null) return;
     if (_running) return;
-    final user = state.auth.user;
+    final auth = container.read(authSessionProvider);
+    final project = container.read(projectSessionProvider);
+    final user = auth.user;
     final role = (user?['role']?.toString() ?? '').toLowerCase();
     if (role != 'admin' && role != 'operational_manager') {
       return;
@@ -60,8 +71,8 @@ class AttendanceReminderService {
     final sentBy = _currentUserId(user);
     if (sentBy == null || sentBy.isEmpty) return;
 
-    final projectId = state.project.selectedProjectId?.trim();
-    final projectName = state.project.selectedProjectName?.trim();
+    final projectId = project.selectedProjectId?.trim();
+    final projectName = project.selectedProjectName?.trim();
     final scopeKey = projectId != null && projectId.isNotEmpty
         ? 'project:$projectId'
         : 'all';

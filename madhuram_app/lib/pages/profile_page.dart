@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'dart:convert';
 import '../theme/app_theme.dart';
 import '../store/app_state.dart';
-import '../store/auth_actions.dart';
-import '../store/theme_actions.dart';
 import '../services/api_client.dart';
 import '../services/auth_storage.dart';
 import '../services/access_control_store.dart';
@@ -18,18 +16,20 @@ import '../components/ui/mad_input.dart';
 import '../components/ui/mad_select.dart';
 import '../components/layout/main_layout.dart';
 import '../constants/access_control_catalog.dart';
+import '../utils/app_navigation.dart';
 import '../utils/access_control.dart';
 import '../utils/responsive.dart';
+import '../providers/legacy_session_providers.dart';
 
 /// Profile page - Responsive version
-class ProfilePage extends StatefulWidget {
+class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends ConsumerState<ProfilePage> {
   List<User> _users = [];
   List<MadSelectOption<String>> _projectOptions = [];
   bool _loadingProjects = false;
@@ -169,299 +169,276 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
-    return StoreConnector<AppState, _ProfilePermissionsViewModel>(
-      distinct: true,
-      converter: (store) {
-        final user = store.state.auth.user;
-        final role = (user?['role'] ?? '').toString();
-        final canManageUsersByRole =
-            role == 'admin' || role == 'operational_manager';
-        final canViewUserManagementTab =
-            canManageUsersByRole &&
-            hasFunctionAccess(user, 'settings.user_management');
-        final canViewAccessControlTab =
-            canManageUsersByRole &&
-            hasFunctionAccess(user, 'settings.access_control');
-        return _ProfilePermissionsViewModel(
-          isAdmin: role == 'admin',
-          isOperationalManager: role == 'operational_manager',
-          canViewUserManagementTab: canViewUserManagementTab,
-          canViewAccessControlTab: canViewAccessControlTab,
-        );
-      },
-      builder: (context, vm) {
-        final shouldLoadUsers =
-            vm.canViewUserManagementTab ||
-            vm.canViewAccessControlTab;
-        if (shouldLoadUsers && !_attemptedUsersLoad) {
-          _attemptedUsersLoad = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _loadUsers();
-          });
-        }
+    final auth = ref.watch(authSessionProvider);
+    final themeMode = ref.watch(themeSessionProvider).mode;
+    final project = ref.watch(projectSessionProvider);
+    final user = auth.user;
+    final role = auth.userRole ?? '';
+    final canManageUsersByRole =
+        role == 'admin' || role == 'operational_manager';
+    final canViewUserManagementTab =
+        canManageUsersByRole &&
+        hasFunctionAccess(user, 'settings.user_management');
+    final canViewAccessControlTab =
+        canManageUsersByRole &&
+        hasFunctionAccess(user, 'settings.access_control');
 
-        final tabs = <Tab>[
-          const Tab(text: 'Profile'),
-          const Tab(text: 'Settings'),
-        ];
-        final tabViews = <Widget>[
-          _buildProfileTab(isDark, responsive),
-          _buildSettingsTab(
-            isDark,
-            responsive,
-            vm.isOperationalManager,
-          ),
-        ];
-        if (vm.canViewUserManagementTab) {
-          tabs.add(const Tab(text: 'User Management'));
-          tabViews.add(
-            _buildUsersTab(
-              isDark,
-              responsive,
-              vm.isAdmin,
+    if ((canViewUserManagementTab || canViewAccessControlTab) &&
+        !_attemptedUsersLoad) {
+      _attemptedUsersLoad = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadUsers();
+      });
+    }
+
+    final tabs = <Tab>[
+      const Tab(text: 'Profile'),
+      const Tab(text: 'Settings'),
+    ];
+    final tabViews = <Widget>[
+      _buildProfileTab(isDark, responsive, auth),
+      _buildSettingsTab(
+        isDark,
+        responsive,
+        themeMode,
+        role == 'operational_manager',
+        project.selectedProjectId,
+      ),
+    ];
+    if (canViewUserManagementTab) {
+      tabs.add(const Tab(text: 'User Management'));
+      tabViews.add(
+        _buildUsersTab(
+          isDark,
+          responsive,
+          role == 'admin',
+        ),
+      );
+    }
+    if (canViewAccessControlTab) {
+      tabs.add(const Tab(text: 'Access Control'));
+      tabViews.add(_buildAccessControlTab(isDark, responsive));
+    }
+
+    return ProtectedRoute(
+      title: 'Profile',
+      route: '/profile',
+      requireProject: false,
+      child: DefaultTabController(
+        length: tabs.length,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Profile & Settings',
+              style: TextStyle(
+                fontSize: responsive.value(
+                  mobile: 22,
+                  tablet: 26,
+                  desktop: 28,
+                ),
+                fontWeight: FontWeight.bold,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
             ),
-          );
-        }
-        if (vm.canViewAccessControlTab) {
-          tabs.add(const Tab(text: 'Access Control'));
-          tabViews.add(_buildAccessControlTab(isDark, responsive));
-        }
+            const SizedBox(height: 4),
+            Text(
+              'Manage your account and preferences.',
+              style: TextStyle(
+                fontSize: responsive.value(
+                  mobile: 13,
+                  tablet: 14,
+                  desktop: 14,
+                ),
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
+            ),
+            SizedBox(
+              height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: isDark ? AppTheme.darkMuted : AppTheme.lightMuted,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: TabBar(
+                isScrollable: responsive.isMobile,
+                indicator: BoxDecoration(
+                  color: isDark ? AppTheme.darkCard : Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                indicatorPadding: const EdgeInsets.all(4),
+                labelColor: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+                unselectedLabelColor: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+                dividerColor: Colors.transparent,
+                labelStyle: TextStyle(
+                  fontSize: responsive.value(
+                    mobile: 13,
+                    tablet: 14,
+                    desktop: 14,
+                  ),
+                ),
+                tabs: tabs,
+              ),
+            ),
+            SizedBox(
+              height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
+            ),
+            Expanded(child: TabBarView(children: tabViews)),
+          ],
+        ),
+      ),
+    );
+  }
 
-        return ProtectedRoute(
-          title: 'Profile',
-          route: '/profile',
-          requireProject: false,
-          child: DefaultTabController(
-            length: tabs.length,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Profile & Settings',
-                  style: TextStyle(
-                    fontSize: responsive.value(
-                      mobile: 22,
-                      tablet: 26,
-                      desktop: 28,
-                    ),
-                    fontWeight: FontWeight.bold,
-                    color: isDark
-                        ? AppTheme.darkForeground
-                        : AppTheme.lightForeground,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Manage your account and preferences.',
-                  style: TextStyle(
-                    fontSize: responsive.value(
-                      mobile: 13,
-                      tablet: 14,
-                      desktop: 14,
-                    ),
-                    color: isDark
-                        ? AppTheme.darkMutedForeground
-                        : AppTheme.lightMutedForeground,
-                  ),
-                ),
-                SizedBox(
-                  height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? AppTheme.darkMuted : AppTheme.lightMuted,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: TabBar(
-                    isScrollable: responsive.isMobile,
-                    indicator: BoxDecoration(
-                      color: isDark ? AppTheme.darkCard : Colors.white,
-                      borderRadius: BorderRadius.circular(6),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
+  Widget _buildProfileTab(
+    bool isDark,
+    Responsive responsive,
+    AuthSessionView auth,
+  ) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          MadCard(
+            child: Padding(
+              padding: EdgeInsets.all(
+                responsive.value(mobile: 16, tablet: 20, desktop: 24),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (responsive.isMobile)
+                    Column(
+                      children: [
+                        _buildAvatar(auth, responsive),
+                        const SizedBox(height: 16),
+                        _buildProfileInfo(
+                          auth,
+                          isDark,
+                          responsive,
+                          centered: true,
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        _buildAvatar(auth, responsive),
+                        SizedBox(
+                          width: responsive.value(
+                            mobile: 16,
+                            tablet: 20,
+                            desktop: 24,
+                          ),
+                        ),
+                        Expanded(
+                          child: _buildProfileInfo(
+                            auth,
+                            isDark,
+                            responsive,
+                          ),
                         ),
                       ],
                     ),
-                    indicatorPadding: const EdgeInsets.all(4),
-                    labelColor: isDark
-                        ? AppTheme.darkForeground
-                        : AppTheme.lightForeground,
-                    unselectedLabelColor: isDark
-                        ? AppTheme.darkMutedForeground
-                        : AppTheme.lightMutedForeground,
-                    dividerColor: Colors.transparent,
-                    labelStyle: TextStyle(
-                      fontSize: responsive.value(
-                        mobile: 13,
-                        tablet: 14,
-                        desktop: 14,
-                      ),
+                  SizedBox(
+                    height: responsive.value(
+                      mobile: 24,
+                      tablet: 28,
+                      desktop: 32,
                     ),
-                    tabs: tabs,
                   ),
-                ),
-                SizedBox(
-                  height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
-                ),
-                Expanded(child: TabBarView(children: tabViews)),
-              ],
+                  const Divider(),
+                  SizedBox(
+                    height: responsive.value(
+                      mobile: 16,
+                      tablet: 20,
+                      desktop: 24,
+                    ),
+                  ),
+                  Text(
+                    'Personal Information',
+                    style: TextStyle(
+                      fontSize: responsive.value(
+                        mobile: 16,
+                        tablet: 17,
+                        desktop: 18,
+                      ),
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow('Name', auth.userName ?? '—', isDark, responsive),
+                  _buildInfoRow('Email', auth.userEmail ?? '—', isDark, responsive),
+                  _buildInfoRow('Phone', auth.userPhone ?? '—', isDark, responsive),
+                  _buildInfoRow(
+                    'Role',
+                    _getRoleName(auth.userRole ?? ''),
+                    isDark,
+                    responsive,
+                  ),
+                ],
+              ),
             ),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildProfileTab(bool isDark, Responsive responsive) {
-    return StoreConnector<AppState, _ProfileAuthViewModel>(
-      distinct: true,
-      converter: (store) => _ProfileAuthViewModel(
-        userName: store.state.auth.userName ?? '—',
-        userEmail: store.state.auth.userEmail ?? '—',
-        userPhone: store.state.auth.userPhone ?? '—',
-        userRole: store.state.auth.userRole ?? '',
-      ),
-      builder: (context, auth) {
-        final userName = auth.userName;
-        final userEmail = auth.userEmail;
-        final userPhone = auth.userPhone;
-        final userRole = auth.userRole;
-
-        return SingleChildScrollView(
-          child: Column(
-            children: [
-              MadCard(
-                child: Padding(
-                  padding: EdgeInsets.all(
-                    responsive.value(mobile: 16, tablet: 20, desktop: 24),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Profile header - stack on mobile
-                      if (responsive.isMobile)
-                        Column(
-                          children: [
-                            _buildAvatar(auth, responsive),
-                            const SizedBox(height: 16),
-                            _buildProfileInfo(
-                              auth,
-                              isDark,
-                              responsive,
-                              centered: true,
-                            ),
-                          ],
-                        )
-                      else
-                        Row(
-                          children: [
-                            _buildAvatar(auth, responsive),
-                            SizedBox(
-                              width: responsive.value(
-                                mobile: 16,
-                                tablet: 20,
-                                desktop: 24,
-                              ),
-                            ),
-                            Expanded(
-                              child: _buildProfileInfo(
-                                auth,
-                                isDark,
-                                responsive,
-                              ),
-                            ),
-                          ],
-                        ),
-                      SizedBox(
-                        height: responsive.value(
-                          mobile: 24,
-                          tablet: 28,
-                          desktop: 32,
-                        ),
-                      ),
-                      const Divider(),
-                      SizedBox(
-                        height: responsive.value(
-                          mobile: 16,
-                          tablet: 20,
-                          desktop: 24,
-                        ),
-                      ),
-                      Text(
-                        'Personal Information',
-                        style: TextStyle(
-                          fontSize: responsive.value(
-                            mobile: 16,
-                            tablet: 17,
-                            desktop: 18,
-                          ),
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? AppTheme.darkForeground
-                              : AppTheme.lightForeground,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInfoRow('Name', userName, isDark, responsive),
-                      _buildInfoRow('Email', userEmail, isDark, responsive),
-                      _buildInfoRow('Phone', userPhone, isDark, responsive),
-                      _buildInfoRow(
-                        'Role',
-                        _getRoleName(userRole),
-                        isDark,
-                        responsive,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(
-                height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
-              ),
-              // App Info section
-              MadCard(
-                child: Padding(
-                  padding: EdgeInsets.all(
-                    responsive.value(mobile: 16, tablet: 20, desktop: 24),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'App Information',
-                        style: TextStyle(
-                          fontSize: responsive.value(
-                            mobile: 16,
-                            tablet: 17,
-                            desktop: 18,
-                          ),
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? AppTheme.darkForeground
-                              : AppTheme.lightForeground,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInfoRow('Version', 'Unknown', isDark, responsive),
-                      _buildInfoRow('Build', 'Unknown', isDark, responsive),
-                      _buildInfoRow('Platform', 'Flutter', isDark, responsive),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          SizedBox(
+            height: responsive.value(mobile: 16, tablet: 20, desktop: 24),
           ),
-        );
-      },
+          MadCard(
+            child: Padding(
+              padding: EdgeInsets.all(
+                responsive.value(mobile: 16, tablet: 20, desktop: 24),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'App Information',
+                    style: TextStyle(
+                      fontSize: responsive.value(
+                        mobile: 16,
+                        tablet: 17,
+                        desktop: 18,
+                      ),
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow('Version', 'Unknown', isDark, responsive),
+                  _buildInfoRow('Build', 'Unknown', isDark, responsive),
+                  _buildInfoRow('Platform', 'Flutter', isDark, responsive),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildAvatar(_ProfileAuthViewModel auth, Responsive responsive) {
+  Widget _buildAvatar(AuthSessionView auth, Responsive responsive) {
     final size = responsive.value(mobile: 64.0, tablet: 72.0, desktop: 80.0);
-    final initials = auth.userName
+    final initials = (auth.userName ?? '')
         .split(' ')
         .where((part) => part.trim().isNotEmpty)
         .map((e) => e.trim()[0])
@@ -493,7 +470,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildProfileInfo(
-    _ProfileAuthViewModel auth,
+    AuthSessionView auth,
     bool isDark,
     Responsive responsive, {
     bool centered = false,
@@ -504,7 +481,7 @@ class _ProfilePageState extends State<ProfilePage> {
           : CrossAxisAlignment.start,
       children: [
         Text(
-          auth.userName,
+          auth.userName ?? '—',
           style: TextStyle(
             fontSize: responsive.value(mobile: 20, tablet: 22, desktop: 24),
             fontWeight: FontWeight.bold,
@@ -513,7 +490,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 4),
         Text(
-          auth.userEmail,
+          auth.userEmail ?? '—',
           style: TextStyle(
             fontSize: responsive.value(mobile: 13, tablet: 14, desktop: 14),
             color: isDark
@@ -524,7 +501,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 8),
         MadBadge(
-          text: _getRoleName(auth.userRole),
+          text: _getRoleName(auth.userRole ?? ''),
           variant: BadgeVariant.secondary,
         ),
       ],
@@ -534,196 +511,184 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildSettingsTab(
     bool isDark,
     Responsive responsive,
+    AppThemeMode themeMode,
     bool isOperationalManager,
+    String? selectedProjectId,
   ) {
-    return StoreConnector<AppState, AppThemeMode>(
-      distinct: true,
-      converter: (store) => store.state.theme.mode,
-      builder: (context, themeMode) {
-        return SingleChildScrollView(
-          child: Column(
-            children: [
-              MadCard(
-                child: Padding(
-                  padding: EdgeInsets.all(
-                    responsive.value(mobile: 16, tablet: 20, desktop: 24),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Appearance',
-                        style: TextStyle(
-                          fontSize: responsive.value(
-                            mobile: 16,
-                            tablet: 17,
-                            desktop: 18,
-                          ),
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? AppTheme.darkForeground
-                              : AppTheme.lightForeground,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Choose how the app looks. You can pick light, dark, or system.',
-                        style: TextStyle(
-                          fontSize: responsive.value(
-                            mobile: 13,
-                            tablet: 14,
-                            desktop: 14,
-                          ),
-                          color: isDark
-                              ? AppTheme.darkMutedForeground
-                              : AppTheme.lightMutedForeground,
-                        ),
-                      ),
-                      SizedBox(
-                        height: responsive.value(
-                          mobile: 16,
-                          tablet: 20,
-                          desktop: 24,
-                        ),
-                      ),
-                      if (responsive.isMobile)
-                        Column(
-                          children: [
-                            _buildThemeOption(
-                              icon: LucideIcons.sun,
-                              label: 'Light',
-                              isSelected: themeMode == AppThemeMode.light,
-                              onTap: () => _setTheme(AppThemeMode.light),
-                              isDark: isDark,
-                              responsive: responsive,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildThemeOption(
-                              icon: LucideIcons.moon,
-                              label: 'Dark',
-                              isSelected: themeMode == AppThemeMode.dark,
-                              onTap: () => _setTheme(AppThemeMode.dark),
-                              isDark: isDark,
-                              responsive: responsive,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildThemeOption(
-                              icon: LucideIcons.laptop,
-                              label: 'System',
-                              isSelected:
-                                  themeMode == AppThemeMode.system,
-                              onTap: () => _setTheme(AppThemeMode.system),
-                              isDark: isDark,
-                              responsive: responsive,
-                            ),
-                          ],
-                        )
-                      else
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildThemeOption(
-                                icon: LucideIcons.sun,
-                                label: 'Light',
-                                isSelected:
-                                    themeMode == AppThemeMode.light,
-                                onTap: () => _setTheme(AppThemeMode.light),
-                                isDark: isDark,
-                                responsive: responsive,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildThemeOption(
-                                icon: LucideIcons.moon,
-                                label: 'Dark',
-                                isSelected:
-                                    themeMode == AppThemeMode.dark,
-                                onTap: () => _setTheme(AppThemeMode.dark),
-                                isDark: isDark,
-                                responsive: responsive,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildThemeOption(
-                                icon: LucideIcons.laptop,
-                                label: 'System',
-                                isSelected:
-                                    themeMode == AppThemeMode.system,
-                                onTap: () => _setTheme(AppThemeMode.system),
-                                isDark: isDark,
-                                responsive: responsive,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          MadCard(
+            child: Padding(
+              padding: EdgeInsets.all(
+                responsive.value(mobile: 16, tablet: 20, desktop: 24),
               ),
-              if (isOperationalManager) ...[
-                const SizedBox(height: 16),
-                MadCard(
-                  child: Padding(
-                    padding: EdgeInsets.all(
-                      responsive.value(mobile: 16, tablet: 20, desktop: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Appearance',
+                    style: TextStyle(
+                      fontSize: responsive.value(
+                        mobile: 16,
+                        tablet: 17,
+                        desktop: 18,
+                      ),
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Choose how the app looks. You can pick light, dark, or system.',
+                    style: TextStyle(
+                      fontSize: responsive.value(
+                        mobile: 13,
+                        tablet: 14,
+                        desktop: 14,
+                      ),
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
+                    ),
+                  ),
+                  SizedBox(
+                    height: responsive.value(
+                      mobile: 16,
+                      tablet: 20,
+                      desktop: 24,
+                    ),
+                  ),
+                  if (responsive.isMobile)
+                    Column(
                       children: [
-                        Text(
-                          'Operational Manager',
-                          style: TextStyle(
-                            fontSize: responsive.value(
-                              mobile: 16,
-                              tablet: 17,
-                              desktop: 18,
-                            ),
-                            fontWeight: FontWeight.w600,
-                            color: isDark
-                                ? AppTheme.darkForeground
-                                : AppTheme.lightForeground,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'You are logged in as Operational Manager. Open the ITR module to manage ITR workflow.',
-                          style: TextStyle(
-                            fontSize: responsive.value(
-                              mobile: 13,
-                              tablet: 14,
-                              desktop: 14,
-                            ),
-                            color: isDark
-                                ? AppTheme.darkMutedForeground
-                                : AppTheme.lightMutedForeground,
-                          ),
+                        _buildThemeOption(
+                          icon: LucideIcons.sun,
+                          label: 'Light',
+                          isSelected: themeMode == AppThemeMode.light,
+                          onTap: () => _setTheme(AppThemeMode.light),
+                          isDark: isDark,
+                          responsive: responsive,
                         ),
                         const SizedBox(height: 12),
-                        MadButton(
-                          text: 'Open ITR Module',
-                          onPressed: () {
-                            final projectId = StoreProvider.of<AppState>(
-                              context,
-                            ).state.project.selectedProjectId;
-                            Navigator.pushNamed(
-                              context,
-                              projectId == null || projectId.isEmpty
-                                  ? '/projects'
-                                  : '/itr',
-                            );
-                          },
+                        _buildThemeOption(
+                          icon: LucideIcons.moon,
+                          label: 'Dark',
+                          isSelected: themeMode == AppThemeMode.dark,
+                          onTap: () => _setTheme(AppThemeMode.dark),
+                          isDark: isDark,
+                          responsive: responsive,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildThemeOption(
+                          icon: LucideIcons.laptop,
+                          label: 'System',
+                          isSelected: themeMode == AppThemeMode.system,
+                          onTap: () => _setTheme(AppThemeMode.system),
+                          isDark: isDark,
+                          responsive: responsive,
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildThemeOption(
+                            icon: LucideIcons.sun,
+                            label: 'Light',
+                            isSelected: themeMode == AppThemeMode.light,
+                            onTap: () => _setTheme(AppThemeMode.light),
+                            isDark: isDark,
+                            responsive: responsive,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildThemeOption(
+                            icon: LucideIcons.moon,
+                            label: 'Dark',
+                            isSelected: themeMode == AppThemeMode.dark,
+                            onTap: () => _setTheme(AppThemeMode.dark),
+                            isDark: isDark,
+                            responsive: responsive,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildThemeOption(
+                            icon: LucideIcons.laptop,
+                            label: 'System',
+                            isSelected: themeMode == AppThemeMode.system,
+                            onTap: () => _setTheme(AppThemeMode.system),
+                            isDark: isDark,
+                            responsive: responsive,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              ],
-            ],
+                ],
+              ),
+            ),
           ),
-        );
-      },
+          if (isOperationalManager) ...[
+            const SizedBox(height: 16),
+            MadCard(
+              child: Padding(
+                padding: EdgeInsets.all(
+                  responsive.value(mobile: 16, tablet: 20, desktop: 24),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Operational Manager',
+                      style: TextStyle(
+                        fontSize: responsive.value(
+                          mobile: 16,
+                          tablet: 17,
+                          desktop: 18,
+                        ),
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'You are logged in as Operational Manager. Open the ITR module to manage ITR workflow.',
+                      style: TextStyle(
+                        fontSize: responsive.value(
+                          mobile: 13,
+                          tablet: 14,
+                          desktop: 14,
+                        ),
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    MadButton(
+                      text: 'Open ITR Module',
+                      onPressed: () {
+                        context.appPush(
+                          selectedProjectId == null || selectedProjectId.isEmpty
+                              ? '/projects'
+                              : '/itr',
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -950,8 +915,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     setState(() => _savingAccessControl = true);
     final normalized = normalizeAccessControl(_draftAccessControl);
-    final store = StoreProvider.of<AppState>(context);
-    final currentUser = store.state.auth.user;
+    final currentUser = ref.read(authSessionProvider).user;
     final grantedBy =
         (currentUser?['user_id'] ?? currentUser?['id'] ?? '').toString();
     final grantedByName =
@@ -1007,7 +971,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (currentUserId == selectedUser.id && currentUser != null) {
       final updatedCurrentUser = Map<String, dynamic>.from(currentUser);
       updatedCurrentUser['access_control'] = normalized;
-      store.dispatch(LoginSuccess(updatedCurrentUser));
+      ref.read(authSessionProvider.notifier).sync(updatedCurrentUser);
       await AuthStorage.setUser(updatedCurrentUser);
     }
 
@@ -1630,8 +1594,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _setTheme(AppThemeMode mode) {
-    final store = StoreProvider.of<AppState>(context);
-    store.dispatch(SetTheme(mode));
+    ref.read(themeSessionProvider.notifier).sync(mode);
   }
 
   String _getRoleName(String role) {
@@ -1797,65 +1760,6 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
-}
-
-class _ProfilePermissionsViewModel {
-  final bool isAdmin;
-  final bool isOperationalManager;
-  final bool canViewUserManagementTab;
-  final bool canViewAccessControlTab;
-
-  _ProfilePermissionsViewModel({
-    required this.isAdmin,
-    required this.isOperationalManager,
-    required this.canViewUserManagementTab,
-    required this.canViewAccessControlTab,
-  });
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _ProfilePermissionsViewModel &&
-            isAdmin == other.isAdmin &&
-            isOperationalManager == other.isOperationalManager &&
-            canViewUserManagementTab == other.canViewUserManagementTab &&
-            canViewAccessControlTab == other.canViewAccessControlTab;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-      isAdmin,
-      isOperationalManager,
-      canViewUserManagementTab,
-      canViewAccessControlTab,
-    );
-}
-
-class _ProfileAuthViewModel {
-  final String userName;
-  final String userEmail;
-  final String userPhone;
-  final String userRole;
-
-  const _ProfileAuthViewModel({
-    required this.userName,
-    required this.userEmail,
-    required this.userPhone,
-    required this.userRole,
-  });
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _ProfileAuthViewModel &&
-            userName == other.userName &&
-            userEmail == other.userEmail &&
-            userPhone == other.userPhone &&
-            userRole == other.userRole;
-  }
-
-  @override
-  int get hashCode => Object.hash(userName, userEmail, userPhone, userRole);
 }
 
 /// Form content for Add User dialog (stateful for controllers and role)

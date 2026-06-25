@@ -1,15 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../services/api_client.dart';
 import '../services/file_service.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
+import '../utils/riverpod_context.dart';
 
 class VendorPriceListCreatePage extends StatefulWidget {
   final String vendorId;
@@ -125,12 +124,11 @@ class _VendorPriceListCreatePageState extends State<VendorPriceListCreatePage> {
       _selectedFile = file;
       _uploading = true;
     });
-    final store = StoreProvider.of<AppState>(context);
-    final user = store.state.auth.user;
+    final user = context.appAuth.user;
     final projectId =
         widget.projectId ??
-        store.state.project.selectedProjectId ??
-        store.state.project.selectedProject?['project_id']?.toString();
+        context.appProject.selectedProjectId ??
+        context.appProject.selectedProject?['project_id']?.toString();
     final uploadResult = await ApiClient.uploadVendorPriceListFile(
       file,
       fields: {

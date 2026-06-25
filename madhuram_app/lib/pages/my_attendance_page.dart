@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../components/layout/main_layout.dart';
@@ -7,9 +6,9 @@ import '../components/ui/components.dart';
 import '../models/user.dart';
 import '../services/api_client.dart';
 import '../services/auth_storage.dart';
-import '../store/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive.dart';
+import '../utils/riverpod_context.dart';
 
 class MyAttendancePage extends StatefulWidget {
   const MyAttendancePage({super.key});
@@ -213,9 +212,8 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
       _error = null;
     });
     try {
-      final store = StoreProvider.of<AppState>(context);
-      final userId = _resolveUserId(store.state.auth.user);
-      final projectId = _resolveProjectId(store.state.project.selectedProject);
+      final userId = _resolveUserId(context.appAuth.user);
+      final projectId = _resolveProjectId(context.appProject.selectedProject);
       if (userId == null || userId.trim().isEmpty) {
         setState(() {
           _records = const [];
@@ -532,8 +530,7 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
-    final store = StoreProvider.of<AppState>(context);
-    final authUser = store.state.auth.user;
+    final authUser = context.appAuth.user;
     final isAdmin =
         (authUser?['role']?.toString() ?? '').toLowerCase() == 'admin';
 

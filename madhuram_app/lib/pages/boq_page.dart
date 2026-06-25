@@ -1,10 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../services/file_service.dart';
 import '../services/excel_service.dart';
@@ -19,6 +17,7 @@ import '../utils/error_handler.dart';
 import '../components/ui/mad_skeleton.dart';
 import '../utils/responsive.dart';
 import '../utils/formatters.dart';
+import '../utils/riverpod_context.dart';
 
 /// BOQ Management page matching React's BOQ.jsx
 class BOQPage extends StatefulWidget {
@@ -288,8 +287,7 @@ class _BOQPageState extends State<BOQPage> {
   }
 
   Future<void> _restoreClientSelection() async {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId = store.state.project.selectedProjectId ?? '';
+    final projectId = context.appProject.selectedProjectId ?? '';
     if (projectId.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
@@ -301,8 +299,7 @@ class _BOQPageState extends State<BOQPage> {
   }
 
   Future<void> _persistClientSelection(String client) async {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId = store.state.project.selectedProjectId ?? '';
+    final projectId = context.appProject.selectedProjectId ?? '';
     if (projectId.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
@@ -340,8 +337,7 @@ class _BOQPageState extends State<BOQPage> {
   bool get _canImportPdf => _currentProjectId.isNotEmpty && _activeClient.isNotEmpty;
 
   String get _currentProjectId {
-    final store = StoreProvider.of<AppState>(context);
-    return store.state.project.selectedProjectId ?? '';
+    return context.appProject.selectedProjectId ?? '';
   }
 
   Future<void> _loadBOQItems() async {

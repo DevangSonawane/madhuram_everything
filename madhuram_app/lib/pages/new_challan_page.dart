@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/scheduler.dart';
 import '../components/layout/main_layout.dart';
 import '../components/ui/components.dart';
 import '../models/purchase_order.dart';
 import '../services/api_client.dart';
-import '../store/app_state.dart';
+import '../providers/legacy_session_providers.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
 import '../utils/responsive.dart';
 
-class NewChallanPage extends StatefulWidget {
+class NewChallanPage extends ConsumerStatefulWidget {
   const NewChallanPage({super.key});
 
   @override
-  State<NewChallanPage> createState() => _NewChallanPageState();
+  ConsumerState<NewChallanPage> createState() => _NewChallanPageState();
 }
 
-class _NewChallanPageState extends State<NewChallanPage> {
+class _NewChallanPageState extends ConsumerState<NewChallanPage> {
   static final Map<String, List<PurchaseOrder>> _poCacheByProject = {};
   static final Map<String, DateTime> _poCacheAt = {};
   static const Duration _poCacheTtl = Duration(minutes: 5);
@@ -154,7 +155,7 @@ class _NewChallanPageState extends State<NewChallanPage> {
   }
 
   void _goToChallans() {
-    Navigator.pushReplacementNamed(context, '/challans');
+    context.appGo('/challans');
   }
 
   bool _hasItemValue(Map<String, String> item) {
@@ -232,10 +233,9 @@ class _NewChallanPageState extends State<NewChallanPage> {
 
   Future<void> _openItemDetail() async {
     if (_selectedPoItems.isEmpty) return;
-    final result = await Navigator.pushNamed(
-      context,
+    final result = await context.appPush(
       '/challans/new/details',
-      arguments: {
+      extra: {
         'poItems': _poItemsForDetail(),
         'deliveryItems': _currentDeliveryItems(),
       },
@@ -313,31 +313,23 @@ class _NewChallanPageState extends State<NewChallanPage> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, String>(
-      distinct: true,
-      converter: (store) => store.state.project.selectedProjectId ?? '',
-      onInit: (store) {
-        _projectId = store.state.project.selectedProjectId ?? '';
-        _queueLoadPos();
-      },
-      onWillChange: (prev, next) {
-        if (prev != next) {
-          _projectId = next;
-          _queueLoadPos();
-        }
-      },
-      builder: (context, selectedProjectId) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final responsive = Responsive(context);
-        final isMobile = responsive.isMobile;
+    final selectedProjectId = ref.watch(projectSessionProvider).selectedProjectId ?? '';
+    if (_projectId != selectedProjectId) {
+      _projectId = selectedProjectId;
+      _queueLoadPos();
+    }
 
-        return ProtectedRoute(
-          title: 'New Delivery Challan',
-          route: '/challans/new',
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final responsive = Responsive(context);
+    final isMobile = responsive.isMobile;
+
+    return ProtectedRoute(
+      title: 'New Delivery Challan',
+      route: '/challans/new',
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -881,8 +873,6 @@ class _NewChallanPageState extends State<NewChallanPage> {
             ),
           ),
         );
-      },
-    );
   }
 
   Widget _previewHeader(String text, {required int flex, required bool isDark}) {

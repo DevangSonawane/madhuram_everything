@@ -1,17 +1,18 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../services/file_service.dart';
 import '../models/itr.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
+import '../providers/legacy_session_providers.dart';
+import '../utils/app_navigation.dart';
 import '../utils/responsive.dart';
 import '../utils/error_handler.dart';
 
@@ -226,13 +227,13 @@ String _yesNoNaToApi(dynamic value) {
 }
 
 /// Installation Test Report page with PO-like shell and dedicated manual entry route.
-class ITRPageFull extends StatefulWidget {
+class ITRPageFull extends ConsumerStatefulWidget {
   const ITRPageFull({super.key});
   @override
-  State<ITRPageFull> createState() => _ITRPageFullState();
+  ConsumerState<ITRPageFull> createState() => _ITRPageFullState();
 }
 
-class _ITRPageFullState extends State<ITRPageFull> {
+class _ITRPageFullState extends ConsumerState<ITRPageFull> {
   bool _isLoading = true;
   String? _error;
   List<ITR> _itrs = [];
@@ -269,9 +270,8 @@ class _ITRPageFullState extends State<ITRPageFull> {
       _isLoading = true;
       _error = null;
     });
-    final store = StoreProvider.of<AppState>(context);
-    final projectId = store.state.project.selectedProject?['project_id']?.toString() ??
-        store.state.project.selectedProjectId ?? '';
+    final project = ref.read(projectSessionProvider);
+    final projectId = project.selectedProjectId ?? '';
 
     try {
       final result = projectId.isNotEmpty
@@ -351,6 +351,8 @@ class _ITRPageFullState extends State<ITRPageFull> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
+    final project = ref.watch(projectSessionProvider);
+    final projectId = project.selectedProjectId;
     final args = ModalRoute.of(context)?.settings.arguments;
     final argsMap = args is Map ? Map<String, dynamic>.from(args) : const <String, dynamic>{};
     final manualOnlyMode = argsMap['manualOnly'] == true;
@@ -362,84 +364,75 @@ class _ITRPageFullState extends State<ITRPageFull> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         showToast(context, 'Prefilled ITR ref from challan $challanNo');
-        Navigator.pushNamed(
-          context,
+        context.appPush(
           '/itr/preview',
-          arguments: {'manualOnly': true, 'prefill_itr_ref': challanNo},
+          extra: {'manualOnly': true, 'prefill_itr_ref': challanNo},
         );
       });
     }
 
-    return StoreConnector<AppState, String?>(
-      distinct: true,
-      converter: (store) =>
-          store.state.project.selectedProject?['project_id']?.toString() ??
-          store.state.project.selectedProjectId,
-      builder: (context, projectId) {
-        return ProtectedRoute(
-          title: manualOnlyMode
-              ? 'Installation Test Report - Manual Entry'
-              : 'Installation Test Report',
-          route: '/itr',
-          child: Column(
+    return ProtectedRoute(
+      title: manualOnlyMode
+          ? 'Installation Test Report - Manual Entry'
+          : 'Installation Test Report',
+      route: '/itr',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                      manualOnlyMode
-                          ? 'ITR Manual Entry'
-                          : 'Installation Test Report',
-                          style: TextStyle(
-                            fontSize: responsive.value(mobile: 24, tablet: 30, desktop: 32),
-                            fontWeight: FontWeight.w800,
-                            color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                      manualOnlyMode
-                          ? 'Fill the ITR form manually.'
-                          : 'Upload and manage installation test reports.',
-                          style: TextStyle(
-                            fontSize: responsive.value(mobile: 13, tablet: 15, desktop: 16),
-                            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
               Expanded(
-                child: manualOnlyMode
-                    ? _buildManualEntryTab(
-                        isDark,
-                        projectId,
-                        prefillFromArgs:
-                            argsMap['prefill_itr_ref']?.toString() ??
-                                _prefillItrRef,
-                      )
-                    : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildCreateExtractCard(isDark),
-                      const SizedBox(height: 16),
-                      _buildRecentITRsTab(isDark, isMobile),
-                    ],
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                  manualOnlyMode
+                      ? 'ITR Manual Entry'
+                      : 'Installation Test Report',
+                      style: TextStyle(
+                        fontSize: responsive.value(mobile: 24, tablet: 30, desktop: 32),
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                  manualOnlyMode
+                      ? 'Fill the ITR form manually.'
+                      : 'Upload and manage installation test reports.',
+                      style: TextStyle(
+                        fontSize: responsive.value(mobile: 13, tablet: 15, desktop: 16),
+                        color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 16),
+          Expanded(
+            child: manualOnlyMode
+                ? _buildManualEntryTab(
+                    isDark,
+                    projectId,
+                    prefillFromArgs:
+                        argsMap['prefill_itr_ref']?.toString() ??
+                            _prefillItrRef,
+                  )
+                : SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildCreateExtractCard(isDark),
+                  const SizedBox(height: 16),
+                  _buildRecentITRsTab(isDark, isMobile),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -487,10 +480,9 @@ class _ITRPageFullState extends State<ITRPageFull> {
                   text: 'Manual Entry',
                   icon: LucideIcons.filePenLine,
                   variant: ButtonVariant.outline,
-                  onPressed: () => Navigator.pushNamed(
-                    context,
+                  onPressed: () => context.appPush(
                     '/itr/preview',
-                    arguments: {
+                    extra: {
                       'manualOnly': true,
                       'prefill_itr_ref': _prefillItrRef,
                     },
@@ -527,7 +519,7 @@ class _ITRPageFullState extends State<ITRPageFull> {
     if (_selectedFile == null) return;
     setState(() => _isUploading = true);
     try {
-      final user = StoreProvider.of<AppState>(context).state.auth.user;
+      final user = ref.read(authSessionProvider).user;
       final result = await ApiClient.uploadITRReference(
         _selectedFile!,
         userId:
@@ -726,9 +718,8 @@ class _ITRPageFullState extends State<ITRPageFull> {
   }
 
   Future<void> _submitITR(Map<String, dynamic> formData) async {
-    final store = StoreProvider.of<AppState>(context);
-    final projectId = store.state.project.selectedProject?['project_id']?.toString() ??
-        store.state.project.selectedProjectId ?? '';
+    final project = ref.read(projectSessionProvider);
+    final projectId = project.selectedProjectId ?? '';
     if (projectId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -737,7 +728,7 @@ class _ITRPageFullState extends State<ITRPageFull> {
       return;
     }
 
-    final payload = _buildItrPayload(formData, projectId, store.state.auth.user);
+    final payload = _buildItrPayload(formData, projectId, ref.read(authSessionProvider).user);
     final updateId = (formData['itr_id'] ?? '').toString().trim();
     final result = updateId.isEmpty
         ? await ApiClient.createITR(payload)
@@ -1320,7 +1311,7 @@ class _ITRPageFullState extends State<ITRPageFull> {
       return;
     }
 
-    final user = StoreProvider.of<AppState>(context).state.auth.user;
+    final user = ref.read(authSessionProvider).user;
     setState(() => _updatingStatusIds[key] = true);
     try {
       final result = await ApiClient.updateITRStatus(

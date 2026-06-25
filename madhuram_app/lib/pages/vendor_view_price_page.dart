@@ -7,6 +7,7 @@ import '../models/vendor.dart';
 import '../models/vendor_price_list.dart';
 import '../services/api_client.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_navigation.dart';
 
 class VendorViewPricePage extends StatefulWidget {
   final String vendorId;
@@ -203,17 +204,16 @@ class _VendorViewPricePageState extends State<VendorViewPricePage> {
               text: 'Open Price List Detail',
               icon: LucideIcons.eye,
               variant: ButtonVariant.outline,
-              onPressed: () {
-                Navigator.pushNamed(
-                  context,
-                  '/vendors/price-lists/view',
-                  arguments: {
-                    'vendorId': widget.vendorId,
-                    'projectId': widget.projectId,
-                    'priceListId': latest.id,
-                  },
-                ).then((_) => _loadData());
-              },
+              onPressed: () => context
+                  .appPush(
+                    '/vendors/price-lists/view',
+                    extra: {
+                      'vendorId': widget.vendorId,
+                      'projectId': widget.projectId,
+                      'priceListId': latest.id,
+                    },
+                  )
+                  .then((_) => _loadData()),
             ),
           ],
         ),
@@ -279,17 +279,16 @@ class _VendorViewPricePageState extends State<VendorViewPricePage> {
                         icon: LucideIcons.eye,
                         variant: ButtonVariant.outline,
                         size: ButtonSize.sm,
-                        onPressed: () {
-                          Navigator.pushNamed(
-                            context,
-                            '/vendors/price-lists/view',
-                            arguments: {
-                              'vendorId': widget.vendorId,
-                              'projectId': widget.projectId,
-                              'priceListId': row.id,
-                            },
-                          ).then((_) => _loadData());
-                        },
+                        onPressed: () => context
+                            .appPush(
+                              '/vendors/price-lists/view',
+                              extra: {
+                                'vendorId': widget.vendorId,
+                                'projectId': widget.projectId,
+                                'priceListId': row.id,
+                              },
+                            )
+                            .then((_) => _loadData()),
                       ),
                     ],
                   ),
@@ -322,21 +321,18 @@ class _VendorViewPricePageState extends State<VendorViewPricePage> {
                       text: 'Vendor List',
                       icon: LucideIcons.arrowLeft,
                       variant: ButtonVariant.outline,
-                      onPressed: () => Navigator.pushNamed(context, '/vendors'),
+                      onPressed: () => context.appPush('/vendors'),
                     ),
                     MadButton(
                       text: 'Price List Page',
                       variant: ButtonVariant.outline,
-                      onPressed: () {
-                        Navigator.pushNamed(
-                          context,
-                          '/vendors/price-lists',
-                          arguments: {
-                            'vendorId': widget.vendorId,
-                            'projectId': widget.projectId,
-                          },
-                        );
-                      },
+                      onPressed: () => context.appPush(
+                        '/vendors/price-lists',
+                        extra: {
+                          'vendorId': widget.vendorId,
+                          'projectId': widget.projectId,
+                        },
+                      ),
                     ),
                     MadButton(
                       text: 'Reload',

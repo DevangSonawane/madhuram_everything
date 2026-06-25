@@ -2,18 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:redux/redux.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../utils/responsive.dart';
-import '../store/app_state.dart';
 import '../services/api_client.dart';
 import '../services/file_service.dart';
+import '../utils/app_navigation.dart';
+import '../providers/legacy_session_providers.dart';
 
 /// Floor-wise configuration row (matches React Samples floor config)
 class FloorConfig {
@@ -51,14 +51,14 @@ class FloorConfig {
 }
 
 /// Samples & Configuration page - floor plan upload, floor-wise config (matches React Samples.jsx)
-class SamplesPageFull extends StatefulWidget {
+class SamplesPageFull extends ConsumerStatefulWidget {
   const SamplesPageFull({super.key});
 
   @override
-  State<SamplesPageFull> createState() => _SamplesPageFullState();
+  ConsumerState<SamplesPageFull> createState() => _SamplesPageFullState();
 }
 
-class _SamplesPageFullState extends State<SamplesPageFull> {
+class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
   static const String _prefKey = 'samples_floor_config';
 
   static final List<FloorConfig> _initialFloorData = [
@@ -76,6 +76,7 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
   List<Map<String, dynamic>> _serverSamples = [];
   List<Map<String, dynamic>> _inventoryItems = [];
   bool _loadingInventory = false;
+  bool _inventoryLoadScheduled = false;
   String _inventorySearch = '';
   final Map<String, String> _pendingInventoryQty = {};
   List<String> _uploadFilePaths = [];
@@ -546,7 +547,7 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
   void _navigateToPreview(Map<String, dynamic> sample) {
     final id = sample['sample_id'] ?? sample['id'];
     if (id == null) return;
-    Navigator.pushNamed(context, '/samples/preview', arguments: id.toString());
+    context.appPush('/samples/preview', extra: id.toString());
   }
 
   void _openItemFieldDialog(int rowIndex) {
@@ -604,39 +605,33 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
 
   @override
   Widget build(BuildContext context) {
-    return StoreConnector<AppState, _SamplesViewModel>(
-      distinct: true,
-      converter: (store) => _SamplesViewModel.fromStore(store),
-      onInit: (store) {
-        final vm = _SamplesViewModel.fromStore(store);
-        _projectId = vm.projectId;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _loadServerSamples();
-          if (mounted) _loadInventoryItems();
-        });
-      },
-      onWillChange: (prev, next) {
-        if (prev?.projectId != next.projectId) {
-          _projectId = next.projectId;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _loadServerSamples();
-          });
-        }
-      },
-      builder: (context, _) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final responsive = Responsive(context);
-        final isMobile = responsive.isMobile;
+    final project = ref.watch(projectSessionProvider);
+    final nextProjectId = project.selectedProjectId ?? '';
+    if (_projectId != nextProjectId) {
+      _projectId = nextProjectId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadServerSamples();
+      });
+    }
 
-        return ProtectedRoute(
-          title: 'Samples & Configuration',
-          route: '/samples',
-          child: SingleChildScrollView(
-            padding: EdgeInsets.zero,
-            child: _buildServerSamplesSection(isDark, isMobile),
-          ),
-        );
-      },
+    if (!_inventoryLoadScheduled) {
+      _inventoryLoadScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadInventoryItems();
+      });
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final responsive = Responsive(context);
+    final isMobile = responsive.isMobile;
+
+    return ProtectedRoute(
+      title: 'Samples & Configuration',
+      route: '/samples',
+      child: SingleChildScrollView(
+        padding: EdgeInsets.zero,
+        child: _buildServerSamplesSection(isDark, isMobile),
+      ),
     );
   }
 
@@ -1135,7 +1130,7 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
                       variant: ButtonVariant.outline,
                       size: ButtonSize.sm,
                       onPressed: () async {
-                        final created = await Navigator.pushNamed(context, '/samples/create', arguments: _projectId);
+                        final created = await context.appPush('/samples/create', extra: _projectId);
                         if (created == true && mounted) {
                           _loadServerSamples();
                         }
@@ -1167,7 +1162,7 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
                         variant: ButtonVariant.outline,
                         size: ButtonSize.sm,
                         onPressed: () async {
-                          final created = await Navigator.pushNamed(context, '/samples/create', arguments: _projectId);
+                          final created = await context.appPush('/samples/create', extra: _projectId);
                           if (created == true && mounted) {
                             _loadServerSamples();
                           }
@@ -1911,26 +1906,4 @@ class _SamplesPageFullState extends State<SamplesPageFull> {
     );
   }
 
-}
-
-class _SamplesViewModel {
-  final String projectId;
-
-  const _SamplesViewModel({required this.projectId});
-
-  factory _SamplesViewModel.fromStore(Store<AppState> store) {
-    final projectId = store.state.project.selectedProjectId ??
-        store.state.project.selectedProject?['project_id']?.toString() ??
-        '';
-    return _SamplesViewModel(projectId: projectId);
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return identical(this, other) ||
-        other is _SamplesViewModel && projectId == other.projectId;
-  }
-
-  @override
-  int get hashCode => projectId.hashCode;
 }

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../theme/app_theme.dart';
-import '../../store/app_state.dart';
+import '../../providers/legacy_session_providers.dart';
 import '../../ui/menu_items.dart';
 import '../../utils/responsive.dart';
 
 /// Sidebar matching React's Sidebar.jsx - Responsive version
-class AppSidebar extends StatelessWidget {
+class AppSidebar extends ConsumerWidget {
   final bool isCollapsed;
   final VoidCallback? onToggle;
   final String? currentRoute;
@@ -24,7 +24,7 @@ class AppSidebar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final responsive = Responsive(context);
@@ -33,132 +33,124 @@ class AppSidebar extends StatelessWidget {
     final isInDrawer = !responsive.isDesktop;
     final effectiveCollapsed = isInDrawer ? false : isCollapsed;
 
-    return StoreConnector<AppState, Map<String, dynamic>?>(
-      distinct: true,
-      converter: (store) => store.state.auth.user,
-      builder: (context, user) {
-        final categories = getMenuCategories(user: user);
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: effectiveCollapsed ? 80 : (isInDrawer ? double.infinity : 288),
-          height: double.infinity,
-          decoration: BoxDecoration(
-            color: isDark
-                ? AppTheme.sidebarDarkBackground
-                : AppTheme.sidebarBackground,
-            border: isInDrawer
-                ? null
-                : Border(
-                    right: BorderSide(
-                      color: (isDark ? Colors.white : Colors.black).withOpacity(
-                        0.1,
-                      ),
-                    ),
-                  ),
-            boxShadow: isInDrawer
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      offset: const Offset(0, 0),
-                    ),
-                  ],
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Header with logo
-                _buildHeader(context, isDark, effectiveCollapsed, responsive),
+    final user = ref.watch(authSessionProvider).user;
+    final categories = getMenuCategories(user: user);
 
-                // Menu items
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: responsive.value(
-                        mobile: 8,
-                        tablet: 10,
-                        desktop: 12,
-                      ),
-                      vertical: responsive.value(
-                        mobile: 12,
-                        tablet: 14,
-                        desktop: 16,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final category in categories) ...[
-                          if (!effectiveCollapsed) ...[
-                            Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                responsive.value(
-                                  mobile: 12,
-                                  tablet: 14,
-                                  desktop: 16,
-                                ),
-                                responsive.value(
-                                  mobile: 12,
-                                  tablet: 14,
-                                  desktop: 16,
-                                ),
-                                responsive.value(
-                                  mobile: 12,
-                                  tablet: 14,
-                                  desktop: 16,
-                                ),
-                                responsive.value(
-                                  mobile: 6,
-                                  tablet: 7,
-                                  desktop: 8,
-                                ),
-                              ),
-                              child: Text(
-                                category.name.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: responsive.value(
-                                    mobile: 9,
-                                    tablet: 9,
-                                    desktop: 10,
-                                  ),
-                                  fontWeight: FontWeight.bold,
-                                  color:
-                                      (isDark
-                                              ? AppTheme.darkForeground
-                                              : AppTheme.lightForeground)
-                                          .withOpacity(0.4),
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                            ),
-                          ] else
-                            SizedBox(
-                              height: responsive.value(
-                                mobile: 12,
-                                tablet: 14,
-                                desktop: 16,
-                              ),
-                            ),
-                          for (final item in category.items)
-                            _buildMenuItem(
-                              context,
-                              item,
-                              isDark,
-                              effectiveCollapsed,
-                              responsive,
-                            ),
-                        ],
-                      ],
-                    ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: effectiveCollapsed ? 80 : (isInDrawer ? double.infinity : 288),
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color:
+            isDark ? AppTheme.sidebarDarkBackground : AppTheme.sidebarBackground,
+        border: isInDrawer
+            ? null
+            : Border(
+                right: BorderSide(
+                  color: (isDark ? Colors.white : Colors.black).withOpacity(0.1),
+                ),
+              ),
+        boxShadow: isInDrawer
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 20,
+                  offset: const Offset(0, 0),
+                ),
+              ],
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Header with logo
+            _buildHeader(context, isDark, effectiveCollapsed, responsive),
+
+            // Menu items
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: responsive.value(
+                    mobile: 8,
+                    tablet: 10,
+                    desktop: 12,
+                  ),
+                  vertical: responsive.value(
+                    mobile: 12,
+                    tablet: 14,
+                    desktop: 16,
                   ),
                 ),
-
-              ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final category in categories) ...[
+                      if (!effectiveCollapsed) ...[
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            responsive.value(
+                              mobile: 12,
+                              tablet: 14,
+                              desktop: 16,
+                            ),
+                            responsive.value(
+                              mobile: 12,
+                              tablet: 14,
+                              desktop: 16,
+                            ),
+                            responsive.value(
+                              mobile: 12,
+                              tablet: 14,
+                              desktop: 16,
+                            ),
+                            responsive.value(
+                              mobile: 6,
+                              tablet: 7,
+                              desktop: 8,
+                            ),
+                          ),
+                          child: Text(
+                            category.name.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: responsive.value(
+                                mobile: 9,
+                                tablet: 9,
+                                desktop: 10,
+                              ),
+                              fontWeight: FontWeight.bold,
+                              color:
+                                  (isDark
+                                          ? AppTheme.darkForeground
+                                          : AppTheme.lightForeground)
+                                      .withOpacity(0.4),
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ),
+                      ] else
+                        SizedBox(
+                          height: responsive.value(
+                            mobile: 12,
+                            tablet: 14,
+                            desktop: 16,
+                          ),
+                        ),
+                      for (final item in category.items)
+                        _buildMenuItem(
+                          context,
+                          item,
+                          isDark,
+                          effectiveCollapsed,
+                          responsive,
+                        ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
