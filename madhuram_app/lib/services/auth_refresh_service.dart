@@ -113,7 +113,9 @@ class AuthRefreshService {
       return;
     }
 
+    final currentUser = current ?? <String, dynamic>{};
     final mergedUser = {
+      ...currentUser,
       ...data,
       'token': token,
     };
