@@ -1,0 +1,206 @@
+.container{
+  background-color: white;
+  width: 90%;
+  border: 1px solid #e0e0e0;
+  margin:10px 0px;
+  padding: 20px 30px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.text-container{
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+.profile{
+    font-size: 18px;
+    font-weight: 600;
+}
+.custom-add-executive-btn {
+  background: linear-gradient(90deg, #6A9CFF 0%, #60D3FF 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  padding: 0 16px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: background 0.3s ease;
+}
+
+.custom-add-executive-btn:hover,
+.custom-add-executive-btn:focus {
+  background: linear-gradient(90deg, #5A8CFF 0%, #50C3F9 100%);
+  color: white;
+}
+
+.button-div{
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+}
+.parent{
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+.Input-EM{
+width: "100%";
+}
+#Select-EM{
+    width: 100%;
+}
+
+.EM-box{
+    display: flex;
+    flex-direction: column;
+    width: "100%";
+}
+.input-div{
+    background-color: green;
+    flex: 0.5;
+}
+.EM-box1{
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+flex:1,
+}
+.EM-box2{
+       justify-items: center;
+        align-content: space-between;
+}
+.EM-container {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.form-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.form-group {
+  flex: 1;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #000;
+  font-size: 14px;
+}
+
+.Input-EM {
+  margin-top: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  height: 40px;
+}
+
+.select-input {
+  height: 40px !important;
+}
+
+.select-input .ant-select-selector {
+  height: 40px !important;
+  padding: 4px 12px !important;
+  display: flex;
+  align-items: center;
+}
+.row-container{
+    display: flex;
+    flex-direction: column;
+}
+.module-access{
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.chip{
+    margin-right: 0;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(72, 72, 72, 0.24);
+    background-color: white;
+}
+
+.chip:hover {
+    background-color: #f5f5f5;
+}
+
+.save-button {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 20px;
+}
+
+.add-save-button{
+  color: white;
+  background-color: #1a2e5a;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 24px;
+  height: 40px;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.add-save-button:hover,
+.add-save-button:focus {
+  background-color: #0b1d46;
+  color: white;
+}
+
+/* Table Styling */
+.executive-table .ant-table-thead > tr > th {
+  background: #51AAF3 !important;
+  color: white !important;
+  font-weight: 500;
+  border: none !important;
+  padding: 16px;
+}
+
+.executive-table .ant-table-tbody > tr > td {
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.executive-table .ant-table-tbody > tr:hover > td {
+  background-color: #f8f9fa;
+}
+
+.executive-table .ant-table {
+  border-radius: 8px;
+}
+
+.executive-table .ant-table-tbody > tr > td:first-child,
+.executive-table .ant-table-thead > tr > th:first-child {
+  padding-left: 24px;
+}
+
+.executive-table .ant-table-tbody > tr > td:last-child,
+.executive-table .ant-table-thead > tr > th:last-child {
+  padding-right: 24px;
+}

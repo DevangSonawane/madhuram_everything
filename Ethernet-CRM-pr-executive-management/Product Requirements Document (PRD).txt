@@ -1,0 +1,977 @@
+﻿Product Requirements Document (PRD)
+Madhuram Construction Material Supply Chain Management System
+Version: 1.0
+Date: January 22, 2026
+Prepared for: Madhuram
+Document Owner: Product Team
+________________
+
+
+1. Executive Summary
+1.1 Purpose
+This document outlines the requirements for developing a comprehensive web-based supply chain management system for Madhuram, a construction material supplier serving high-profile clients including Lodha and Hiranandani. The system will manage the complete lifecycle from project creation to billing, including material procurement, vendor management, delivery tracking, and installation verification.
+1.2 Product Overview
+The Madhuram SCM System is a web application designed to streamline construction material supply operations for multi-floor building projects. It manages plumbing and other construction materials supply across project generation, procurement, vendor management, delivery, installation, and billing.
+1.3 Goals
+* Digitize end-to-end material supply chain workflow
+* Reduce manual paperwork and errors
+* Enable real-time tracking of material procurement and delivery
+* Facilitate vendor comparison and selection
+* Automate document generation (PO, Challan, MER, etc.)
+* Streamline billing process based on MIR and ITR
+* Improve inventory visibility and stock management
+________________
+
+
+2. Target Users & Personas
+2.1 Admin/Manager
+* Role: Overall system management and oversight
+* Responsibilities:
+   * Project creation and management
+   * User management
+   * OCR document processing for products
+   * Final approvals
+   * Report generation
+   * System configuration
+2.2 Purchase Team
+* Role: Procurement management
+* Responsibilities:
+   * Creating Purchase Requests (PR)
+   * Vendor comparison
+   * Purchase Order (PO) generation
+   * Vendor communication
+2.3 Operations Manager
+* Role: On-ground operations and material management
+* Responsibilities:
+   * Delivery challan verification
+   * MIR (Material Inspection Report) upload
+   * Material Entry Report (MER) generation
+   * Stock monitoring
+2.4 Site Engineers
+* Role: Installation and testing
+* Responsibilities:
+   * ITR (Installation Test Report) generation
+   * Material usage tracking
+   * Quality verification
+   * Future: Mobile app access
+________________
+
+
+3. System Architecture Overview
+3.1 High-Level Flow
+Project Generation → Sample Management → PR → Vendor Comparison → PO → 
+Delivery Challan → MER → MIR Upload → ITR → Billing → Stock Management
+
+
+3.2 Key Modules
+1. Project Management Module
+2. Sample & BOQ Management Module
+3. Purchase Request Module
+4. Vendor Management Module
+5. Purchase Order Module
+6. Delivery & Material Entry Module
+7. Installation & Testing Module
+8. Billing Module
+9. Inventory & Notification Module
+10. Document Management & OCR Module
+________________
+
+
+4. Detailed Functional Requirements
+Module 1: Project Management
+4.1 Project Generation
+Priority: P0 (Critical)
+Features:
+* Create new project with following details:
+   * Project Name
+   * Client Name (Lodha, Hiranandani, etc.)
+   * Project Location
+   * Number of Floors
+   * Project Start Date
+   * Expected Completion Date
+   * Project Manager/Point of Contact
+   * Total Project Value (estimated)
+Work Order Creation:
+* Generate Work Order number (auto-generated format: WO-YYYY-MM-###)
+* Attach Work Order document (PDF upload)
+* Link to specific client
+* Set work order status: Draft, Pending Approval, Approved, In Progress, Completed
+Client Management:
+* Client Database with:
+   * Client Name
+   * Contact Person
+   * Email & Phone
+   * Address
+   * GST Number
+   * Payment Terms
+   * Historical Projects
+4.2 BOQ (Bill of Quantities) Management
+Priority: P0
+Features:
+* Manual Entry Option:
+   * Add items with: Item Code, Description, Unit, Quantity, Rate, Amount
+   * Category-wise grouping (Plumbing, Electrical, etc.)
+   * Floor-wise breakdown
+* Import Option:
+   * Upload Excel/CSV file
+   * Template download option
+   * Auto-validation of imported data
+   * Preview before final import
+* BOQ Features:
+   * Edit/Update BOQ items
+   * Version control (track changes)
+   * Export to Excel/PDF
+   * Total calculation
+4.3 MAS (Material Approval Sheet)
+Priority: P0
+Features:
+* Create MAS from BOQ items
+* Add material specifications:
+   * Brand
+   * Model/Type
+   * Technical specifications
+   * Sample image upload
+   * Datasheet upload
+* Approval Workflow:
+   * Submit MAS to client
+   * Client review status: Pending, Approved, Rejected, Revision Required
+   * Comments/feedback from client
+   * Revision history
+   * Email notification to client
+   * Digital signature/approval
+* Only approved MAS items proceed to PR generation
+________________
+
+
+Module 2: Sample & Quantity Management
+2.1 Sample Definition
+Priority: P0
+Features:
+* Define quantity per floor for each product
+* Floor-wise material breakdown
+* Product specifications:
+   * Product name
+   * Brand
+   * Model
+   * Unit of measurement
+   * Quantity per floor
+   * Total quantity (auto-calculated based on number of floors)
+Sample Fixation:
+* Fix number of products per floor
+* Provision for variations between floors (e.g., ground floor vs typical floor)
+* Preview total requirements
+* Lock samples once finalized
+Sample Approval:
+* Internal approval before PR generation
+* Modification history
+________________
+
+
+Module 3: Purchase Request (PR) Module
+3.1 PR Generation
+Priority: P0
+Features:
+* Auto-generate PR from approved MAS and sample quantities
+* Manual PR creation option
+* PR Details:
+   * PR Number (auto-generated: PR-YYYY-MM-###)
+   * Project Reference
+   * Requested By
+   * Date of Request
+   * Required Delivery Date
+   * Priority Level: Low, Medium, High, Urgent
+PR Items:
+* Item list with:
+   * Product name
+   * Specification
+   * Quantity required
+   * Unit
+   * Estimated rate
+   * Estimated amount
+* Multiple items per PR
+* Attach supporting documents
+PR Workflow:
+* Status tracking: Draft, Submitted, Under Review, Approved, Rejected, Converted to PO
+* Approval hierarchy (if needed)
+* Email notifications
+________________
+
+
+Module 4: Vendor Management & Comparison
+4.1 Vendor Database
+Priority: P0
+Features:
+* Vendor master data:
+   * Vendor Name
+   * Contact Person
+   * Email & Phone
+   * Address
+   * GST Number
+   * PAN
+   * Bank Details
+   * Payment Terms
+   * Vendor Rating (1-5 stars)
+   * Category/Specialization
+   * Historical performance data
+* Add/Edit/Deactivate vendors
+* Vendor document repository
+4.2 Vendor Quotation Request
+Priority: P0
+Features:
+* Send PR to multiple vendors via email
+* Email template with PR details
+* Track quotation submission
+* Set quotation deadline
+* Reminder notifications to vendors
+4.3 Vendor Comparison
+Priority: P0
+Features:
+* Comparison matrix with filters:
+   * Price (ascending/descending)
+   * Delivery Time (earliest/latest)
+   * Vendor Rating (highest/lowest)
+   * Payment Terms (best terms first)
+   * Brand/Quality (based on previous performance)
+   * Warranty/Guarantee period
+* Side-by-side comparison of up to 5 vendors
+* Highlight best values (lowest price, fastest delivery, etc.)
+* Comments/notes section for each vendor
+* Export comparison to PDF
+Selection Options:
+* Manual Selection: User selects preferred vendor
+* Auto-Suggest: System recommends based on weighted criteria
+* Split Order: Select multiple vendors for different items
+Selection Criteria Configuration:
+* Admin can set weightage:
+   * Price: 40%
+   * Delivery Time: 30%
+   * Quality Rating: 20%
+   * Payment Terms: 10%
+   * (Customizable per project/client)
+________________
+
+
+Module 5: Purchase Order (PO) Module
+5.1 PO Generation
+Priority: P0
+Features:
+* Generate PO from selected vendor quotation
+* PO Details:
+   * PO Number (auto-generated: PO-YYYY-MM-###)
+   * Vendor Details
+   * Project Reference
+   * PR Reference
+   * PO Date
+   * Expected Delivery Date
+   * Delivery Address (site address)
+   * Payment Terms
+   * Special Instructions
+PO Items:
+* Item-wise details:
+   * Description
+   * Specification
+   * Quantity
+   * Unit
+   * Rate
+   * Tax (GST)
+   * Amount
+* Subtotal, Tax, Total Amount calculation
+Terms & Conditions:
+* Standard T&C template
+* Customizable per PO
+* Quality specifications
+* Delivery requirements
+* Penalty clauses
+5.2 PO Preview & Send
+Priority: P0
+Features:
+* Preview Option:
+   * PDF preview of PO
+   * Edit option before sending
+   * Attach additional documents
+* Send to Vendor:
+   * Email with PO PDF attachment
+   * Subject line: "Purchase Order - [PO Number] - [Project Name]"
+   * Body template with standard message
+   * CC to internal team members
+   * Delivery confirmation tracking
+* PO Status Tracking:
+   * Draft, Sent, Acknowledged, In Production, Dispatched, Delivered, Closed, Cancelled
+5.3 PO Amendment
+Priority: P1
+Features:
+* Modify PO (quantity, delivery date, etc.)
+* Generate amendment document
+* Version tracking (Original, Amendment 1, 2, etc.)
+* Send amendment to vendor
+* Track acknowledgment
+________________
+
+
+Module 6: Delivery & Material Entry Module
+6.1 Delivery Challan Management
+Priority: P0
+Features:
+* Record delivery details:
+   * Challan Number (from vendor)
+   * Challan Date
+   * Vehicle Number
+   * Driver Details
+   * PO Reference
+   * Delivered By (vendor representative)
+* Challan Items:
+   * Item description
+   * Ordered Quantity (from PO)
+   * Delivered Quantity
+   * Variance tracking
+   * Condition on arrival: Good, Damaged, Defective
+   * Remarks
+* Upload challan document (photo/PDF)
+6.2 Challan Verification
+Priority: P0
+Features:
+* Operations Manager reviews:
+   * Physical verification checklist
+   * Quantity verification
+   * Quality check
+   * Damage assessment
+* Verification Status: Pending Verification, Verified, Rejected, Partial Acceptance
+* Rejection reasons and documentation
+* Acceptance with conditions
+6.3 MER (Material Entry Report) Generation
+Priority: P0
+Features:
+* Generate MER after challan verification
+* MER Details:
+   * MER Number (auto-generated: MER-YYYY-MM-###)
+   * Project Reference
+   * PO Reference
+   * Challan Reference
+   * Date of Material Receipt
+   * Verified By
+   * Material Status
+* MER Items with accepted quantities
+* Generate PDF report
+Send MER to Customer:
+* Preview Button: Review MER before sending
+* Send Button: Email MER to customer
+* Customer email configuration per project
+* Track customer acknowledgment
+* Status: Draft, Sent, Acknowledged
+________________
+
+
+Module 7: MIR (Material Inspection Report) Module
+7.1 MIR Upload
+Priority: P0
+Features:
+* Operations Manager uploads MIR
+* MIR Details:
+   * MIR Number
+   * Date of Inspection
+   * Inspector Name
+   * Project Reference
+   * Material/Product Details
+* Upload MIR document (PDF/Image)
+* Multiple MIRs per material batch
+* Link MIR to specific MER
+* Status tracking: Pending Upload, Uploaded, Approved, Rejected
+7.2 MIR Repository
+Priority: P1
+Features:
+* Searchable MIR database
+* Filter by: Project, Date Range, Material Type, Status
+* Download/View MIR documents
+* Audit trail
+________________
+
+
+Module 8: ITR (Installation Test Report) Module
+8.1 ITR Generation
+Priority: P0
+Features:
+* Site engineers create ITR after installation
+* ITR Details:
+   * ITR Number (auto-generated: ITR-YYYY-MM-###)
+   * Project Reference
+   * Floor Number
+   * Installation Date
+   * Installed By
+   * Tested By
+   * Test Date
+* ITR Items:
+   * Product installed
+   * Quantity installed
+   * Location details (specific area/unit)
+   * Test parameters
+   * Test results: Pass/Fail
+   * Observations
+   * Photo upload (before/after installation)
+8.2 ITR Workflow
+Priority: P0
+Features:
+* Submit ITR for approval
+* Approval by Operations Manager/Project Manager
+* Status: Draft, Submitted, Approved, Rejected, Rework Required
+* Digital signature option
+* Customer approval (if required as per contract)
+8.3 ITR Repository
+Priority: P1
+Features:
+* All ITRs searchable and filterable
+* Export ITR list to Excel
+* Bulk download option
+* Floor-wise ITR tracking
+________________
+
+
+Module 9: Billing Module
+9.1 Billing Configuration
+Priority: P0
+Features:
+* Client-wise Billing Rules:
+   * Milestone-based billing
+   * Delivery-based billing
+   * Installation-based billing
+   * Hybrid model
+* Configure billing percentage per milestone:
+   * On PO: X%
+   * On Delivery (MER): Y%
+   * On Installation (ITR): Z%
+9.2 MIR-based Billing
+Priority: P0
+Features:
+* Generate invoice based on MIR total
+* Bill Details:
+   * Invoice Number (auto-generated: INV-YYYY-MM-###)
+   * Client Details
+   * Project Reference
+   * MIR References
+   * Billing Date
+   * Due Date
+* Invoice Items:
+   * Material description
+   * Quantity received (from MIR)
+   * Rate (from PO)
+   * Tax
+   * Amount
+* MIR Total calculation
+* Generate invoice PDF
+* GST-compliant invoice format
+9.3 ITR-based Billing
+Priority: P0
+Features:
+* Generate invoice based on ITR total
+* Similar structure as MIR billing
+* Quantity based on installed items (from ITR)
+* ITR Total calculation
+* Track installation completion %
+9.4 Payment Tracking
+Priority: P1
+Features:
+* Record payment receipts:
+   * Payment Date
+   * Amount Received
+   * Payment Mode: NEFT, RTGS, Cheque, Cash
+   * Transaction Reference
+   * Bank Details
+* Outstanding amount tracking
+* Payment status: Pending, Partial, Paid, Overdue
+* Payment reminder notifications
+* Aging report (30, 60, 90+ days)
+9.5 Invoice Management
+Priority: P1
+Features:
+* Invoice list with filters
+* Send invoice via email
+* Download invoice PDF
+* Credit note generation (for returns)
+* Invoice cancellation with audit trail
+________________
+
+
+Module 10: Inventory & Stock Management
+10.1 Stock Tracking
+Priority: P1
+Features:
+* Real-time inventory tracking
+* Product-wise stock levels:
+   * Current Stock
+   * Allocated Stock (for projects)
+   * Available Stock
+   * Minimum Stock Level (threshold)
+* Stock movements:
+   * Stock In (from PO delivery)
+   * Stock Out (project allocation)
+   * Stock Transfer
+   * Stock Adjustment
+10.2 Stock Notifications
+Priority: P0
+Features:
+* Low Stock Alerts:
+   * Email notification when stock falls below minimum level
+   * Notification recipients: Admin, Purchase Team
+   * Notification details:
+      * Product name
+      * Current stock
+      * Minimum required
+      * Deficit quantity
+* Out of Stock Alerts:
+   * Urgent notification when product is completely out
+   * SMS + Email notification
+   * Dashboard red flag indicator
+10.3 Stock Configuration
+Priority: P1
+Features:
+* Set minimum stock level per product (configurable)
+* Set reorder level
+* Set reorder quantity
+* Auto-generate PR when stock falls below reorder level (optional)
+10.4 Stock Reports
+Priority: P1
+Features:
+* Stock summary report
+* Stock movement report
+* Stock aging report
+* Product-wise consumption report
+* Project-wise material consumption
+________________
+
+
+Module 11: Document Management & OCR
+11.1 Product Document Upload with OCR
+Priority: P0
+Features:
+* Admin can upload multiple product documents:
+   * PDF invoices
+   * Product catalogs
+   * Specification sheets
+* OCR Processing:
+   * Extract product names
+   * Extract specifications
+   * Extract pricing information
+   * Extract brand/manufacturer details
+* Auto-populate Product Master:
+   * Product Code
+   * Product Name
+   * Brand
+   * Category
+   * Unit
+   * Description
+* Manual review and edit before final save
+* Bulk upload with preview
+11.2 Document Repository
+Priority: P1
+Features:
+* Central repository for all documents:
+   * Project documents
+   * PO documents
+   * Challan copies
+   * MIR documents
+   * ITR documents
+   * Invoices
+   * Contracts
+* Folder structure: Project → Document Type → Files
+* Search and filter documents
+* Download single or bulk documents
+* Version control for updated documents
+________________
+
+
+Module 12: Dashboard & Reporting
+12.1 Dashboard
+Priority: P1
+Features:
+* Key Metrics (Role-based):
+   * Total Active Projects
+   * Pending PRs
+   * Pending POs
+   * Deliveries Expected Today/This Week
+   * Pending MERs
+   * Pending ITRs
+   * Outstanding Payments
+   * Low Stock Items
+* Graphical Widgets:
+   * Project status pie chart
+   * Monthly procurement trend
+   * Vendor performance graph
+   * Payment collection graph
+   * Stock level bar chart
+12.2 Reports
+Priority: P1
+Standard Reports:
+* Project-wise Material Report
+* Vendor-wise Purchase Report
+* PO Register
+* Delivery Register
+* MIR Register
+* ITR Register
+* Invoice Register
+* Payment Collection Report
+* Stock Movement Report
+* Outstanding Payment Report
+Report Features:
+* Date range filter
+* Export to Excel/PDF
+* Email scheduled reports
+* Print option
+________________
+
+
+5. Non-Functional Requirements
+5.1 Performance
+* Page load time: < 3 seconds
+* Search results: < 2 seconds
+* Support 50 concurrent users
+* Database backup: Daily automated
+5.2 Security
+* Role-based access control (RBAC)
+* Secure login with password encryption
+* Session timeout after 30 minutes of inactivity
+* SSL/TLS encryption for data transmission
+* Audit logs for critical operations
+* Two-factor authentication (optional, future)
+5.3 Usability
+* Responsive web design (desktop, tablet)
+* Intuitive UI with minimal training required
+* Consistent design language across modules
+* Inline help text and tooltips
+* Error messages with actionable guidance
+5.4 Scalability
+* Support addition of new projects without performance degradation
+* Support addition of new users and roles
+* Database design to handle growing data volume
+5.5 Reliability
+* 99.5% uptime SLA
+* Automatic error logging and monitoring
+* Graceful error handling
+* Data validation at input level
+5.6 Browser Compatibility
+* Chrome (latest 2 versions)
+* Firefox (latest 2 versions)
+* Safari (latest 2 versions)
+* Edge (latest 2 versions)
+5.7 Email Configuration
+* SMTP integration for email notifications
+* Email templates for different scenarios
+* Email delivery tracking
+________________
+
+
+6. User Interface Guidelines
+6.1 Design Principles
+* Clean, professional interface
+* Construction industry-appropriate color scheme
+* Clear navigation with breadcrumb
+* Consistent button placement and styling
+* Form validation with real-time feedback
+6.2 Key UI Components
+* Sidebar Navigation: Module-wise menu
+* Top Bar: User profile, notifications, quick search
+* Cards/Tiles: For dashboard widgets
+* Tables: For list views with pagination
+* Forms: Multi-step forms for complex workflows
+* Modal Dialogs: For confirmations and quick actions
+* Notifications: Toast notifications for success/error messages
+6.3 Color Scheme Suggestions
+* Primary: Professional Blue (#1976D2)
+* Secondary: Orange/Amber (for highlights)
+* Success: Green
+* Warning: Yellow/Amber
+* Error: Red
+* Neutral: Gray shades
+________________
+
+
+7. Technology Stack Recommendations
+7.1 Frontend
+* Framework: React.js or Vue.js
+* UI Library: Material-UI or Ant Design
+* State Management: Redux or Vuex
+* Charts: Chart.js or Recharts
+7.2 Backend
+* Framework: Node.js (Express) or Python (Django/Flask) or Java (Spring Boot)
+* API: RESTful API
+* Authentication: JWT tokens
+7.3 Database
+* Primary Database: PostgreSQL or MySQL
+* Document Storage: AWS S3 or local file system
+7.4 OCR
+* OCR Engine: Tesseract.js or Google Cloud Vision API or AWS Textract
+7.5 Email Service
+* Email: Nodemailer (Node.js) or SendGrid or AWS SES
+7.6 PDF Generation
+* Library: jsPDF, PDFKit, or Puppeteer
+7.7 Hosting & Deployment
+* Cloud: AWS, Azure, or Google Cloud
+* Web Server: Nginx
+* CI/CD: GitHub Actions or GitLab CI
+________________
+
+
+8. Development Phases
+Phase 1: Foundation (Months 1-2)
+Priority: P0 Features
+* User authentication & role management
+* Project management module
+* BOQ & MAS management
+* Basic dashboard
+Phase 2: Procurement (Months 2-3)
+Priority: P0 Features
+* Sample management
+* PR module
+* Vendor management
+* Vendor comparison
+* PO generation and sending
+Phase 3: Delivery & Inspection (Months 3-4)
+Priority: P0 Features
+* Delivery challan management
+* MER generation and sending
+* MIR upload module
+* ITR module
+* Basic stock management
+Phase 4: Billing & Notifications (Months 4-5)
+Priority: P0 Features
+* Billing configuration
+* MIR-based billing
+* ITR-based billing
+* Stock notifications
+* Email notifications setup
+Phase 5: Advanced Features (Months 5-6)
+Priority: P1 Features
+* OCR document processing
+* Advanced reporting
+* Payment tracking
+* Stock reports
+* Document repository
+* Dashboard enhancements
+Phase 6: Testing & Refinement (Month 6)
+* User acceptance testing (UAT)
+* Bug fixes
+* Performance optimization
+* Training materials preparation
+* Deployment
+Phase 7: Future Enhancements (Post-Launch)
+* Mobile app for site engineers
+* Vendor portal
+* Client portal
+* Advanced analytics
+* AI-based vendor recommendation
+* Integration with accounting software
+________________
+
+
+9. User Stories
+9.1 Admin/Manager
+* As an Admin, I want to create new projects so that I can track all active work
+* As an Admin, I want to upload product documents with OCR so that product master is populated automatically
+* As an Admin, I want to generate reports so that I can analyze business performance
+9.2 Purchase Team
+* As a Purchase Manager, I want to compare vendor quotations side-by-side so that I can select the best vendor
+* As a Purchase Team member, I want to generate POs and email them to vendors so that procurement is streamlined
+* As a Purchase Team member, I want to track PO status so that I can follow up on deliveries
+9.3 Operations Manager
+* As an Operations Manager, I want to verify delivery challans so that I can ensure correct quantities are received
+* As an Operations Manager, I want to generate and send MER to customers so that they are informed of material receipt
+* As an Operations Manager, I want to upload MIR documents so that material inspection is recorded
+9.4 Site Engineer
+* As a Site Engineer, I want to create ITR after installation so that testing is documented
+* As a Site Engineer, I want to upload installation photos so that there is visual proof of work completed
+________________
+
+
+10. Risk Assessment
+10.1 Technical Risks
+Risk
+	Impact
+	Mitigation
+	OCR accuracy issues
+	Medium
+	Manual review and edit option
+	Email delivery failures
+	Medium
+	Retry mechanism, delivery status tracking
+	Large file uploads
+	Low
+	File size limits, compression
+	Database performance with large data
+	Medium
+	Proper indexing, pagination, archiving old data
+	10.2 Business Risks
+Risk
+	Impact
+	Mitigation
+	User adoption challenges
+	High
+	Comprehensive training, intuitive UI
+	Resistance from vendors
+	Medium
+	Gradual rollout, vendor support
+	Data migration from existing system
+	Medium
+	Proper data import tools, validation
+	________________
+
+
+11. Success Metrics
+11.1 KPIs
+* Operational Efficiency:
+   * 50% reduction in manual paperwork
+   * 30% reduction in procurement cycle time
+   * 80% on-time delivery rate
+* User Adoption:
+   * 90% active user rate within 3 months
+   * < 5 support tickets per user per month after training
+* System Performance:
+   * 99.5% uptime
+   * < 3 second average page load time
+* Business Impact:
+   * Improved vendor selection accuracy
+   * Reduced billing errors
+   * Better stock visibility
+________________
+
+
+12. Assumptions & Dependencies
+12.1 Assumptions
+* Madhuram has stable internet connectivity
+* Users have basic computer literacy
+* Vendors can receive and respond to emails
+* Clients are willing to receive MER via email
+12.2 Dependencies
+* Availability of product documents for OCR processing
+* Vendor cooperation in providing timely quotations
+* Client approval on MAS within defined timelines
+* Timely data migration from existing systems (if any)
+________________
+
+
+13. Glossary
+Term
+	Definition
+	BOQ
+	Bill of Quantities - detailed list of materials with quantities
+	MAS
+	Material Approval Sheet - list of materials for client approval
+	PR
+	Purchase Request - internal request to procure materials
+	PO
+	Purchase Order - formal order sent to vendor
+	MER
+	Material Entry Report - report sent to customer on material receipt
+	MIR
+	Material Inspection Report - inspection report for received materials
+	ITR
+	Installation Test Report - report documenting installation and testing
+	OCR
+	Optical Character Recognition - technology to extract text from images
+	GST
+	Goods and Services Tax
+	________________
+
+
+14. Appendices
+14.1 Sample Email Templates
+PO Email to Vendor:
+Subject: Purchase Order - [PO Number] - [Project Name]
+
+
+Dear [Vendor Name],
+
+
+Please find attached Purchase Order [PO Number] for [Project Name].
+
+
+Project: [Project Name]
+PO Number: [PO Number]
+PO Date: [Date]
+Expected Delivery Date: [Date]
+Delivery Address: [Site Address]
+
+
+Please acknowledge receipt of this PO and confirm the delivery schedule.
+
+
+For any queries, please contact:
+[Purchase Manager Name]
+[Email]
+[Phone]
+
+
+Regards,
+Madhuram
+
+
+MER Email to Customer:
+Subject: Material Entry Report - [MER Number] - [Project Name]
+
+
+Dear [Customer Name],
+
+
+Please find attached Material Entry Report [MER Number] for [Project Name].
+
+
+Project: [Project Name]
+MER Number: [MER Number]
+Date of Material Receipt: [Date]
+PO Reference: [PO Number]
+
+
+Materials have been received, inspected and entered at the site.
+
+
+For any queries, please contact:
+[Operations Manager Name]
+[Email]
+[Phone]
+
+
+Regards,
+Madhuram
+
+
+14.2 Document Naming Conventions
+* Project: PRJ-YYYY-MM-###
+* Work Order: WO-YYYY-MM-###
+* BOQ: BOQ-[Project Code]-V#
+* MAS: MAS-[Project Code]-V#
+* PR: PR-YYYY-MM-###
+* PO: PO-YYYY-MM-###
+* MER: MER-YYYY-MM-###
+* ITR: ITR-[Project Code]-F[Floor Number]-###
+* Invoice: INV-YYYY-MM-###
+________________
+
+
+15. Approval & Sign-off
+Role
+	Name
+	Signature
+	Date
+	Product Owner
+	
+
+	
+
+	
+
+	Technical Lead
+	
+
+	
+
+	
+
+	Madhuram Management
+	
+
+	
+
+	
+
+	________________
+
+
+End of Document
+For any queries or clarifications regarding this PRD, please contact the Product Team.

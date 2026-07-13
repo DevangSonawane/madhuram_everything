@@ -1,0 +1,983 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Loader2, Plus, Save, X } from "lucide-react";
+import { api } from "@/lib/api";
+import { useProject } from "@/contexts/useProject";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { UnitSelect, convertQuantity } from "@/components/forms/UnitSelect";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const URGENCY_OPTIONS = ["High", "Medium", "Low"];
+
+const createEmptyItem = () => ({
+  item_name: "",
+  material_description: "",
+  unit: "NOS",
+  req_qty: "",
+  make: "",
+  place_of_utilisation: "",
+  inventory_id: null,
+  issued_qty: null,
+  boq_id: "",
+  boq_qty: "",
+});
+
+const parseIntegerOrNull = (value) => {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
+const parseNumberOrZero = (value) => {
+  if (value == null || value === "") return 0;
+  const cleaned = String(value).replace(/,/g, "").trim();
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getAddFieldValue = (row, fieldKey) =>
+  (Array.isArray(row?.add_fields) ? row.add_fields : []).find((field) => String(field?.key || "").trim() === fieldKey)?.value ?? "";
+
+const getSampleQuantityMeta = (row = {}, sample = {}) => {
+  const sampleTotalQty = parseNumberOrZero(
+    row?.total_qty ||
+      row?.quantity ||
+      row?.qty ||
+      getAddFieldValue(row, "total_qty") ||
+      getAddFieldValue(row, "selected_qty") ||
+      getAddFieldValue(row, "boq_base_qty")
+  );
+  const sampleFlatCount = parseNumberOrZero(sample?.flats || sample?.location?.flat_no || sample?.location?.flats);
+  const sampleFloorCount = parseNumberOrZero(sample?.location?.floor || sample?.location?.floor_no || sample?.location?.floors);
+  const sampleMultiplier = Math.max(1, sampleFlatCount * sampleFloorCount);
+  const sampleQtyPerFlat = sampleTotalQty > 0 ? sampleTotalQty : 0;
+  return {
+    sampleTotalQty,
+    sampleQtyPerFlat,
+    sampleFlatCount,
+    sampleFloorCount,
+    sampleMultiplier,
+  };
+};
+
+export default function PurchaseRequestCreate() {
+  const navigate = useNavigate();
+  const { projectId } = useParams();
+  const { selectedProject, projects } = useProject();
+  const { toast } = useToast();
+  const [submitting, setSubmitting] = useState(false);
+  const [sampleOptions, setSampleOptions] = useState([]);
+  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [prOptions, setPrOptions] = useState([]);
+  const [loadingSampleItems, setLoadingSampleItems] = useState(false);
+  const [projectOptions, setProjectOptions] = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [prItemSearch, setPrItemSearch] = useState("");
+  const [loadingProjectMeta, setLoadingProjectMeta] = useState(false);
+  const [sampleCatalogItems, setSampleCatalogItems] = useState([]);
+  const [prItemSearchOpen, setPrItemSearchOpen] = useState(false);
+  const [selectedSampleId, setSelectedSampleId] = useState("");
+
+  const defaultProjectId = useMemo(
+    () => parseIntegerOrNull(projectId) || parseIntegerOrNull(selectedProject?.project_id || selectedProject?.id),
+    [projectId, selectedProject]
+  );
+
+  const [form, setForm] = useState({
+    project_id: defaultProjectId ? String(defaultProjectId) : "",
+    sample_id: "",
+    pr_number: "",
+    project_name: selectedProject?.project_name || selectedProject?.name || "",
+    workorder_no: "",
+    floor_no: "",
+    flat_no: "",
+    location: "",
+    mirno: "",
+    urgency: "Medium",
+    date: new Date().toISOString().slice(0, 10),
+    approved_by: "",
+    remarks: "",
+    items: [createEmptyItem()],
+  });
+
+  const selectedSampleMissing = useMemo(
+    () => form.sample_id && !sampleOptions.some((sample) => String(sample.sample_id || sample.id) === form.sample_id),
+    [form.sample_id, sampleOptions]
+  );
+
+  const matchesPrItemSearch = (item) => {
+    const q = String(prItemSearch || "").trim().toLowerCase();
+    if (!q) return true;
+    const desc = String(item?.material_description ?? "").toLowerCase();
+    const itemName = String(item?.item_name ?? item?.make ?? "").toLowerCase();
+    const make = String(item?.make ?? "").toLowerCase();
+    const place = String(item?.place_of_utilisation ?? "").toLowerCase();
+    const unit = String(item?.unit ?? "").toLowerCase();
+    return desc.includes(q) || itemName.includes(q) || make.includes(q) || place.includes(q) || unit.includes(q);
+  };
+
+  const prItemSuggestions = useMemo(() => {
+    const q = String(prItemSearch || "").trim().toLowerCase();
+    const keyFor = (v) => String(v || "").trim().toLowerCase();
+    const unique = new Map(); // key -> item
+
+    (Array.isArray(sampleCatalogItems) ? sampleCatalogItems : []).forEach((it) => {
+      const k = keyFor(it?.material_description);
+      if (!k) return;
+      if (!unique.has(k)) unique.set(k, it);
+    });
+
+    const all = Array.from(unique.values());
+    if (!q) return all.slice(0, 10);
+    return all
+      .filter((it) => matchesPrItemSearch(it))
+      .slice(0, 10);
+  }, [sampleCatalogItems, prItemSearch]);
+
+  const effectiveProjectId = useMemo(
+    () => parseIntegerOrNull(form.project_id) || defaultProjectId,
+    [form.project_id, defaultProjectId]
+  );
+
+  const getResolvedSampleId = () => String(form.sample_id || selectedSampleId || "").trim();
+
+  useEffect(() => {
+    setLoadingProjects(true);
+    const byId = new Map();
+    (Array.isArray(projects) ? projects : []).forEach((project) => {
+      const id = project?.project_id ?? project?.id;
+      if (id == null || id === "") return;
+      byId.set(String(id), project);
+    });
+    setProjectOptions(Array.from(byId.values()));
+    setLoadingProjects(false);
+  }, [projects]);
+
+  useEffect(() => {
+    const currentProjectId = String(form.project_id || "").trim();
+    if (!currentProjectId) return;
+
+    const selectedFromOptions = projectOptions.find(
+      (project) => String(project.project_id || project.id) === currentProjectId
+    );
+    const resolvedProjectName =
+      selectedFromOptions?.project_name ||
+      selectedFromOptions?.name ||
+      selectedProject?.project_name ||
+      selectedProject?.name ||
+      "";
+    const resolvedLocation =
+      String(selectedFromOptions?.location || selectedProject?.location || "").trim();
+    const resolvedWorkOrderNo =
+      String(selectedFromOptions?.wo_number || selectedProject?.wo_number || "").trim();
+
+    setForm((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      if (resolvedProjectName && String(prev.project_name || "") !== String(resolvedProjectName)) {
+        next.project_name = resolvedProjectName;
+        changed = true;
+      }
+
+      if (!String(prev.location || "").trim() && resolvedLocation) {
+        next.location = resolvedLocation;
+        changed = true;
+      }
+
+      if (!String(prev.workorder_no || "").trim() && resolvedWorkOrderNo) {
+        next.workorder_no = resolvedWorkOrderNo;
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [form.project_id, form.project_name, projectOptions, selectedProject]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadProjectMeta = async () => {
+      const pid = parseIntegerOrNull(form.project_id);
+      if (!pid) return;
+
+      // Only fetch if we still don't have these derived fields.
+      if (String(form.workorder_no || "").trim() && String(form.location || "").trim()) return;
+
+      setLoadingProjectMeta(true);
+      try {
+        const res = await api.getProjectById(pid);
+        if (!mounted) return;
+        if (!res?.success) return;
+        const p = res.data?.project || res.data?.data || res.data;
+        if (!p) return;
+        const wo = String(p?.wo_number || "").trim();
+        const loc = String(p?.location || "").trim();
+        setForm((prev) => ({
+          ...prev,
+          workorder_no: String(prev.workorder_no || "").trim() ? prev.workorder_no : wo,
+          location: String(prev.location || "").trim() ? prev.location : loc,
+        }));
+      } finally {
+        if (mounted) setLoadingProjectMeta(false);
+      }
+    };
+    loadProjectMeta();
+    return () => {
+      mounted = false;
+    };
+  }, [form.project_id, form.workorder_no, form.location]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSamples = async () => {
+      setLoadingSamples(true);
+      try {
+        const result = effectiveProjectId
+          ? await api.getSamplesByProject(effectiveProjectId)
+          : await api.getSamples();
+
+        if (!mounted) return;
+        if (!result.success || !Array.isArray(result.data)) {
+          setSampleOptions([]);
+          return;
+        }
+
+        const byId = new Map();
+        result.data.forEach((sample) => {
+          const id = sample?.sample_id ?? sample?.id;
+          if (id == null || id === "") return;
+          byId.set(String(id), sample);
+        });
+        setSampleOptions(Array.from(byId.values()));
+      } catch {
+        if (mounted) setSampleOptions([]);
+      } finally {
+        if (mounted) setLoadingSamples(false);
+      }
+    };
+
+    loadSamples();
+    return () => {
+      mounted = false;
+    };
+  }, [effectiveProjectId]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPrOptions = async () => {
+      try {
+        if (!effectiveProjectId) {
+          setPrOptions([]);
+          return;
+        }
+
+        const result = await api.getPrsByProject(effectiveProjectId);
+
+        if (!mounted) return;
+        if (!result.success || !Array.isArray(result.data)) {
+          setPrOptions([]);
+          return;
+        }
+
+        const byId = new Map();
+        result.data.forEach((pr) => {
+          const id = pr?.pr_id ?? pr?.id;
+          if (id == null || id === "") return;
+          byId.set(String(id), pr);
+        });
+        setPrOptions(Array.from(byId.values()));
+      } catch {
+        if (mounted) setPrOptions([]);
+      }
+    };
+
+    loadPrOptions();
+    return () => {
+      mounted = false;
+    };
+  }, [effectiveProjectId]);
+
+  const setField = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const setItemField = (index, field, value) => {
+    setForm((prev) => {
+      const next = [...prev.items];
+      next[index] = { ...next[index], [field]: value };
+      if (field === "item_name") {
+        next[index] = { ...next[index], make: value };
+      }
+      if (field === "make") {
+        next[index] = { ...next[index], item_name: value };
+      }
+      if (field === "req_qty" && next[index]?.inventory_id) {
+        next[index] = { ...next[index], issued_qty: value };
+      }
+      return { ...prev, items: next };
+    });
+  };
+
+  const addItem = () => {
+    setForm((prev) => ({ ...prev, items: [...prev.items, createEmptyItem()] }));
+  };
+
+  const removeItem = (index) => {
+    setForm((prev) => {
+      if (prev.items.length <= 1) return prev;
+      return { ...prev, items: prev.items.filter((_, i) => i !== index) };
+    });
+  };
+
+  const goBackToList = () => {
+    navigate(`/${projectId}/purchase-requests`);
+  };
+
+  const parseArrayField = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const mapSampleItemsToFormItems = (sample, itemDescription) => {
+    const parsedItems = parseArrayField(itemDescription);
+    if (parsedItems.length === 0) return [createEmptyItem()];
+
+    const sampleFlatCount = parseNumberOrZero(sample?.flats || sample?.location?.flat_no || sample?.location?.flats);
+    const sampleFloorCount = parseNumberOrZero(sample?.location?.floor || sample?.location?.floor_no || sample?.location?.floors);
+    const sampleMultiplier = Math.max(1, sampleFlatCount * sampleFloorCount);
+
+    const mapped = parsedItems
+      .map((item) => {
+        const itemTotalQty = parseNumberOrZero(
+          item?.quantity || item?.qty || item?.total_qty || item?.selected_qty || item?.req_qty
+        );
+        const resolvedQty = itemTotalQty > 0 ? itemTotalQty : parseNumberOrZero(item?.qty_per_flat || item?.sample_qty_per_flat || item?.req_qty);
+        const explicitItemName = String(item?.item_name || item?.itemName || "").trim();
+        return {
+          item_name: explicitItemName,
+          material_description: String(
+            item?.material_description || item?.description || item?.item || item?.name || ""
+          ).trim(),
+          unit: String(item?.unit || item?.uom || item?.UOM || "NOS").trim() || "NOS",
+          req_qty: String(resolvedQty || itemTotalQty || parseNumberOrZero(item?.req_qty || item?.quantity || item?.qty)),
+          make: explicitItemName,
+          place_of_utilisation: String(item?.place_of_utilisation || item?.place || "").trim(),
+          inventory_id: item?.inventory_id ?? item?.inventoryId ?? null,
+          issued_qty: item?.issued_qty ?? item?.issuedQty ?? null,
+          boq_id: item?.boq_id ?? item?.boqId ?? "",
+          boq_qty: item?.boq_qty ?? item?.boqQty ?? (resolvedQty || itemTotalQty || parseNumberOrZero(item?.qty) || ""),
+          sample_total_qty: itemTotalQty || resolvedQty || "",
+          sample_qty_per_flat: resolvedQty || itemTotalQty || "",
+          sample_flat_count: sampleFlatCount || "",
+          sample_floor_count: sampleFloorCount || "",
+          sample_multiplier: sampleMultiplier || "",
+        };
+      })
+      .filter((item) => item.material_description || item.req_qty);
+
+    return mapped.length > 0 ? mapped : [createEmptyItem()];
+  };
+
+  const applySelectedSampleToForm = (sample) => {
+    if (!sample) return;
+
+    const sampleId = String(sample.sample_id || sample.id || "");
+    const mappedItems = mapSampleItemsToFormItems(sample, sample.item_description);
+    setForm((prev) => ({ ...prev, sample_id: sampleId || prev.sample_id, items: mappedItems }));
+    setSelectedSampleId(sampleId);
+    setSampleCatalogItems(mappedItems);
+    toast({
+      title: "Sample items loaded",
+      description: `${mappedItems.length} item${mappedItems.length === 1 ? "" : "s"} loaded into PR Items.`,
+    });
+  };
+
+  const getPreviewQtyForItem = (item) => {
+    return parseNumberOrZero(item?.req_qty || item?.sample_total_qty || item?.sample_qty_per_flat);
+  };
+
+  useEffect(() => {
+    setForm((prev) => {
+      const rows = Array.isArray(prev.items) ? prev.items : [];
+      let changed = false;
+      const nextRows = rows.map((row) => {
+        if (!(row?.sample_total_qty || row?.sample_qty_per_flat || row?.sample_multiplier)) return row;
+        const nextQty = parseNumberOrZero(row?.req_qty || row?.sample_total_qty || row?.sample_qty_per_flat);
+        const nextValue = Number.isFinite(nextQty) && nextQty > 0 ? String(nextQty) : "";
+        if (String(row?.req_qty || "") === nextValue) return row;
+        changed = true;
+        return { ...row, req_qty: nextValue };
+      });
+      return changed ? { ...prev, items: nextRows } : prev;
+    });
+  }, [form.floor_no, form.flat_no]);
+
+  const addCatalogItemToPr = (catalogItem) => {
+    if (!catalogItem) return;
+    setForm((prev) => ({
+      ...prev,
+      items: [...prev.items, { ...createEmptyItem(), ...catalogItem }],
+    }));
+  };
+
+  const handleSampleChange = async (value) => {
+    if (value === "none") {
+      setField("sample_id", "");
+      setSelectedSampleId("");
+      return;
+    }
+
+    setField("sample_id", value);
+    setSelectedSampleId(String(value));
+
+    const selectedSample = sampleOptions.find((sample) => String(sample.sample_id || sample.id) === String(value));
+    if (selectedSample && parseArrayField(selectedSample.item_description).length > 0) {
+      // Prefill location + project id from the selected sample.
+      setForm((prev) => {
+        const nextProjectId = selectedSample?.project_id ?? selectedSample?.projectId ?? prev.project_id;
+        const resolvedProject =
+          projectOptions.find((p) => String(p?.project_id ?? p?.id ?? "") === String(nextProjectId)) || null;
+        return {
+          ...prev,
+          project_id: nextProjectId != null && nextProjectId !== "" ? String(nextProjectId) : prev.project_id,
+          project_name: resolvedProject?.project_name || resolvedProject?.name || prev.project_name,
+          location: prev.location || String(selectedSample?.site_name || "").trim(),
+          workorder_no: String(prev.workorder_no || "").trim()
+            ? prev.workorder_no
+            : String(resolvedProject?.wo_number || "").trim(),
+        };
+      });
+      applySelectedSampleToForm(selectedSample);
+      return;
+    }
+
+    setLoadingSampleItems(true);
+    try {
+      const result = await api.getSampleById(value);
+      if (!result.success) {
+        toast({
+          title: "Failed to load sample items",
+          description: result.error || "Could not fetch selected sample details.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const fetched = result.data || {};
+      setForm((prev) => {
+        const nextProjectId = fetched?.project_id ?? fetched?.projectId ?? prev.project_id;
+        const resolvedProject =
+          projectOptions.find((p) => String(p?.project_id ?? p?.id ?? "") === String(nextProjectId)) || null;
+        return {
+          ...prev,
+          project_id: nextProjectId != null && nextProjectId !== "" ? String(nextProjectId) : prev.project_id,
+          project_name: resolvedProject?.project_name || resolvedProject?.name || prev.project_name,
+          location: prev.location || String(fetched?.site_name || "").trim(),
+          workorder_no: String(prev.workorder_no || "").trim()
+            ? prev.workorder_no
+            : String(resolvedProject?.wo_number || "").trim(),
+        };
+      });
+      applySelectedSampleToForm(fetched);
+    } catch {
+      toast({
+        title: "Failed to load sample items",
+        description: "Could not fetch selected sample details.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingSampleItems(false);
+    }
+  };
+
+  const handleProjectChange = (value) => {
+    if (value === "none") {
+      setForm((prev) => ({ ...prev, project_id: "", project_name: "" }));
+      return;
+    }
+    const selected = projectOptions.find((project) => String(project.project_id || project.id) === String(value));
+    setForm((prev) => ({
+      ...prev,
+      project_id: String(value),
+      project_name: selected?.project_name || selected?.name || prev.project_name,
+      location: prev.location || String(selected?.location || "").trim(),
+      workorder_no: String(selected?.wo_number || "").trim() || prev.workorder_no,
+    }));
+  };
+
+  const handleSubmit = async () => {
+    const normalizedProjectId = parseIntegerOrNull(form.project_id);
+    if (!normalizedProjectId) {
+      toast({
+        title: "Validation failed",
+        description: "Project ID is required and must be a positive integer.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!String(form.project_name || "").trim()) {
+      toast({
+        title: "Validation failed",
+        description: "Project name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!String(form.pr_number || "").trim()) {
+      toast({
+        title: "Validation failed",
+        description: "PR Number is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!String(form.floor_no || "").trim()) {
+      toast({
+        title: "Validation failed",
+        description: "Floor No is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!String(form.flat_no || "").trim()) {
+      toast({
+        title: "Validation failed",
+        description: "Flat No is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const cleanedItems = form.items
+      .map((item) => {
+        const reqQty = Number(item?.req_qty || item?.sample_total_qty || item?.sample_qty_per_flat || 0);
+        const inventoryId = parseIntegerOrNull(item.inventory_id);
+        const payload = {
+          item_name: String(item.item_name || item.make || "").trim(),
+          material_description: String(item.material_description || "").trim(),
+          unit: String(item.unit || "").trim() || "NOS",
+          req_qty: reqQty,
+          make: String(item.make || "").trim(),
+          place_of_utilisation: String(item.place_of_utilisation || "").trim(),
+          boq_id: String(item.boq_id || "").trim() || undefined,
+          boq_qty: Number.isFinite(reqQty) && reqQty > 0 ? reqQty : parseNumberOrZero(item.boq_qty),
+        };
+        if (inventoryId) {
+          payload.inventory_id = inventoryId;
+          const issuedQty = Number(item.issued_qty);
+          payload.issued_qty = Number.isFinite(issuedQty) && issuedQty > 0 ? issuedQty : reqQty;
+        }
+        return payload;
+      })
+      .filter((item) => item.material_description && Number.isFinite(item.req_qty) && item.req_qty > 0);
+
+    if (cleanedItems.length === 0) {
+      toast({
+        title: "Validation failed",
+        description: "Add at least one item with description and quantity.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      const payload = {
+        project_id: normalizedProjectId,
+        sample_id: getResolvedSampleId() || null,
+        sampleId: getResolvedSampleId() || null,
+        pr_number: String(form.pr_number || "").trim(),
+        project_name: String(form.project_name || "").trim(),
+        workorder_no: String(form.workorder_no || "").trim(),
+        location: String(form.location || "").trim(),
+        mirno: String(form.mirno || "").trim(),
+        urgency: form.urgency || "Medium",
+        date: form.date || new Date().toISOString().slice(0, 10),
+        approved_by: String(form.approved_by || "").trim(),
+        remarks: String(form.remarks || "").trim(),
+        items: cleanedItems,
+      };
+
+      const result = await api.createPr(payload);
+      if (!result.success) {
+        toast({
+          title: "Create failed",
+          description: result.error || "Unable to create PR.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const createdPr = result.data || {};
+      toast({
+        title: "PR created",
+        description: `Purchase request created successfully. ${String(createdPr.pr_number || form.pr_number).trim()}`,
+      });
+      goBackToList();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-border bg-gradient-to-r from-emerald-50 via-teal-50 to-white p-6 md:p-8 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/70">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight">Create Purchase Request</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Create PR in a dedicated page flow.</p>
+          </div>
+          <Button variant="outline" onClick={goBackToList} className="w-full sm:w-auto">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to PR List
+          </Button>
+        </div>
+      </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>PR Header</CardTitle>
+          <CardDescription>Fill required project details and optional attachments.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Project ID *</Label>
+            <Select value={form.project_id || "none"} onValueChange={handleProjectChange}>
+              <SelectTrigger>
+                <SelectValue placeholder={loadingProjects ? "Loading projects..." : "Select Project ID"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {projectOptions.map((project) => {
+                  const id = String(project.project_id || project.id);
+                  const label = project.project_name || project.name || `Project ${id}`;
+                  return (
+                    <SelectItem key={id} value={id}>
+                      {`${id} - ${label}`}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Project Name *</Label>
+            <Input value={form.project_name} readOnly />
+          </div>
+          <div className="space-y-2">
+            <Label>PR Number *</Label>
+            <Input
+              value={form.pr_number}
+              onChange={(e) => setField("pr_number", e.target.value)}
+              placeholder="Enter PR number"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Sample ID</Label>
+            <Input
+              inputMode="numeric"
+              value={form.sample_id}
+              onChange={(e) => {
+                const next = e.target.value;
+                setField("sample_id", next);
+                setSelectedSampleId(next);
+              }}
+              placeholder="Enter sample id"
+            />
+            <Select value={form.sample_id || "none"} onValueChange={handleSampleChange} disabled={loadingSamples}>
+              <SelectTrigger>
+                <SelectValue placeholder={loadingSamples ? "Loading samples..." : "Pick from samples"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {selectedSampleMissing ? (
+                  <SelectItem value={form.sample_id}>Sample #{form.sample_id} (current)</SelectItem>
+                ) : null}
+                {sampleOptions.map((sample) => {
+                  const id = String(sample.sample_id || sample.id);
+                  const label = sample.work_done || sample.site_name || sample.building_name || `Sample #${id}`;
+                  return (
+                    <SelectItem key={id} value={id}>
+                      {`#${id} - ${label}`}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Work Order No</Label>
+            <Input value={form.workorder_no} onChange={(e) => setField("workorder_no", e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Floor No *</Label>
+            <Input
+              value={form.floor_no}
+              onChange={(e) => setField("floor_no", String(e.target.value || "").replace(/[^\d]/g, ""))}
+              placeholder="e.g. 2"
+              inputMode="numeric"
+              required
+              aria-required="true"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Flat No *</Label>
+            <Input
+              value={form.flat_no}
+              onChange={(e) => setField("flat_no", String(e.target.value || "").replace(/[^\d]/g, ""))}
+              placeholder="e.g. 7"
+              inputMode="numeric"
+              required
+              aria-required="true"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>MIR No</Label>
+            <Input
+              value={form.mirno}
+              onChange={(e) => setField("mirno", e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Urgency</Label>
+            <Select value={form.urgency} onValueChange={(value) => setField("urgency", value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select urgency" />
+              </SelectTrigger>
+              <SelectContent>
+                {URGENCY_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Date</Label>
+            <Input type="date" value={form.date} onChange={(e) => setField("date", e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Approved By</Label>
+            <Input value={form.approved_by} onChange={(e) => setField("approved_by", e.target.value)} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Location</Label>
+            <Input value={form.location} onChange={(e) => setField("location", e.target.value)} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Remarks</Label>
+            <Textarea value={form.remarks} onChange={(e) => setField("remarks", e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>PR Items</CardTitle>
+          <CardDescription>
+            {loadingSampleItems
+              ? "Loading items from selected sample..."
+              : "Items can be loaded from a selected sample or entered manually."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
+            <div className="space-y-2 relative">
+              <Label>Search Items</Label>
+              <Input
+                value={prItemSearch}
+                onChange={(e) => setPrItemSearch(e.target.value)}
+                onFocus={() => setPrItemSearchOpen(true)}
+                onBlur={() => setTimeout(() => setPrItemSearchOpen(false), 120)}
+                placeholder="Search by description, make, place, or unit…"
+              />
+              {prItemSearchOpen && prItemSuggestions.length > 0 ? (
+                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                  <div className="max-h-56 overflow-auto p-1">
+                    {prItemSuggestions.map((sug, idx) => {
+                      const title = String(sug?.material_description || "").trim();
+                      const subtitleParts = [
+                        sug?.make ? `Item No: ${sug.make}` : "",
+                        sug?.unit ? `Unit: ${sug.unit}` : "",
+                        sug?.place_of_utilisation ? `Place: ${sug.place_of_utilisation}` : "",
+                      ].filter(Boolean);
+                      const subtitle = subtitleParts.join(" • ");
+                      return (
+                        <button
+                          key={`${title || "item"}-${idx}`}
+                          type="button"
+                          className="w-full text-left rounded-sm px-2 py-2 hover:bg-muted focus:bg-muted focus:outline-none"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                          }}
+                          onClick={() => {
+                            addCatalogItemToPr(sug);
+                            setPrItemSearch(title);
+                            setPrItemSearchOpen(false);
+                          }}
+                        >
+                          <div className="text-sm font-medium truncate">{title || "-"}</div>
+                          {subtitle ? (
+                            <div className="text-xs text-muted-foreground truncate">{subtitle}</div>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <Button variant="outline" size="sm" onClick={addItem} className="w-full sm:w-auto">
+              <Plus className="mr-2 h-4 w-4" /> Add Row
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border">
+            <Table className="min-w-[1280px]">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="min-w-[180px]">Item No.</TableHead>
+                  <TableHead className="min-w-[260px]">Material Description *</TableHead>
+                  <TableHead className="w-[140px]">Unit</TableHead>
+                  <TableHead className="w-[150px]">Qty / Flat *</TableHead>
+                  <TableHead className="w-[140px]">Total Qty</TableHead>
+                  <TableHead className="min-w-[220px]">Place of Utilisation</TableHead>
+                  <TableHead className="w-[64px] text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {form.items.filter((item) => matchesPrItemSearch(item)).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      No matching items. Add a row to continue.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  form.items.map((item, index) =>
+                    matchesPrItemSearch(item) ? (
+                        <TableRow key={`item-${index}`}>
+                        <TableCell className="align-top">
+                            <Input
+                            value={item.item_name || item.make}
+                            onChange={(e) => setItemField(index, "item_name", e.target.value)}
+                            placeholder="Item no."
+                            className="h-9"
+                          />
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <Input
+                            value={item.material_description}
+                            onChange={(e) => setItemField(index, "material_description", e.target.value)}
+                            placeholder="Material description"
+                            className="h-9"
+                          />
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <UnitSelect
+                            value={item.unit}
+                            onValueChange={(value) => {
+                              const converted = convertQuantity(item.req_qty, item.unit, value);
+                              setItemField(index, "unit", value);
+                              if (converted != null) {
+                                setItemField(index, "req_qty", converted);
+                              }
+                            }}
+                            triggerClassName="h-9 w-full"
+                          />
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.req_qty}
+                            onChange={(e) => setItemField(index, "req_qty", e.target.value)}
+                            placeholder="0"
+                          className="h-9 w-full"
+                        />
+                      </TableCell>
+                        <TableCell className="align-top">
+                          <Input
+                            value={String(getPreviewQtyForItem(item) || "")}
+                            readOnly
+                            className="h-9 w-full bg-muted/40"
+                          />
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <Input
+                            value={item.place_of_utilisation}
+                            onChange={(e) => setItemField(index, "place_of_utilisation", e.target.value)}
+                            placeholder="Usage area"
+                            className="h-9"
+                          />
+                        </TableCell>
+                        <TableCell className="align-top text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeItem(index)}
+                            disabled={form.items.length <= 1}
+                          className="h-9 w-9 px-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                      </TableRow>
+                    ) : null
+                  )
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" onClick={goBackToList} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting}>
+          {submitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...
+            </>
+          ) : (
+            <>
+              <Save className="mr-2 h-4 w-4" /> Create PR
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}

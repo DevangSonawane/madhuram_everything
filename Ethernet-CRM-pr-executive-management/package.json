@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@ant-design/icons": "^5.6.1",
+    "lucide-react": "^0.548.0"
+  }
+}

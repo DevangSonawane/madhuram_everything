@@ -1,0 +1,214 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base Color: #4988C4 -> 209 51% 53% */
+    
+    /* Background: Warm Off-White #F9F8F6 */
+    --background: 40 14% 97%; 
+    
+    /* Foreground: Deep blue-grey for text */
+    --foreground: 209 60% 15%;
+
+    /* Card: White surfaces */
+    --card: 0 0% 100%;
+    --card-foreground: 209 60% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 209 60% 15%;
+
+    /* Primary: #4988C4 */
+    --primary: 209 51% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Lighter blue for secondary actions */
+    --secondary: 209 50% 92%;
+    --secondary-foreground: 209 60% 20%;
+
+    /* Muted: Subtle background */
+    --muted: 209 30% 94%;
+    --muted-foreground: 209 20% 50%;
+
+    /* Accent: Hover states */
+    --accent: 209 50% 90%;
+    --accent-foreground: 209 60% 15%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Border: Subtle blue-grey */
+    --border: 209 30% 88%;
+    --input: 209 30% 88%;
+    --ring: 209 51% 53%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar Specific Variables - Light Theme Variant to match background #F9F8F6 */
+    --sidebar-background: 40 14% 97%; 
+    --sidebar-foreground: 209 60% 15%;
+    --sidebar-primary: 209 51% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 209 30% 90%;
+    --sidebar-accent-foreground: 209 60% 15%;
+    --sidebar-border: 209 30% 88%;
+    --sidebar-ring: 209 51% 53%;
+  }
+
+  .dark {
+    --background: 209 50% 5%;
+    --foreground: 209 20% 90%;
+
+    --card: 209 50% 8%;
+    --card-foreground: 209 20% 90%;
+
+    --popover: 209 50% 8%;
+    --popover-foreground: 209 20% 90%;
+
+    --primary: 209 51% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 209 30% 15%;
+    --secondary-foreground: 209 20% 90%;
+
+    --muted: 209 30% 15%;
+    --muted-foreground: 209 20% 60%;
+
+    --accent: 209 30% 20%;
+    --accent-foreground: 209 20% 90%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 209 30% 20%;
+    --input: 209 30% 20%;
+    --ring: 209 51% 53%;
+    
+    --sidebar-background: 209 50% 4%;
+    --sidebar-foreground: 209 20% 90%;
+    --sidebar-primary: 209 51% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 209 30% 15%;
+    --sidebar-accent-foreground: 209 20% 90%;
+    --sidebar-border: 209 30% 15%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    min-width: 0;
+  }
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+  
+  /* Responsive Typography */
+  h1 {
+    @apply text-3xl font-bold tracking-tight lg:text-4xl;
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+  }
+  h2 {
+    @apply text-2xl font-semibold tracking-tight lg:text-3xl;
+    font-size: clamp(1.5rem, 3vw, 2rem);
+  }
+  h3 {
+    @apply text-xl font-semibold tracking-tight lg:text-2xl;
+    font-size: clamp(1.25rem, 2vw, 1.75rem);
+  }
+  p {
+    @apply leading-7;
+    font-size: clamp(0.875rem, 1vw + 0.5rem, 1rem);
+  }
+
+  /* Touch Targets for Mobile */
+  @media (max-width: 640px) {
+    input[type="text"], 
+    input[type="email"], 
+    input[type="password"], 
+    input[type="number"], 
+    select, 
+    button {
+      min-height: 44px; /* Apple's recommended minimum touch target */
+    }
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; 
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3); 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5); 
+}
+
+/* Utility to hide native scrollbars but keep scrolling functional */
+.hide-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Fallback centering for production builds (avoids relying solely on Tailwind responsive classes
+   which can sometimes be purged or behave differently in production). This centers the dialog
+   for screens >= 640px (sm breakpoint). */
+@media (min-width: 640px) {
+  .dialog-centered {
+    inset: auto !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    max-height: 90vh;
+  }
+}
+
+@layer components {
+  .content-shell {
+    @apply mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden;
+  }
+
+  .manual-entry-panel {
+    @apply space-y-6 rounded-2xl border border-muted-foreground/20 bg-card/80 p-4 shadow-sm backdrop-blur-sm transition-colors sm:p-6;
+  }
+
+  .manual-entry-grid {
+    @apply grid gap-4;
+  }
+
+  .manual-entry-actions {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-center;
+  }
+
+  .manual-section-title {
+    @apply text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground/70;
+  }
+}
