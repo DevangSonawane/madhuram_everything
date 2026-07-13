@@ -143,6 +143,8 @@ const buildLookupKeys = (row) => {
     row?.item_code,
     row?.itemCode,
     row?.code,
+    row?.material_description,
+    row?.make,
     row?.description,
     row?.item_description,
     row?.itemDescription,
@@ -240,6 +242,7 @@ export default function SamplePreview() {
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [displayItems, setDisplayItems] = useState([]);
   const [linkedPos, setLinkedPos] = useState([]);
+  const [linkedPrs, setLinkedPrs] = useState([]);
   const [linkedDcs, setLinkedDcs] = useState([]);
   const [linkedMirs, setLinkedMirs] = useState([]);
   const [projectMirs, setProjectMirs] = useState([]);
@@ -513,6 +516,29 @@ export default function SamplePreview() {
   }, [sample?.project_id, projectId]);
 
   useEffect(() => {
+    const loadSamplePrs = async () => {
+      const sampleKey = String(sample?.sample_id ?? sample?.id ?? id ?? "").trim();
+      if (!sampleKey) {
+        setLinkedPrs([]);
+        return;
+      }
+
+      try {
+        const res = await api.getPrsBySample(sampleKey);
+        if (!res?.success || !Array.isArray(res.data)) {
+          setLinkedPrs([]);
+          return;
+        }
+        setLinkedPrs(dedupeRecords(res.data));
+      } catch {
+        setLinkedPrs([]);
+      }
+    };
+
+    loadSamplePrs();
+  }, [sample?.sample_id, sample?.id, id]);
+
+  useEffect(() => {
     const loadProjectMirs = async () => {
       const pid = sample?.project_id ?? projectId;
       if (!pid) {
@@ -747,6 +773,35 @@ export default function SamplePreview() {
     return map;
   })();
 
+  const prQtyByBoqKey = (() => {
+    const map = new Map();
+    const getPrItems = (pr) => {
+      const rawItems = pr?.items;
+      if (Array.isArray(rawItems)) return rawItems;
+      const parsed = parseMaybeJson(rawItems, []);
+      return Array.isArray(parsed) ? parsed : [];
+    };
+
+    for (const pr of Array.isArray(linkedPrs) ? linkedPrs : []) {
+      for (const item of getPrItems(pr)) {
+        const qty = toPositiveNumber(item?.req_qty ?? item?.qty ?? item?.quantity ?? item?.sample_total_qty ?? item?.sample_qty_per_flat);
+        if (!qty) continue;
+
+        const keys = buildLookupKeys({
+          ...item,
+          description: item?.description ?? item?.material_description ?? item?.make ?? item?.item_name ?? item?.name ?? "",
+          item_name: item?.item_name ?? item?.make ?? item?.description ?? "",
+        });
+
+        keys.forEach((key) => {
+          map.set(key, (map.get(key) || 0) + qty);
+        });
+      }
+    }
+
+    return map;
+  })();
+
   const itrQtyByBoqKey = (() => {
     const map = new Map();
     const targetSampleId = String(sample?.sample_id ?? sample?.id ?? "").trim();
@@ -824,7 +879,8 @@ export default function SamplePreview() {
       row?.itemName ||
       "-";
 
-    const effectiveSampleQty = getEffectiveQty(row);
+    const sampleUsageQty = sumUsageQty(usage, "samples") || getUsageCount(usage, "samples");
+    const effectiveSampleQty = sampleUsageQty || getEffectiveQty(row);
     const sampleQtyNumber = toPositiveNumber(effectiveSampleQty);
     const boqQtyNumber = toPositiveNumber(row?.boq_qty ?? row?.boqQty ?? row?.quantity ?? row?.qty);
     const rowLookupKeys = buildLookupKeys(row);
@@ -836,6 +892,7 @@ export default function SamplePreview() {
       return 0;
     };
     const poQtyNumber = lookupQty(poQtyByBoqKey);
+    const prQtyNumber = lookupQty(prQtyByBoqKey);
     const dcQtyNumber = lookupQty(dcQtyByBoqKey);
     const mirQtyNumber = lookupQty(mirQtyByBoqKey);
     const itrQtyNumber = lookupQty(itrQtyByBoqKey);
@@ -857,11 +914,11 @@ export default function SamplePreview() {
       itemName,
       itemDescription,
       itr: itrQtyNumber || sumUsageQty(usage, "itr") || getUsageCount(usage, "itr"),
-      pr: sumUsageQty(usage, "pr") || getUsageCount(usage, "pr"),
+      pr: prQtyNumber || sumUsageQty(usage, "pr") || getUsageCount(usage, "pr"),
       po: poQtyNumber || sumUsageQty(usage, "po") || getUsageCount(usage, "po"),
       dc: dcQtyNumber || sumUsageQty(usage, "dc") || getUsageCount(usage, "dc"),
       mir: mirQtyNumber || sumUsageQty(usage, "mir") || getUsageCount(usage, "mir"),
-      samples: effectiveSampleQty || sumUsageQty(usage, "samples") || getUsageCount(usage, "samples"),
+      samples: effectiveSampleQty || sampleUsageQty,
       remaining: remainingQty,
       issued:
         issuedQtyNumber ||

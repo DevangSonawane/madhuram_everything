@@ -116,6 +116,10 @@ const toPositiveInteger = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const getPrIdValue = (pr = {}, fallback = null) => toPositiveInteger(pr?.pr_id ?? pr?.id ?? fallback);
+
+const getPrNumberValue = (pr = {}) => toPositiveInteger(pr?.pr_no ?? pr?.pr_number ?? pr?.prNo ?? null);
+
 const buildVendorDraft = (vendorName, vendor = null) => ({
   source_name: vendorName,
   vendor_name: String(vendor?.vendor_name || vendorName || "").trim(),
@@ -629,12 +633,12 @@ export default function VendorComparisonModule() {
           toast({ title: "PR loaded", description: `Loaded ${items.length} items.` });
         }
 
-        const prNoRaw = pr?.pr_no ?? pr?.pr_number ?? pr?.prNo ?? selectedPr?.pr_no ?? selectedPr?.pr_number ?? null;
-        const prNo = prNoRaw != null && prNoRaw !== "" ? Number(prNoRaw) : null;
-        if (!cancelled && projectId && Number.isFinite(prNo)) {
+        const prId = getPrIdValue(pr, selectedPrId);
+        const prNo = getPrNumberValue(pr) ?? getPrNumberValue(selectedPr || {});
+        if (!cancelled && projectId && prId != null) {
           setLoadingExisting(true);
           try {
-            const existingResult = await api.listVendorComparisons({ project_id: projectId, pr_no: prNo });
+            const existingResult = await api.listVendorComparisons({ project_id: projectId, pr_no: prId });
             const existingRows = existingResult?.success ? parseArrayLike(existingResult.data, []) : [];
             const list = normalizeArray(existingRows);
             const score = (row) => {
@@ -693,16 +697,73 @@ export default function VendorComparisonModule() {
               setStep("preview");
               setSelectedFile(null);
             } else {
-              setExistingComparison(null);
-              setUseExisting(false);
-              setApprovedVendorName("");
-              setApprovalTargetId(null);
-              setSelectedApprovedVendor("");
-              setVendors([]);
-              setComparisonRows([]);
-              setCreatedComparisonId(null);
-              setStep("select");
-              setSelectedFile(null);
+              let fallbackApprovedComparison = null;
+              let fallbackApprovedName = "";
+              let fallbackRawComparison = null;
+
+              if (prNo != null && prNo !== prId) {
+                const fallbackResult = await api.listVendorComparisons({ project_id: projectId, pr_no: prNo });
+                const fallbackRows = fallbackResult?.success ? parseArrayLike(fallbackResult.data, []) : [];
+                const fallbackList = normalizeArray(fallbackRows);
+                const fallbackSorted = [...fallbackList].sort((a, b) => score(b) - score(a));
+
+                for (const row of fallbackSorted) {
+                  let data = row;
+                  let pricelist = getPricelistRows(data);
+                  if (pricelist.length === 0) {
+                    const id = getComparisonIdValue(data);
+                    if (id != null && id !== "") {
+                      try {
+                        const detail = await api.getVendorComparisonById(id);
+                        if (detail?.success) data = detail.data || data;
+                        pricelist = getPricelistRows(data);
+                      } catch {
+                        // ignore
+                      }
+                    }
+                  }
+                  if (!Array.isArray(pricelist) || pricelist.length === 0) continue;
+                  const approvedFromRow = getApprovedVendorName(data);
+                  const unique = getUniqueVendorsFromPricelist(pricelist);
+                  if ((approvedFromRow || unique.length === 1) && !fallbackApprovedComparison) {
+                    fallbackApprovedComparison = data;
+                    fallbackApprovedName = approvedFromRow || unique[0] || "";
+                  } else if (unique.length > 1 && !fallbackRawComparison) {
+                    fallbackRawComparison = data;
+                  }
+                  if (fallbackApprovedComparison && fallbackRawComparison) break;
+                }
+              }
+
+              if (fallbackApprovedComparison && fallbackApprovedName) {
+                const targetId = getComparisonIdValue(fallbackApprovedComparison);
+                setApprovalTargetId(targetId != null ? String(targetId) : null);
+                setApprovedVendorName(fallbackApprovedName);
+                setSelectedApprovedVendor(fallbackApprovedName);
+                setUseExisting(true);
+
+                const tableComparison = fallbackRawComparison || fallbackApprovedComparison;
+                setExistingComparison(tableComparison);
+
+                const built = buildComparisonFromPricelist(tableComparison);
+                setVendors(built.vendors);
+                setComparisonRows(built.comparisonRows);
+                setHeaderInfo((prev) => ({ ...prev, comparison_date: todayISO() }));
+                setCreatedComparisonId(targetId != null ? String(targetId) : null);
+                setStep("preview");
+                setSelectedFile(null);
+              } else {
+                setExistingComparison(null);
+                setUseExisting(false);
+                setApprovedVendorName("");
+                setApprovalTargetId(null);
+                setSelectedApprovedVendor("");
+                setVendors([]);
+                setComparisonRows([]);
+                setCreatedComparisonId(null);
+                setStep("select");
+                setSelectedFile(null);
+              }
             }
           } catch {
             setExistingComparison(null);
@@ -1074,16 +1135,11 @@ export default function VendorComparisonModule() {
       }
 
       const prForPayload = fullPrRef.current || selectedPr || {};
-      const prNoForPayload = prForPayload?.pr_no ?? prForPayload?.pr_number ?? prForPayload?.prNo ?? null;
-      const prNoNumeric = (() => {
-        if (prNoForPayload == null || prNoForPayload === "") return null;
-        const n = Number(prNoForPayload);
-        return Number.isFinite(n) ? n : null;
-      })();
+      const prNoNumeric = getPrIdValue(prForPayload, selectedPrId);
 
       const createResult = await api.createVendorComparison({
         project_id: toPositiveInteger(resolvedProject.projectId ?? projectId),
-        pr_no: prNoNumeric != null ? prNoNumeric : toPositiveInteger(selectedPrId),
+        pr_no: prNoNumeric,
         pricelist: fullPricelist,
         approved_vendor: approvedVendor.vendor_id,
       });
@@ -1146,7 +1202,7 @@ export default function VendorComparisonModule() {
       }
       const result = await api.updateVendorComparison(approvalTargetId, {
         project_id: toPositiveInteger(resolvedProject.projectId ?? projectId),
-        pr_no: toPositiveInteger(fullPrRef.current?.pr_no ?? selectedPr?.pr_no ?? selectedPr?.pr_number ?? selectedPr?.prNo ?? null),
+        pr_no: getPrIdValue(fullPrRef.current || selectedPr || {}, selectedPrId),
         pricelist: fullPricelist,
         approved_vendor: approvedVendor.vendor_id,
       });

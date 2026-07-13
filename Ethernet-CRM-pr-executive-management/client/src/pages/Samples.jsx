@@ -293,13 +293,21 @@ export default function Samples() {
     return { ...row, add_fields: list };
   };
 
+  const isManualLikeRow = (row = {}) => {
+    if (String(row?._row_type || "").toLowerCase() === "manual") return true;
+    const description = String(row?.description || row?.item_name || row?.itemName || row?.item_code || row?.code || "").trim();
+    if (!description) return false;
+    return !String(row?.boq_id || row?.boqId || row?.boq_key || row?.boqKey || row?.boq_match_key || row?.boqMatchKey || "").trim();
+  };
+
   const syncSampleItemDerivedFields = (row, { flatCount = getFlatCount(), floorMultiplier = getFloorCount() } = {}) => {
     const base = row && typeof row === "object" ? row : {};
     const isBoqRow = String(base._row_type || "").toLowerCase() === "boq";
+    const isManualRow = isManualLikeRow(base);
     const qtyPerFlat = Math.max(0, toFiniteNumber(base.quantity) || 0);
     const qtyText = qtyPerFlat ? String(qtyPerFlat) : "";
     const multiplier = parsePositiveCount(flatCount) * parsePositiveCount(floorMultiplier);
-    const totalQty = qtyPerFlat * multiplier;
+    const totalQty = qtyPerFlat > 0 ? qtyPerFlat * multiplier : isManualRow ? multiplier : 0;
     const boqQtyText =
       String(
         base.boq_qty ??
@@ -311,7 +319,7 @@ export default function Samples() {
     const baseAmount =
       toFiniteNumber(base.value) ||
       (rate && qtyPerFlat ? rate * qtyPerFlat : 0);
-    const totalAmount = isBoqRow ? baseAmount : baseAmount * multiplier;
+    const totalAmount = isBoqRow ? baseAmount : qtyPerFlat > 0 ? baseAmount * multiplier : isManualRow ? baseAmount : 0;
 
     let next = {
       ...base,
@@ -342,6 +350,7 @@ export default function Samples() {
 
   const getCalculatedSampleRows = (rows = createForm.item_description, { flatCount = getFlatCount(), floorMultiplier = getFloorCount() } = {}) => {
     return reindexSampleRows(rows).map((row, index) => {
+      const isManualRow = isManualLikeRow(row);
       const perFlatQty = Math.max(0, toFiniteNumber(row?.quantity) || 0);
       const perFlatAmount =
         toFiniteNumber(row?.value) ||
@@ -349,8 +358,8 @@ export default function Samples() {
           ? toFiniteNumber(getSampleItemFieldValue(row, "rate")) * perFlatQty
           : 0);
       const multiplier = parsePositiveCount(flatCount) * parsePositiveCount(floorMultiplier);
-      const totalQty = perFlatQty * multiplier;
-      const totalAmount = perFlatAmount * multiplier;
+      const totalQty = perFlatQty > 0 ? perFlatQty * multiplier : isManualRow ? multiplier : 0;
+      const totalAmount = perFlatAmount > 0 ? perFlatAmount * multiplier : 0;
       return {
         sr_no: row?.sr_no ?? row?.srno ?? row?.srNo ?? String(index + 1),
         item_name:
