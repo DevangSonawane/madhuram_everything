@@ -51,6 +51,73 @@ const parseNumberOrZero = (value) => {
 const getAddFieldValue = (row, fieldKey) =>
   (Array.isArray(row?.add_fields) ? row.add_fields : []).find((field) => String(field?.key || "").trim() === fieldKey)?.value ?? "";
 
+const isManualLikeRow = (row = {}) => {
+  const description = String(
+    row?.description || row?.material_description || row?.item_name || row?.itemName || row?.item_code || row?.code || ""
+  ).trim();
+  if (!description) return false;
+
+  const boqSignals = [
+    row?.boq_id,
+    row?.boqId,
+    row?.boq_key,
+    row?.boqKey,
+    row?.boq_match_key,
+    row?.boqMatchKey,
+    getAddFieldValue(row, "boq_id"),
+    getAddFieldValue(row, "boq_key"),
+    getAddFieldValue(row, "boq_match_key"),
+  ];
+
+  return !boqSignals.some((value) => String(value ?? "").trim() !== "");
+};
+
+const resolveManualRowQty = (row = {}, sample = {}) => {
+  const rowFlatCount = parseNumberOrZero(
+    row?.flat_count ||
+      row?.flatCount ||
+      getAddFieldValue(row, "flat_count") ||
+      getAddFieldValue(row, "flatCount")
+  );
+  const rowFloorCount = parseNumberOrZero(
+    row?.floors ||
+      row?.floor_count ||
+      row?.floorCount ||
+      getAddFieldValue(row, "floors") ||
+      getAddFieldValue(row, "floor_count") ||
+      getAddFieldValue(row, "floorCount")
+  );
+  const sampleFlatCount = parseNumberOrZero(sample?.flats || sample?.location?.flat_no || sample?.location?.flats);
+  const sampleFloorCount = parseNumberOrZero(sample?.location?.floor || sample?.location?.floor_no || sample?.location?.floors);
+  const rowMultiplier = Math.max(1, rowFlatCount || sampleFlatCount || rowFloorCount || sampleFloorCount);
+
+  const explicit =
+    parseNumberOrZero(
+      row?.total_qty ||
+        row?.quantity ||
+        row?.qty ||
+        row?.issued_qty ||
+        getAddFieldValue(row, "total_qty") ||
+        getAddFieldValue(row, "selected_qty") ||
+        getAddFieldValue(row, "boq_base_qty") ||
+        getAddFieldValue(row, "boq_issued_qty")
+    ) || 0;
+  if (explicit > 0) return explicit;
+
+  const perFlat =
+    parseNumberOrZero(
+      row?.qty_per_flat ||
+        row?.quantity_per_flat ||
+        row?.per_flat_qty ||
+        getAddFieldValue(row, "qty_per_flat") ||
+        getAddFieldValue(row, "boq_qty_per_flat")
+    ) || 0;
+  if (perFlat > 0) return perFlat * rowMultiplier;
+
+  if (isManualLikeRow(row)) return rowMultiplier > 0 ? rowMultiplier : sampleFlatCount > 0 ? sampleFlatCount : sampleFloorCount > 0 ? sampleFloorCount : 0;
+  return 0;
+};
+
 const getSampleQuantityMeta = (row = {}, sample = {}) => {
   const sampleTotalQty = parseNumberOrZero(
     row?.total_qty ||
@@ -371,9 +438,7 @@ export default function PurchaseRequestCreate() {
 
     const mapped = parsedItems
       .map((item) => {
-        const itemTotalQty = parseNumberOrZero(
-          item?.quantity || item?.qty || item?.total_qty || item?.selected_qty || item?.req_qty
-        );
+        const itemTotalQty = resolveManualRowQty(item, sample);
         const resolvedQty = itemTotalQty > 0 ? itemTotalQty : parseNumberOrZero(item?.qty_per_flat || item?.sample_qty_per_flat || item?.req_qty);
         const explicitItemName = String(item?.item_name || item?.itemName || "").trim();
         return {
@@ -577,7 +642,12 @@ export default function PurchaseRequestCreate() {
 
     const cleanedItems = form.items
       .map((item) => {
-        const reqQty = Number(item?.req_qty || item?.sample_total_qty || item?.sample_qty_per_flat || 0);
+        const reqQty = Number(
+          item?.req_qty ||
+            item?.sample_total_qty ||
+            item?.sample_qty_per_flat ||
+            (isManualLikeRow(item) ? resolveManualRowQty(item, sample) : 0)
+        );
         const inventoryId = parseIntegerOrNull(item.inventory_id);
         const payload = {
           item_name: String(item.item_name || item.make || "").trim(),

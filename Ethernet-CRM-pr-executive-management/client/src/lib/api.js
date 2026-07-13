@@ -2469,6 +2469,68 @@ export const api = {
         fieldVal('qty') ??
         fieldVal('req_qty') ??
         '';
+      const qtyPerFlatRaw =
+        item.qty_per_flat ??
+        item.qtyPerFlat ??
+        fieldVal('qty_per_flat') ??
+        fieldVal('qtyPerFlat') ??
+        '';
+      const totalQtyRaw =
+        item.total_qty ??
+        item.totalQty ??
+        fieldVal('total_qty') ??
+        fieldVal('totalQty') ??
+        '';
+      const flatCountRaw =
+        item.flat_count ??
+        item.flatCount ??
+        fieldVal('flat_count') ??
+        fieldVal('flatCount') ??
+        '';
+      const floorCountRaw =
+        item.floors ??
+        item.floor_count ??
+        item.floorCount ??
+        fieldVal('floors') ??
+        fieldVal('floor_count') ??
+        fieldVal('floorCount') ??
+        '';
+      const selectedQtyRaw =
+        item.selected_qty ??
+        item.selectedQty ??
+        fieldVal('selected_qty') ??
+        fieldVal('selectedQty') ??
+        '';
+      const boqBaseQtyRaw =
+        item.boq_base_qty ??
+        item.boqBaseQty ??
+        fieldVal('boq_base_qty') ??
+        fieldVal('boqBaseQty') ??
+        '';
+      const boqRemainingQtyRaw =
+        item.boq_remaining_quantity ??
+        item.boqRemainingQuantity ??
+        fieldVal('boq_remaining_quantity') ??
+        fieldVal('boqRemainingQuantity') ??
+        '';
+      const boqMatchKeyRaw =
+        item.boq_match_key ??
+        item.boqMatchKey ??
+        fieldVal('boq_match_key') ??
+        fieldVal('boqMatchKey') ??
+        '';
+      const boqKeyRaw =
+        item.boq_key ??
+        item.boqKey ??
+        fieldVal('boq_key') ??
+        fieldVal('boqKey') ??
+        '';
+      const boqItemCodeRaw =
+        item.boq_item_code ??
+        item.boqItemCode ??
+        fieldVal('boq_item_code') ??
+        fieldVal('boqItemCode') ??
+        '';
       const valueRaw =
         item.value ??
         fieldVal('value') ??
@@ -2492,7 +2554,38 @@ export const api = {
         description: String(descriptionRaw ?? '').trim(),
         quantity: toNumberOrNull(qtyRaw),
         value: computedValue ?? toNumberOrNull(valueRaw),
+        add_fields: Array.isArray(addFields) ? addFields : [],
       };
+
+      const qtyPerFlat = toNumberOrNull(qtyPerFlatRaw);
+      if (qtyPerFlat != null) normalized.qty_per_flat = qtyPerFlat;
+
+      const totalQty = toNumberOrNull(totalQtyRaw);
+      if (totalQty != null) normalized.total_qty = totalQty;
+
+      const selectedQty = toNumberOrNull(selectedQtyRaw);
+      if (selectedQty != null) normalized.selected_qty = selectedQty;
+
+      const flatCount = toNumberOrNull(flatCountRaw);
+      if (flatCount != null) normalized.flat_count = flatCount;
+
+      const floorCount = toNumberOrNull(floorCountRaw);
+      if (floorCount != null) normalized.floors = floorCount;
+
+      const boqBaseQty = toNumberOrNull(boqBaseQtyRaw);
+      if (boqBaseQty != null) normalized.boq_base_qty = boqBaseQty;
+
+      const boqRemainingQty = toNumberOrNull(boqRemainingQtyRaw);
+      if (boqRemainingQty != null) normalized.boq_remaining_quantity = boqRemainingQty;
+
+      const boqMatchKey = String(boqMatchKeyRaw || '').trim();
+      if (boqMatchKey) normalized.boq_match_key = boqMatchKey;
+
+      const boqKey = String(boqKeyRaw || '').trim();
+      if (boqKey) normalized.boq_key = boqKey;
+
+      const boqItemCode = String(boqItemCodeRaw || '').trim();
+      if (boqItemCode) normalized.boq_item_code = boqItemCode;
 
       const specification = String(specificationRaw || '').trim();
       if (specification) normalized.specification = specification;

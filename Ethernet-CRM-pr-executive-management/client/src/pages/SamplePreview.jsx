@@ -113,6 +113,27 @@ const normalizeLookupKey = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 
+const isManualLikeRow = (row = {}) => {
+  const description = String(
+    row?.description || row?.material_description || row?.item_name || row?.itemName || row?.item_code || row?.code || ""
+  ).trim();
+  if (!description) return false;
+
+  const boqSignals = [
+    row?.boq_id,
+    row?.boqId,
+    row?.boq_key,
+    row?.boqKey,
+    row?.boq_match_key,
+    row?.boqMatchKey,
+    getRowFieldValue(row, "boq_id"),
+    getRowFieldValue(row, "boq_key"),
+    getRowFieldValue(row, "boq_match_key"),
+  ];
+
+  return !boqSignals.some((value) => String(value ?? "").trim() !== "");
+};
+
 const buildLookupKeys = (row) => {
   const keys = [
     row?.boq_id,
@@ -193,6 +214,12 @@ const getEffectiveQty = (row) => {
 
   const rawQty = Number(String(row?.quantity ?? row?.qty ?? "").replace(/,/g, "").trim());
   if (Number.isFinite(rawQty) && rawQty > 0) return String(rawQty);
+
+  if (isManualLikeRow(row)) {
+    const fallbackQty = flatNum > 0 ? flatNum : floorNum > 0 ? floorNum : 1;
+    return String(fallbackQty);
+  }
+
   return "";
 };
 
