@@ -416,10 +416,28 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
         item?.boq_item_code ||
         item?.boqItemCode
     );
+  const looksLikeSerialNumber = (value, srNo) => {
+    const text = asText(value, "");
+    const srText = asText(srNo, "");
+    if (!text) return false;
+    if (srText && text === srText) return true;
+    return /^\d+$/.test(text);
+  };
   const getDisplayItemNo = (item = {}) => {
     const itemNo = asText(item.item_no, "");
+    const itemCode = asText(item.item_code || item.code || item.boq_item_code || item.boqItemCode, "");
+    const itemName = asText(item.item_name, "");
+    const description = asText(item.description, "");
+    const srNo = asText(item.sr_no, "");
+    const isManualRow = !isBoqLinkedRow(item);
+
+    if (isManualRow) {
+      if (looksLikeSerialNumber(itemNo, srNo)) {
+        return itemName || description || itemCode || itemNo || "-";
+      }
+      return itemName || description || itemCode || itemNo || "-";
+    }
     if (itemNo) return itemNo;
-    if (!isBoqLinkedRow(item)) return asText(item.item_name, "-");
     return "-";
   };
 
