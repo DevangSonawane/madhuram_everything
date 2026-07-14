@@ -924,7 +924,7 @@ export default function SamplePreview() {
     const mirQtyNumber = lookupQty(mirQtyByBoqKey);
     const itrQtyNumber = lookupQty(itrQtyByBoqKey);
     const issuedQtyNumber = sampleQtyNumber || toPositiveNumber(row?.boq_issued_qty ?? row?.boqIssuedQty ?? row?.issued_qty ?? row?.issuedQty);
-    const remainingQty = boqQtyNumber > 0 && sampleQtyNumber > 0 ? Math.max(0, boqQtyNumber - sampleQtyNumber) : row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "-";
+    const remainingQty = boqQtyNumber > 0 && sampleQtyNumber > 0 ? boqQtyNumber - sampleQtyNumber : row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "-";
     return {
       key: String(row?.boq_id ?? row?.boqId ?? row?.sr_no ?? row?.srNo ?? index),
       itemNo,

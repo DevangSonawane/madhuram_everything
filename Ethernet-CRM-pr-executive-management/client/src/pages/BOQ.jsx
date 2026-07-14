@@ -374,21 +374,6 @@ export default function BOQ() {
     return safeBase;
   };
 
-  const scrollBoqTable = (direction) => {
-    const container = boqTableScrollRef.current;
-    if (!container) return;
-
-    const maxScrollLeft = container.scrollWidth - container.clientWidth;
-    if (maxScrollLeft <= 0) return;
-
-    const step = Math.max(240, Math.floor(container.clientWidth * 0.6));
-    const nextScrollLeft = container.scrollLeft + (direction === "left" ? -step : step);
-    container.scrollTo({
-      left: Math.max(0, Math.min(maxScrollLeft, nextScrollLeft)),
-      behavior: "smooth",
-    });
-  };
-
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.defaultPrevented) return;
@@ -576,38 +561,16 @@ export default function BOQ() {
   const canReplaceCurrentBOQ = Boolean(projectId && items.length > 0);
 
   const getBoqQuantityBreakdown = (item) => {
-    const remaining = getRemainingQtyForItem(item);
+    const originalQty = getRemainingQtyForItem(item);
     const usedFromSamples = getComputedUsedQtyForBoqItem(item, projectSamples);
     const usedFromApi = toFiniteNumber(item?.used_quantity);
-    const remainingFromApi = toFiniteNumber(item?.remaining_quantity);
     const computedUsed = usedFromSamples > 0 ? usedFromSamples : (usedFromApi ?? 0);
-    const computedRemaining = remaining - computedUsed;
-
-    if (usedFromSamples > 0) {
-      return {
-        used: computedUsed,
-        remaining: computedRemaining,
-        total: remaining,
-      };
-    }
-    if (Number.isFinite(usedFromApi)) {
-      return {
-        used: computedUsed,
-        remaining: remainingFromApi ?? computedRemaining,
-        total: remaining,
-      };
-    }
-    if (Number.isFinite(remainingFromApi)) {
-      const used = Math.max(remaining - remainingFromApi, computedUsed);
-      return {
-        used,
-        remaining: remainingFromApi,
-        total: used + remainingFromApi,
-      };
-    }
-    const used = computedUsed;
-    const balance = remaining - used;
-    return { used, remaining: balance, total: remaining };
+    const remaining = originalQty - computedUsed;
+    return {
+      used: computedUsed,
+      remaining,
+      total: originalQty,
+    };
   };
 
   const isPdf = (f) => f && (f.type === "application/pdf" || (f.name || "").toLowerCase().endsWith(".pdf"));

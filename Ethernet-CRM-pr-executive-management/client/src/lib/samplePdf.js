@@ -288,9 +288,29 @@ const normalizeAdditionalFields = (sample) => {
     .filter((field) => field.key || field.value);
 };
 
+const getSampleFileNameSeed = (sample) => {
+  const client = resolveSampleClient(sample, sample?.project_id);
+  const items = normalizeSampleItems(sample, client);
+  const firstItem = items.find((item) => {
+    const candidate = item?.item_name || item?.description || item?.item_code || item?.item_no;
+    return String(candidate ?? "").trim() !== "";
+  });
+
+  return (
+    firstItem?.item_name ||
+    firstItem?.description ||
+    firstItem?.item_code ||
+    firstItem?.item_no ||
+    sample?.work_done ||
+    sample?.building_name ||
+    sample?.site_name ||
+    "sample"
+  );
+};
+
 const getSamplePdfFileName = (sample) => {
   const sampleId = sample?.sample_id || sample?.id || "sample";
-  const nameSeed = sample?.building_name || sample?.site_name || sample?.work_done || "sample";
+  const nameSeed = getSampleFileNameSeed(sample);
   return `Sample-${sampleId}-${safeName(nameSeed)}.pdf`;
 };
 

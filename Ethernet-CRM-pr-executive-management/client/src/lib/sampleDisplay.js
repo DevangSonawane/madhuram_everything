@@ -100,12 +100,30 @@ const getSamplePrimaryIdentifierLabel = (client) => {
 
 const getSamplePrimaryIdentifier = (row = {}, client = "") => {
   const normalized = normalizeClientName(client);
+  const manualNameCandidates = [
+    row?.item_name,
+    row?.itemName,
+    getRowFieldValue(row, "item_name"),
+    getRowFieldValue(row, "itemName"),
+    row?.name,
+    row?.product_name,
+    row?.productName,
+    row?.material_name,
+    row?.materialName,
+    row?.service_name,
+    row?.serviceName,
+    getRowFieldValue(row, "name"),
+    getRowFieldValue(row, "product_name"),
+    getRowFieldValue(row, "productName"),
+    getRowFieldValue(row, "material_name"),
+    getRowFieldValue(row, "materialName"),
+    getRowFieldValue(row, "service_name"),
+    getRowFieldValue(row, "serviceName"),
+  ];
+
   if (normalized === "hiranandani") {
     return (
-      row?.item_name ??
-      row?.itemName ??
-      getRowFieldValue(row, "item_name") ??
-      getRowFieldValue(row, "itemName") ??
+      manualNameCandidates.find((value) => String(value ?? "").trim() !== "") ??
       row?.item_no ??
       row?.itemNo ??
       getRowFieldValue(row, "item_no") ??
@@ -127,10 +145,7 @@ const getSamplePrimaryIdentifier = (row = {}, client = "") => {
   }
   if (normalized === "lodha") {
     return (
-      row?.item_name ??
-      row?.itemName ??
-      getRowFieldValue(row, "item_name") ??
-      getRowFieldValue(row, "itemName") ??
+      manualNameCandidates.find((value) => String(value ?? "").trim() !== "") ??
       row?.item_no ??
       row?.itemNo ??
       getRowFieldValue(row, "item_no") ??
@@ -148,7 +163,16 @@ const getSamplePrimaryIdentifier = (row = {}, client = "") => {
     );
   }
 
-  return row?.item_name ?? row?.itemName ?? row?.description ?? row?.item_no ?? row?.itemNo ?? row?.item_code ?? row?.itemCode ?? row?.code ?? "";
+  return (
+    manualNameCandidates.find((value) => String(value ?? "").trim() !== "") ??
+    row?.description ??
+    row?.item_no ??
+    row?.itemNo ??
+    row?.item_code ??
+    row?.itemCode ??
+    row?.code ??
+    ""
+  );
 };
 
 export {
