@@ -886,6 +886,10 @@ export default function SamplePreview() {
       row?.name ||
       "-";
     const itemName =
+      row?.item_no ||
+      row?.itemNo ||
+      getRowFieldValue(row, "item_no") ||
+      getRowFieldValue(row, "itemNo") ||
       row?.item_name ||
       row?.itemName ||
       row?.name ||
@@ -894,10 +898,10 @@ export default function SamplePreview() {
       getSamplePrimaryIdentifier(row, sampleClient) ||
       "-";
     const itemNo =
-      row?.item_no ??
-      row?.itemNo ??
-      getRowFieldValue(row, "item_no") ??
-      getRowFieldValue(row, "itemNo") ??
+      row?.item_no ||
+      row?.itemNo ||
+      getRowFieldValue(row, "item_no") ||
+      getRowFieldValue(row, "itemNo") ||
       itemName;
     const itemDescription =
       row?.description ||

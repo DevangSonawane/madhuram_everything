@@ -119,12 +119,27 @@ export default function SampleEdit() {
       const found = itemFields.find((field) => String(field?.key || "").trim() === key);
       return found?.value ?? "";
     };
-    const itemName =
-      raw?.item_name ??
-      raw?.itemName ??
-      fieldVal("item_name") ??
-      fieldVal("itemName") ??
-      raw?.name ??
+    const isBoqRow = Boolean(
+      raw?.boq_id ||
+        raw?.boqId ||
+        raw?.boq_key ||
+        raw?.boqKey ||
+        raw?.boq_match_key ||
+        raw?.boqMatchKey ||
+        raw?.boq_item_code ||
+        raw?.boqItemCode ||
+        fieldVal("boq_id") ||
+        fieldVal("boqId") ||
+        fieldVal("boq_key") ||
+        fieldVal("boqKey") ||
+        fieldVal("boq_match_key") ||
+        fieldVal("boqMatchKey")
+    );
+    const itemNo =
+      raw?.item_no ??
+      raw?.itemNo ??
+      fieldVal("item_no") ??
+      fieldVal("itemNo") ??
       "";
     const itemCode =
       raw?.item_code ??
@@ -136,13 +151,35 @@ export default function SampleEdit() {
       raw?.boq_item_code ??
       raw?.boqItemCode ??
       "";
+    const boqDescription =
+      raw?.boq_description ??
+      raw?.boqDescription ??
+      raw?.description ??
+      fieldVal("boq_description") ??
+      fieldVal("boqDescription") ??
+      fieldVal("description") ??
+      "";
+    const resolvedItemName = (() => {
+      const candidate = String(
+        raw?.item_name ??
+          raw?.itemName ??
+          fieldVal("item_name") ??
+          fieldVal("itemName") ??
+          raw?.name ??
+          ""
+      ).trim();
+      if (isBoqRow) return itemNo || candidate || "";
+      return candidate || itemNo || String(boqDescription || raw?.description || "").trim();
+    })();
     return {
       sr_no: raw?.sr_no ?? raw?.srNo ?? raw?.srno ?? "",
-      item_name: itemName,
+      item_name: resolvedItemName,
+      item_no: itemNo,
       item_code: itemCode,
       code: raw?.code ?? itemCode,
       brand_name: raw?.brand_name ?? raw?.brandName ?? fieldVal("brand_name") ?? fieldVal("brandName") ?? "",
       description: raw?.description ?? fieldVal("description") ?? fieldVal("item_description") ?? "",
+      boq_description: boqDescription,
       specification: raw?.specification ?? raw?.spec ?? fieldVal("specification") ?? fieldVal("spec") ?? "",
       unit: raw?.unit ?? raw?.uom ?? raw?.UOM ?? fieldVal("unit") ?? fieldVal("uom") ?? fieldVal("UOM") ?? "",
       quantity: raw?.quantity ?? raw?.qty ?? fieldVal("quantity") ?? fieldVal("qty") ?? fieldVal("selected_qty") ?? "",
@@ -484,8 +521,10 @@ export default function SampleEdit() {
     return (Array.isArray(form.item_description) ? form.item_description : []).map((row) => {
       const qtyPerFlat = toFiniteNumber(row?.qty_per_flat ?? row?.selected_qty ?? row?.quantity ?? row?.qty ?? row?.issued_qty ?? row?.boq_issued_qty) || 0;
       const totalQty = qtyPerFlat > 0 && floorFlatMultiplier > 0 ? qtyPerFlat * floorFlatMultiplier : toFiniteNumber(row?.total_qty ?? row?.quantity ?? row?.qty) || "";
+      const displayItemName = row?.item_name || row?.item_no || row?.boq_description || row?.description || getSamplePrimaryIdentifier(row, sampleClient) || "";
       return {
         ...row,
+        item_name: displayItemName,
         qty_per_flat: qtyPerFlat > 0 ? String(qtyPerFlat) : row?.qty_per_flat || "",
         total_qty: totalQty ? String(totalQty) : row?.total_qty || "",
         flats: String(flatCount || ""),
@@ -945,7 +984,7 @@ export default function SampleEdit() {
                       <Input placeholder="Sr No" value={row.sr_no} onChange={(e) => {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], sr_no: e.target.value }; setForm({ ...form, item_description: next });
                       }} />
-                      <Input placeholder={sampleItemNameLabel} value={row.item_name || ""} onChange={(e) => {
+                      <Input placeholder={sampleItemNameLabel} value={row.item_name || row.item_no || row.boq_description || row.description || ""} onChange={(e) => {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], item_name: e.target.value }; setForm({ ...form, item_description: next });
                       }} />
                       <div className="flex flex-col gap-2 md:col-span-3">
@@ -1064,7 +1103,7 @@ export default function SampleEdit() {
                         ) : (
                           calculatedSampleRows.map((row, index) => (
                             <TableRow key={`preview-${index}`}>
-                              <TableCell>{row.item_name || getSamplePrimaryIdentifier(row, sampleClient) || "-"}</TableCell>
+                              <TableCell>{row.item_name || row.item_no || row.boq_description || row.description || getSamplePrimaryIdentifier(row, sampleClient) || "-"}</TableCell>
                               <TableCell>{row.description || "-"}</TableCell>
                               <TableCell>{row.item_code || "-"}</TableCell>
                               <TableCell>{row.specification || "-"}</TableCell>
