@@ -158,6 +158,17 @@ const buildLookupKeys = (row) => {
 };
 
 const getEffectiveQty = (row) => {
+  const isBoqRow = Boolean(
+    row?.boq_id ||
+    row?.boqId ||
+    row?.boq_key ||
+    row?.boqKey ||
+    row?.boq_match_key ||
+    row?.boqMatchKey ||
+    getRowFieldValue(row, "boq_id") ||
+    getRowFieldValue(row, "boq_key") ||
+    getRowFieldValue(row, "boq_match_key")
+  );
   const candidates = [
     row?.total_qty,
     row?.totalQty,
@@ -167,10 +178,6 @@ const getEffectiveQty = (row) => {
     row?.selectedQty,
     getRowFieldValue(row, "selected_qty"),
     getRowFieldValue(row, "selectedQty"),
-    row?.quantity,
-    row?.qty,
-    getRowFieldValue(row, "quantity"),
-    getRowFieldValue(row, "qty"),
     row?.issued_qty,
     row?.issuedQty,
     getRowFieldValue(row, "issued_qty"),
@@ -216,6 +223,11 @@ const getEffectiveQty = (row) => {
   const floorNum = Number(String(floors ?? "").replace(/,/g, "").trim());
   if (Number.isFinite(qty) && qty > 0 && Number.isFinite(flatNum) && flatNum > 0 && Number.isFinite(floorNum) && floorNum > 0) {
     return String(qty * flatNum * floorNum);
+  }
+
+  if (isBoqRow) {
+    const rawBoqQty = Number(String(row?.quantity ?? row?.qty ?? getRowFieldValue(row, "quantity") ?? getRowFieldValue(row, "qty") ?? "").replace(/,/g, "").trim());
+    if (Number.isFinite(rawBoqQty) && rawBoqQty > 0) return String(rawBoqQty);
   }
 
   const rawQty = Number(String(row?.quantity ?? row?.qty ?? "").replace(/,/g, "").trim());
@@ -676,7 +688,6 @@ export default function SamplePreview() {
     };
 
     for (const po of Array.isArray(linkedPos) ? linkedPos : []) {
-      const poSampleId = String(po?.sample_id ?? po?.sampleId ?? "").trim();
       for (const item of getPoItems(po)) {
         const qty = toPositiveNumber(item?.qty ?? item?.quantity ?? item?.total_qty ?? item?.selected_qty ?? item?.req_qty);
         if (!qty) continue;
@@ -853,7 +864,6 @@ export default function SamplePreview() {
 
   const boqSummaryRows = (Array.isArray(sample?.item_description) ? sample.item_description : displayItems).map((row, index) => {
     const usage = row?.boq_usage || {};
-    const usageCounts = usage?.usage_counts || {};
     const boqCode =
       row?.boq_item_code ||
       row?.boqItemCode ||

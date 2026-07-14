@@ -87,20 +87,65 @@ export default function SampleEdit() {
     return val ?? fallback;
   };
 
-  const normalizeEmptyLike = (value) => {
-    const text = String(value ?? "").trim();
-    if (!text) return "";
-    const lower = text.toLowerCase();
-    if (lower === "-" || lower === "_" || lower === "na" || lower === "n/a" || lower === "null" || lower === "undefined") {
-      return "";
-    }
-    return text;
-  };
-
   const toFiniteNumber = (value) => {
     if (value == null || value === "") return null;
     const n = Number(String(value).replace(/,/g, "").trim());
     return Number.isFinite(n) ? n : null;
+  };
+
+  const parsePositiveCount = (value) => {
+    const n = toFiniteNumber(value);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  };
+
+  const getBoqMultiplier = (flatValue, floorValue) => {
+    const flatCount = parsePositiveCount(flatValue);
+    const floorCount = parsePositiveCount(floorValue);
+    return {
+      flatCount,
+      floorCount,
+      multiplier: flatCount > 0 && floorCount > 0 ? flatCount * floorCount : 0,
+    };
+  };
+
+  const normalizeLoadedItemRow = (row, { flatCount, floorCount }) => {
+    const isBoqRow = Boolean(
+      String(row?._row_type || "").toLowerCase() === "boq" ||
+      row?.boq_id ||
+      row?.boqId ||
+      row?.boq_key ||
+      row?.boqKey ||
+      row?.boq_match_key ||
+      row?.boqMatchKey
+    );
+    const baseQty = toFiniteNumber(
+      row?.qty_per_flat ??
+        row?.boq_base_qty ??
+        row?.selected_qty ??
+        row?.quantity ??
+        row?.qty ??
+        row?.issued_qty ??
+        row?.boq_issued_qty
+    ) || 0;
+    const explicitTotal = toFiniteNumber(row?.total_qty ?? row?.totalQty);
+    const multiplier = flatCount > 0 && floorCount > 0 ? flatCount * floorCount : 0;
+    const totalQty = explicitTotal || (isBoqRow && baseQty > 0 && multiplier > 0 ? baseQty * multiplier : baseQty);
+    const nextQty = totalQty > 0 ? String(totalQty) : String(row?.quantity ?? "");
+
+    return {
+      ...row,
+      quantity: nextQty,
+      issued_qty: totalQty > 0 ? String(totalQty) : row?.issued_qty ?? null,
+      boq_issued_qty: totalQty > 0 ? String(totalQty) : row?.boq_issued_qty ?? null,
+      total_qty: totalQty > 0 ? String(totalQty) : row?.total_qty ?? "",
+      qty_per_flat: baseQty > 0 ? String(baseQty) : row?.qty_per_flat ?? "",
+      selected_qty: baseQty > 0 ? String(baseQty) : row?.selected_qty ?? "",
+      flat_count: flatCount > 0 ? String(flatCount) : row?.flat_count ?? "",
+      floors: floorCount > 0 ? String(floorCount) : row?.floors ?? "",
+      boq_flat_multiplier: flatCount > 0 ? String(flatCount) : row?.boq_flat_multiplier ?? "",
+      boq_floor_multiplier: floorCount > 0 ? String(floorCount) : row?.boq_floor_multiplier ?? "",
+      boq_base_qty: baseQty > 0 ? String(baseQty) : row?.boq_base_qty ?? "",
+    };
   };
 
   const pickFirst = (obj, keys) => {
@@ -261,6 +306,7 @@ export default function SampleEdit() {
 
     setForm((prev) => {
       const rows = Array.isArray(prev.item_description) ? [...prev.item_description] : [];
+      const { flatCount, floorCount, multiplier } = getBoqMultiplier(prev.flats, prev.location?.floor);
       const matchIndex = rows.findIndex((row) => {
         const rowKey = String(
           row?.boq_match_key ||
@@ -273,8 +319,23 @@ export default function SampleEdit() {
         ).trim();
         return rowKey && rowKey === key;
       });
-      const nextQty = String(qtyToAdd);
+      const existing = matchIndex >= 0 ? rows[matchIndex] || {} : {};
+      const existingBaseQty = Number(
+        String(
+          existing?.qty_per_flat ??
+            existing?.selected_qty ??
+            existing?.boq_base_qty ??
+            existing?.quantity ??
+            existing?.qty ??
+            existing?.issued_qty ??
+            existing?.boq_issued_qty ??
+            0
+        ).replace(/,/g, "").trim()
+      ) || 0;
+      const nextBaseQty = existingBaseQty + qtyToAdd;
+      const nextTotalQty = multiplier > 0 ? nextBaseQty * multiplier : nextBaseQty;
       const nextValue = "";
+      const nextQty = String(nextTotalQty);
       const nextRow = {
         _row_type: "boq",
         sr_no: matchIndex >= 0 ? rows[matchIndex]?.sr_no || String(matchIndex + 1) : String(rows.length + 1),
@@ -294,6 +355,14 @@ export default function SampleEdit() {
         boq_key: key,
         boq_match_key: key,
         boq_issued_qty: nextQty,
+        qty_per_flat: String(nextBaseQty),
+        selected_qty: String(nextBaseQty),
+        total_qty: nextQty,
+        flat_count: String(flatCount || 0),
+        floors: String(floorCount || 0),
+        boq_flat_multiplier: String(flatCount || 0),
+        boq_floor_multiplier: String(floorCount || 0),
+        boq_base_qty: String(nextBaseQty),
         add_fields: [
           { key: "boq_id", value: String(derived.id || "") },
           { key: "boq_key", value: key },
@@ -302,18 +371,23 @@ export default function SampleEdit() {
           { key: "item_code", value: String(derived.item_code || derived.item_no || derived.hsn || derived.sac_code || "") },
           { key: "description", value: String(derived.description || "-") },
           { key: "unit", value: String(derived.unit || "") },
-          { key: "selected_qty", value: nextQty },
+          { key: "selected_qty", value: String(nextBaseQty) },
+          { key: "qty_per_flat", value: String(nextBaseQty) },
+          { key: "boq_base_qty", value: String(nextBaseQty) },
           { key: "boq_issued_qty", value: nextQty },
+          { key: "total_qty", value: nextQty },
+          { key: "flat_count", value: String(flatCount || 0) },
+          { key: "floors", value: String(floorCount || 0) },
+          { key: "boq_flat_multiplier", value: String(flatCount || 0) },
+          { key: "boq_floor_multiplier", value: String(floorCount || 0) },
         ],
       };
 
       if (matchIndex >= 0) {
-        const existing = rows[matchIndex] || {};
-        const existingQty = Number(String(existing.quantity ?? existing.qty ?? 0).replace(/,/g, "").trim()) || 0;
-        nextRow.quantity = String(existingQty + qtyToAdd);
+        nextRow.quantity = nextQty;
         nextRow.value = existing.value ?? "";
-        nextRow.issued_qty = String(existingQty + qtyToAdd);
-        nextRow.boq_issued_qty = String(existingQty + qtyToAdd);
+        nextRow.issued_qty = nextQty;
+        nextRow.boq_issued_qty = nextQty;
         nextRow.sr_no = existing.sr_no || nextRow.sr_no;
         nextRow.item_name = existing.item_no || existing.item_name || nextRow.item_name;
         nextRow.item_no = existing.item_no || nextRow.item_no;
@@ -324,7 +398,7 @@ export default function SampleEdit() {
         nextRow.brand_name = existing.brand_name || nextRow.brand_name;
         nextRow.unit = existing.unit || nextRow.unit;
         nextRow.inventory_id = existing.inventory_id ?? null;
-        nextRow.add_fields = Array.isArray(existing.add_fields) ? existing.add_fields : nextRow.add_fields;
+        nextRow.add_fields = Array.isArray(existing.add_fields) && existing.add_fields.length > 0 ? existing.add_fields : nextRow.add_fields;
         rows[matchIndex] = nextRow;
       } else {
         rows.push(nextRow);
@@ -383,6 +457,10 @@ export default function SampleEdit() {
     });
   };
 
+  const flatCount = parsePositiveCount(form.flats);
+  const floorCount = parsePositiveCount(form.location?.floor);
+  const floorFlatMultiplier = flatCount > 0 && floorCount > 0 ? flatCount * floorCount : 0;
+
   const closeBoqQtySelector = (key) => {
     setPendingBoqQty((prev) => {
       const next = { ...prev };
@@ -407,6 +485,7 @@ export default function SampleEdit() {
         const loc = parseMaybe(sample.location, {});
         const items = parseMaybe(sample.item_description, []);
         const adds = parseMaybe(sample.add_fields, []);
+        const { flatCount, floorCount } = getBoqMultiplier(sample.flats, loc?.floor || sample.floors || sample.floor);
         const sampleFileRaw =
           sample.sample_file ??
           sample.sample_file_path ??
@@ -438,37 +517,44 @@ export default function SampleEdit() {
           },
           item_description: normalizedItems.length
             ? normalizedItems.map((it) => {
+              const normalizedRow = normalizeLoadedItemRow(it, { flatCount, floorCount });
               const itemFields = parseMaybe(it?.add_fields, []);
               const inventoryField = Array.isArray(itemFields)
                   ? itemFields.find((field) => String(field?.key || "") === "inventory_id")
                   : null;
                 const itemName = String(
-                  it.item_name ||
-                    it.itemName ||
-                    it.item_no ||
-                    it.itemNo ||
-                    it.code ||
-                    it.item_code ||
-                    getSamplePrimaryIdentifier(it, resolvedClient) ||
+                  normalizedRow.item_name ||
+                    normalizedRow.itemName ||
+                    normalizedRow.item_no ||
+                    normalizedRow.itemNo ||
+                    normalizedRow.code ||
+                    normalizedRow.item_code ||
+                    getSamplePrimaryIdentifier(normalizedRow, resolvedClient) ||
                     ""
                 ).trim();
-                const brandName = it.brand_name || it.brandName || "";
+                const brandName = normalizedRow.brand_name || normalizedRow.brandName || "";
                 return {
-                  sr_no: it.sr_no || "",
+                  sr_no: normalizedRow.sr_no || "",
                   item_name: itemName,
-                  item_code: it.item_code || it.itemCode || it.code || it.boq_item_code || it.hsn || "",
-                  code: it.code || it.item_code || it.itemCode || it.boq_item_code || it.hsn || "",
+                  item_code: normalizedRow.item_code || normalizedRow.itemCode || normalizedRow.code || normalizedRow.boq_item_code || normalizedRow.hsn || "",
+                  code: normalizedRow.code || normalizedRow.item_code || normalizedRow.itemCode || normalizedRow.boq_item_code || normalizedRow.hsn || "",
                   brand_name: brandName,
-                  description: it.description || "",
-                  specification: it.specification || it.spec || "",
-                  unit: it.unit || it.uom || it.UOM || "",
-                  quantity: it.quantity || "",
-                  value: it.value || "",
-                  inventory_id: it.inventory_id ?? (inventoryField?.value ? Number(inventoryField.value) : null),
-                  issued_qty: it.issued_qty ?? null,
-                  boq_id: it.boq_id ?? (Array.isArray(itemFields) ? Number(itemFields.find((field) => String(field?.key || "") === "boq_id")?.value || null) : null),
-                  boq_qty: it.boq_qty ?? (Array.isArray(itemFields) ? Number(itemFields.find((field) => String(field?.key || "") === "boq_qty")?.value || null) : null),
-                  boq_issued_qty: it.boq_issued_qty ?? null,
+                  description: normalizedRow.description || "",
+                  specification: normalizedRow.specification || normalizedRow.spec || "",
+                  unit: normalizedRow.unit || normalizedRow.uom || normalizedRow.UOM || "",
+                  quantity: normalizedRow.quantity || "",
+                  value: normalizedRow.value || "",
+                  inventory_id: normalizedRow.inventory_id ?? (inventoryField?.value ? Number(inventoryField.value) : null),
+                  issued_qty: normalizedRow.issued_qty ?? null,
+                  boq_id: normalizedRow.boq_id ?? (Array.isArray(itemFields) ? Number(itemFields.find((field) => String(field?.key || "") === "boq_id")?.value || null) : null),
+                  boq_qty: normalizedRow.boq_qty ?? (Array.isArray(itemFields) ? Number(itemFields.find((field) => String(field?.key || "") === "boq_qty")?.value || null) : null),
+                  boq_issued_qty: normalizedRow.boq_issued_qty ?? null,
+                  qty_per_flat: normalizedRow.qty_per_flat || "",
+                  total_qty: normalizedRow.total_qty || "",
+                  flat_count: normalizedRow.flat_count || "",
+                  floors: normalizedRow.floors || "",
+                  boq_flat_multiplier: normalizedRow.boq_flat_multiplier || "",
+                  boq_floor_multiplier: normalizedRow.boq_floor_multiplier || "",
                 };
               })
             : [{ sr_no: "", item_name: "", item_code: "", code: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }],
@@ -536,6 +622,7 @@ export default function SampleEdit() {
 
     setSaving(true);
     try {
+      const { flatCount, floorCount, multiplier } = getBoqMultiplier(form.flats, form.location?.floor);
       const normalizedItems = (Array.isArray(form.item_description) ? form.item_description : []).map((row) => {
         const isBoqRow = Boolean(
           String(row?._row_type || "").toLowerCase() === "boq" ||
@@ -547,6 +634,17 @@ export default function SampleEdit() {
           row?.boqMatchKey
         );
         if (!isBoqRow) return row;
+        const perFlatQty = toFiniteNumber(
+          row?.qty_per_flat ??
+            row?.boq_base_qty ??
+            row?.selected_qty ??
+            row?.issued_qty ??
+            row?.boq_issued_qty ??
+            row?.quantity ??
+            row?.qty
+        ) || 0;
+        const explicitTotal = toFiniteNumber(row?.total_qty ?? row?.totalQty);
+        const nextTotalQty = explicitTotal || (perFlatQty > 0 && multiplier > 0 ? perFlatQty * multiplier : perFlatQty);
         const itemNo = String(
           row?.item_no ||
             row?.itemNo ||
@@ -561,6 +659,17 @@ export default function SampleEdit() {
           ...row,
           item_name: itemNo,
           item_no: itemNo,
+          quantity: nextTotalQty > 0 ? String(nextTotalQty) : row.quantity,
+          issued_qty: nextTotalQty > 0 ? String(nextTotalQty) : row.issued_qty,
+          boq_issued_qty: nextTotalQty > 0 ? String(nextTotalQty) : row.boq_issued_qty,
+          total_qty: nextTotalQty > 0 ? String(nextTotalQty) : row.total_qty,
+          qty_per_flat: perFlatQty > 0 ? String(perFlatQty) : row.qty_per_flat,
+          selected_qty: perFlatQty > 0 ? String(perFlatQty) : row.selected_qty,
+          flat_count: flatCount > 0 ? String(flatCount) : row.flat_count,
+          floors: floorCount > 0 ? String(floorCount) : row.floors,
+          boq_flat_multiplier: flatCount > 0 ? String(flatCount) : row.boq_flat_multiplier,
+          boq_floor_multiplier: floorCount > 0 ? String(floorCount) : row.boq_floor_multiplier,
+          boq_base_qty: perFlatQty > 0 ? String(perFlatQty) : row.boq_base_qty,
         };
       });
       const nextAddFields = [
@@ -690,6 +799,28 @@ export default function SampleEdit() {
                 <div className="space-y-2">
                   <Label>Coordinates</Label>
                   <Input value={form.location.coordinates} onChange={(e) => setForm({ ...form, location: { ...form.location, coordinates: e.target.value } })} />
+                </div>
+              </div>
+              <div className="rounded-2xl border bg-muted/20 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold tracking-wide">Calculated Preview</div>
+                    <div className="text-xs text-muted-foreground">Read-only totals calculated from `flats count x floors`.</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-lg border bg-background px-3 py-2">
+                      <div className="uppercase text-muted-foreground">Flats Count</div>
+                      <div className="mt-1 font-semibold">{flatCount || "-"}</div>
+                    </div>
+                    <div className="rounded-lg border bg-background px-3 py-2">
+                      <div className="uppercase text-muted-foreground">Floors</div>
+                      <div className="mt-1 font-semibold">{floorCount || "-"}</div>
+                    </div>
+                    <div className="rounded-lg border bg-background px-3 py-2">
+                      <div className="uppercase text-muted-foreground">Multiplier</div>
+                      <div className="mt-1 font-semibold">{floorFlatMultiplier || "-"}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="space-y-2">

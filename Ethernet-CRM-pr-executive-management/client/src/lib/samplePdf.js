@@ -84,6 +84,17 @@ const getFieldValue = (row, key) => {
 };
 
 const getEffectiveSampleQty = (row) => {
+  const isBoqRow = Boolean(
+    row?.boq_id ||
+    row?.boqId ||
+    row?.boq_key ||
+    row?.boqKey ||
+    row?.boq_match_key ||
+    row?.boqMatchKey ||
+    getFieldValue(row, "boq_id") ||
+    getFieldValue(row, "boq_key") ||
+    getFieldValue(row, "boq_match_key")
+  );
   const candidates = [
     row?.total_qty,
     row?.totalQty,
@@ -93,10 +104,6 @@ const getEffectiveSampleQty = (row) => {
     row?.selectedQty,
     getFieldValue(row, "selected_qty"),
     getFieldValue(row, "selectedQty"),
-    row?.quantity,
-    row?.qty,
-    getFieldValue(row, "quantity"),
-    getFieldValue(row, "qty"),
     row?.issued_qty,
     row?.issuedQty,
     getFieldValue(row, "issued_qty"),
@@ -133,6 +140,11 @@ const getEffectiveSampleQty = (row) => {
   const floorNum = Number(String(floors ?? "").replace(/,/g, "").trim());
   if (Number.isFinite(qty) && qty > 0 && Number.isFinite(flatNum) && flatNum > 0 && Number.isFinite(floorNum) && floorNum > 0) {
     return String(qty * flatNum * floorNum);
+  }
+
+  if (isBoqRow) {
+    const rawBoqQty = Number(String(row?.quantity ?? row?.qty ?? getFieldValue(row, "quantity") ?? getFieldValue(row, "qty") ?? "").replace(/,/g, "").trim());
+    if (Number.isFinite(rawBoqQty) && rawBoqQty > 0) return String(rawBoqQty);
   }
 
   const rawQty = Number(String(row?.quantity ?? row?.qty ?? "").replace(/,/g, "").trim());
