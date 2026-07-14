@@ -159,6 +159,16 @@ export default function SampleEdit() {
       fieldVal("boqDescription") ??
       fieldVal("description") ??
       "";
+    const looksLikePlaceholderLabel = (value) => {
+      const text = String(value ?? "").trim();
+      if (!text) return false;
+      if (itemNo && text === String(itemNo).trim()) return true;
+      if (itemCode && text === String(itemCode).trim()) return true;
+      if (/^\d+(\.\d+){1,3}$/.test(text)) return true;
+      if (/^\(\d+\)$/.test(text)) return true;
+      if (/^[A-Z0-9][A-Z0-9._/-]{1,}$/.test(text) && String(boqDescription || raw?.description || "").trim()) return true;
+      return false;
+    };
     const resolvedItemName = (() => {
       const candidate = String(
         raw?.item_name ??
@@ -168,7 +178,8 @@ export default function SampleEdit() {
           raw?.name ??
           ""
       ).trim();
-      if (isBoqRow) return itemNo || candidate || "";
+      if (candidate && !looksLikePlaceholderLabel(candidate)) return candidate;
+      if (!isBoqRow) return candidate || itemNo || String(boqDescription || raw?.description || "").trim();
       return candidate || itemNo || String(boqDescription || raw?.description || "").trim();
     })();
     return {
@@ -519,7 +530,7 @@ export default function SampleEdit() {
   const sampleItemNameLabel = getSamplePrimaryIdentifierLabel(sampleClient);
   const calculatedSampleRows = useMemo(() => {
     return (Array.isArray(form.item_description) ? form.item_description : []).map((row) => {
-      const qtyPerFlat = toFiniteNumber(row?.qty_per_flat ?? row?.selected_qty ?? row?.quantity ?? row?.qty ?? row?.issued_qty ?? row?.boq_issued_qty) || 0;
+      const qtyPerFlat = toFiniteNumber(row?.quantity ?? row?.total_qty ?? row?.selected_qty ?? row?.issued_qty ?? row?.boq_issued_qty ?? row?.qty_per_flat ?? row?.qty) || 0;
       const totalQty = qtyPerFlat > 0 && floorFlatMultiplier > 0 ? qtyPerFlat * floorFlatMultiplier : toFiniteNumber(row?.total_qty ?? row?.quantity ?? row?.qty) || "";
       const displayItemName = row?.item_name || row?.item_no || row?.boq_description || row?.description || getSamplePrimaryIdentifier(row, sampleClient) || "";
       return {
@@ -713,6 +724,7 @@ export default function SampleEdit() {
         ...row,
         sr_no: row?.sr_no ?? "",
         item_name: row?.item_name ?? row?.itemName ?? "",
+        item_no: row?.item_no ?? row?.itemNo ?? row?.item_name ?? row?.itemName ?? "",
         item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? "",
         code: row?.code ?? row?.item_code ?? row?.itemCode ?? "",
         brand_name: row?.brand_name ?? row?.brandName ?? "",
@@ -737,6 +749,7 @@ export default function SampleEdit() {
         boq_key: row?.boq_key ?? "",
         boq_match_key: row?.boq_match_key ?? "",
         boq_item_code: row?.boq_item_code ?? "",
+        boq_description: row?.boq_description ?? row?.description ?? "",
       }));
       const nextAddFields = [
         ...(Array.isArray(form.add_fields) ? form.add_fields.filter((field) => String(field?.key || "").trim() !== "sample_client") : []),
@@ -985,7 +998,14 @@ export default function SampleEdit() {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], sr_no: e.target.value }; setForm({ ...form, item_description: next });
                       }} />
                       <Input placeholder={sampleItemNameLabel} value={row.item_name || row.item_no || row.boq_description || row.description || ""} onChange={(e) => {
-                        const next = [...form.item_description]; next[idx] = { ...next[idx], item_name: e.target.value }; setForm({ ...form, item_description: next });
+                        const next = [...form.item_description];
+                        const nextValue = e.target.value;
+                        const nextRow = { ...next[idx], item_name: nextValue };
+                        if (nextRow.boq_id || nextRow.boq_key || nextRow.boq_match_key) {
+                          nextRow.item_no = nextValue;
+                        }
+                        next[idx] = nextRow;
+                        setForm({ ...form, item_description: next });
                       }} />
                       <div className="flex flex-col gap-2 md:col-span-3">
                         <Textarea className="min-h-20 resize-y" placeholder="Description" value={row.description} onChange={(e) => {
@@ -1029,7 +1049,17 @@ export default function SampleEdit() {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], unit: e.target.value }; setForm({ ...form, item_description: next });
                       }} />
                       <Input placeholder="Quantity" value={row.quantity} onChange={(e) => {
-                        const next = [...form.item_description]; next[idx] = { ...next[idx], quantity: e.target.value }; setForm({ ...form, item_description: next });
+                        const next = [...form.item_description];
+                        const nextValue = e.target.value;
+                        next[idx] = {
+                          ...next[idx],
+                          quantity: nextValue,
+                          issued_qty: nextValue,
+                          boq_issued_qty: nextValue,
+                          selected_qty: nextValue,
+                          total_qty: nextValue,
+                        };
+                        setForm({ ...form, item_description: next });
                       }} />
                       <Input placeholder="Value" value={row.value} onChange={(e) => {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], value: e.target.value }; setForm({ ...form, item_description: next });
