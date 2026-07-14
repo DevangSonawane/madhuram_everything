@@ -351,6 +351,15 @@ export default function Samples() {
   const getCalculatedSampleRows = (rows = createForm.item_description, { flatCount = getFlatCount(), floorMultiplier = getFloorCount() } = {}) => {
     return reindexSampleRows(rows).map((row, index) => {
       const isManualRow = isManualLikeRow(row);
+      const isBoqRow = Boolean(
+        String(row?._row_type || "").toLowerCase() === "boq" ||
+        row?.boq_id ||
+        row?.boqId ||
+        row?.boq_key ||
+        row?.boqKey ||
+        row?.boq_match_key ||
+        row?.boqMatchKey
+      );
       const perFlatQty = Math.max(0, toFiniteNumber(row?.quantity) || 0);
       const perFlatAmount =
         toFiniteNumber(row?.value) ||
@@ -362,12 +371,25 @@ export default function Samples() {
       const totalAmount = perFlatAmount > 0 ? perFlatAmount * multiplier : 0;
       return {
         sr_no: row?.sr_no ?? row?.srno ?? row?.srNo ?? String(index + 1),
-        item_name:
-          getSamplePrimaryIdentifier(row, activeBoqClient) ||
-          row?.item_name ||
-          row?.itemName ||
-          row?.description ||
-          "",
+        item_name: isBoqRow
+          ? String(
+              row?.item_no ||
+                row?.itemNo ||
+                getSampleItemFieldValue(row, "item_no") ||
+                getSampleItemFieldValue(row, "itemNo") ||
+                row?.item_code ||
+                row?.itemCode ||
+                row?.code ||
+                "-"
+            ).trim() || "-"
+          : String(
+              row?.item_name ||
+                row?.itemName ||
+                getSampleItemFieldValue(row, "item_name") ||
+                getSampleItemFieldValue(row, "itemName") ||
+                row?.description ||
+                ""
+            ).trim(),
         description: row?.description ?? "",
         item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? row?.hsn ?? "",
         specification: row?.specification ?? "",
@@ -420,14 +442,25 @@ export default function Samples() {
         row = setSampleItemFieldValue(row, "specification", String(sourceSpec));
         row = setSampleItemFieldValue(row, "spec", String(sourceSpec));
       }
-      row.item_name = String(
-        getSamplePrimaryIdentifier(row, activeBoqClient) ||
-          row.item_name ||
-          row.itemName ||
-          getSampleItemFieldValue(row, "item_name") ||
-          getSampleItemFieldValue(row, "itemName") ||
-          ""
-      );
+      row.item_name = isBoqRow
+        ? String(
+            row.item_no ||
+              row.itemNo ||
+              getSampleItemFieldValue(row, "item_no") ||
+              getSampleItemFieldValue(row, "itemNo") ||
+              row.item_code ||
+              row.itemCode ||
+              row.code ||
+              "-"
+          ).trim() || "-"
+        : String(
+            row.item_name ||
+              row.itemName ||
+              getSampleItemFieldValue(row, "item_name") ||
+              getSampleItemFieldValue(row, "itemName") ||
+              row.description ||
+              ""
+          ).trim();
       row = setSampleItemFieldValue(row, "item_name", row.item_name);
       row.quantity = item.total_qty ? String(item.total_qty) : "";
       row.value = item.total_amount ? String(item.total_amount) : "";
@@ -1206,11 +1239,11 @@ export default function Samples() {
             existing.item_name ||
             existing.itemName ||
             derived.item_no ||
-            existing.item_name ||
-            existing.itemName ||
-            getSamplePrimaryIdentifier(derived, activeBoqClient) ||
-            ""
-        ).trim(),
+            derived.item_code ||
+            derived.sac_code ||
+            derived.code ||
+            "-"
+        ).trim() || "-",
         description: String(existing.description || derived.description || "-"),
         item_code: String(existing.item_code || existing.code || existing.hsn || derived.sac_code || derived.item_code || derived.hsn || derived.item_no || derived.code || "-"),
         code: String(existing.code || existing.item_code || existing.hsn || derived.sac_code || derived.item_code || derived.hsn || derived.item_no || derived.code || "-"),

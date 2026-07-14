@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -167,6 +167,10 @@ const getEffectiveQty = (row) => {
     row?.selectedQty,
     getRowFieldValue(row, "selected_qty"),
     getRowFieldValue(row, "selectedQty"),
+    row?.quantity,
+    row?.qty,
+    getRowFieldValue(row, "quantity"),
+    getRowFieldValue(row, "qty"),
     row?.issued_qty,
     row?.issuedQty,
     getRowFieldValue(row, "issued_qty"),
@@ -236,6 +240,7 @@ const getSampleFloorValue = (sample = {}) =>
 export default function SamplePreview() {
   const { id, projectId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [sample, setSample] = useState(null);
@@ -248,222 +253,234 @@ export default function SamplePreview() {
   const [projectMirs, setProjectMirs] = useState([]);
   const [projectItrs, setProjectItrs] = useState([]);
   const [downloading, setDownloading] = useState(false);
+  const previewStateSample = location?.state?.sample ?? null;
+
+  const resolveSampleRecord = (raw) => {
+    if (Array.isArray(raw)) {
+      return raw.find((row) => String(row?.sample_id ?? row?.id ?? "") === String(id)) || raw[0] || null;
+    }
+    return raw?.sample || raw?.data || raw || null;
+  };
+
+  const hydrateSample = (record) => {
+    const s = resolveSampleRecord(record);
+    if (!s) return;
+
+    const loc = parseMaybeJson(s.location, {});
+    const items = parseMaybeJson(s.item_description ?? s.items ?? s.item_descriptions, []);
+    const adds = parseMaybeJson(s.add_fields, []);
+    const sampleFileRaw =
+      s.sample_file ??
+      s.sample_file_path ??
+      s.sample_files ??
+      s.files ??
+      s.file_path ??
+      s.attachment ??
+      s.attachment_path ??
+      "";
+    const sampleFile = pickSampleFilePath(sampleFileRaw);
+    const sampleClient = resolveSampleClient(s, s.project_id);
+
+    const toDisplayItems = (rawItems) => {
+      const list = Array.isArray(rawItems) ? rawItems : [];
+      if (list.length === 0) return [];
+
+      const fieldVal = (row, key) => {
+        const fields = parseMaybeJson(row?.add_fields, []);
+        if (!Array.isArray(fields)) return "";
+        const found = fields.find((f) => String(f?.key || "").trim() === key);
+        return found?.value ?? "";
+      };
+
+      const looksLikeAddFields = list.some((row) => row && typeof row === "object" && Array.isArray(row.add_fields));
+      if (looksLikeAddFields) {
+        return list.map((row, index) => {
+          const sr = row?.sr_no ?? row?.srno ?? row?.srNo ?? String(index + 1);
+          const itemName =
+            row?.item_name ??
+            row?.itemName ??
+            fieldVal(row, "item_name") ??
+            fieldVal(row, "itemName") ??
+            row?.name ??
+            "";
+          const itemCode =
+            row?.item_code ??
+            row?.itemCode ??
+            row?.code ??
+            fieldVal(row, "item_code") ??
+            fieldVal(row, "itemCode") ??
+            fieldVal(row, "code") ??
+            "";
+          const brandName =
+            row?.brand_name ??
+            row?.brandName ??
+            fieldVal(row, "brand_name") ??
+            fieldVal(row, "brandName") ??
+            "";
+          const description =
+            fieldVal(row, "description") ||
+            fieldVal(row, "item") ||
+            fieldVal(row, "material_description") ||
+            fieldVal(row, "item_name") ||
+            row?.description ||
+            row?.item_name ||
+            itemName ||
+            "";
+          const unit =
+            (row?.unit ?? row?.uom ?? row?.UOM ?? "") ||
+            fieldVal(row, "unit") ||
+            fieldVal(row, "uom") ||
+            fieldVal(row, "UOM") ||
+            "";
+          const qty =
+            getEffectiveQty(row) ||
+            fieldVal(row, "selected_qty") ||
+            fieldVal(row, "qty") ||
+            fieldVal(row, "quantity") ||
+            "";
+          const rate = fieldVal(row, "rate") || "";
+          const amount = fieldVal(row, "amount") || fieldVal(row, "value") || "";
+          const inventoryId =
+            (row?.inventory_id ?? row?.inventoryId ?? row?.inventoryID ?? null) ||
+            fieldVal(row, "inventory_id") ||
+            fieldVal(row, "inventoryId") ||
+            null;
+          const boqId =
+            (row?.boq_id ?? row?.boqId ?? "") ||
+            fieldVal(row, "boq_id") ||
+            fieldVal(row, "boqId") ||
+            "";
+          const issuedQty =
+            (row?.issued_qty ?? row?.issuedQty ?? "") ||
+            fieldVal(row, "issued_qty") ||
+            fieldVal(row, "issuedQty") ||
+            "";
+          const boqIssuedQty =
+            (row?.boq_issued_qty ?? row?.boqIssuedQty ?? "") ||
+            fieldVal(row, "boq_issued_qty") ||
+            fieldVal(row, "boqIssuedQty") ||
+            "";
+          const boqItemCode =
+            (row?.boq_item_code ?? row?.boqItemCode ?? "") ||
+            fieldVal(row, "boq_item_code") ||
+            fieldVal(row, "boqItemCode") ||
+            "";
+          const boqRemainingQty =
+            (row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "") ||
+            fieldVal(row, "boq_remaining_quantity") ||
+            fieldVal(row, "boqRemainingQuantity") ||
+            "";
+          const computedValue = (() => {
+            const q = Number(String(qty).replace(/,/g, "").trim());
+            const r = Number(String(rate).replace(/,/g, "").trim());
+            if (Number.isFinite(q) && Number.isFinite(r)) return String(q * r);
+            return "";
+          })();
+          return {
+            sr_no: sr,
+            item_no:
+              row?.item_no ??
+              row?.itemNo ??
+              fieldVal(row, "item_no") ??
+              fieldVal(row, "itemNo") ??
+              "",
+            item_name:
+              getSamplePrimaryIdentifier(row, sampleClient) ||
+              row?.item_name ||
+              row?.itemName ||
+              fieldVal(row, "item_name") ||
+              fieldVal(row, "itemName") ||
+              row?.name ||
+              "",
+            brand_name: brandName,
+            description,
+            item_code: itemCode,
+            specification:
+              row?.specification ??
+              row?.spec ??
+              fieldVal(row, "specification") ??
+              fieldVal(row, "spec") ??
+              "",
+            unit,
+            quantity: qty,
+            value: computedValue || amount,
+            inventory_id: inventoryId,
+            issued_qty: issuedQty,
+            boq_id: boqId,
+            boq_issued_qty: boqIssuedQty,
+            boq_item_code: boqItemCode,
+            boq_remaining_quantity: boqRemainingQty,
+          };
+        });
+      }
+
+      return list.map((row, index) => ({
+        sr_no: row?.sr_no ?? row?.srno ?? row?.srNo ?? String(index + 1),
+        item_no: row?.item_no ?? row?.itemNo ?? "",
+        item_name: getSamplePrimaryIdentifier(row, sampleClient) || row?.item_name || row?.itemName || row?.name || "",
+        brand_name: row?.brand_name ?? row?.brandName ?? "",
+        description: row?.description ?? row?.material_description ?? row?.item ?? row?.item_name ?? row?.itemName ?? "",
+        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? "",
+        specification: row?.specification ?? row?.spec ?? "",
+        unit: row?.unit ?? row?.uom ?? row?.UOM ?? "",
+        quantity: getEffectiveQty(row) || row?.quantity || row?.qty || row?.req_qty || "",
+        value: row?.value ?? row?.amount ?? "",
+        inventory_id: row?.inventory_id ?? row?.inventoryId ?? row?.inventoryID ?? null,
+        issued_qty: row?.issued_qty ?? row?.issuedQty ?? "",
+        boq_id: row?.boq_id ?? row?.boqId ?? "",
+        boq_issued_qty: row?.boq_issued_qty ?? row?.boqIssuedQty ?? "",
+        boq_item_code: row?.boq_item_code ?? row?.boqItemCode ?? "",
+        boq_remaining_quantity: row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "",
+      }));
+    };
+
+    const normalizedDisplayItems = toDisplayItems(items);
+    setDisplayItems(normalizedDisplayItems);
+
+    setSample({
+      sample_id: s.sample_id || s.id,
+      project_id: s.project_id,
+      building_name: s.building_name || "",
+      site_name: s.site_name || "",
+      flats: s.flats || "",
+      floors: s.floors || s.floor || loc?.floor || "",
+      work_done: s.work_done || "",
+      sample_file: sampleFile,
+      location: loc && typeof loc === 'object' ? loc : {},
+      item_description: Array.isArray(items) ? items : [],
+      add_fields: Array.isArray(adds) ? adds : [],
+      created_at: s.created_at,
+      updated_at: s.updated_at,
+    });
+  };
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
+        if (previewStateSample) {
+          hydrateSample(previewStateSample);
+        }
         const res = await api.getSampleById(id);
         if (!res.success) {
-          setSample(null);
-          return;
-        }
-
-        const raw = res.data;
-        const s = Array.isArray(raw)
-          ? raw.find((row) => String(row?.sample_id ?? row?.id ?? "") === String(id)) || raw[0]
-          : raw?.sample || raw?.data || raw;
-        if (!s) {
-          setSample(null);
-          return;
-        }
-
-        const loc = parseMaybeJson(s.location, {});
-        const items = parseMaybeJson(s.item_description ?? s.items ?? s.item_descriptions, []);
-        const adds = parseMaybeJson(s.add_fields, []);
-        const sampleFileRaw =
-          s.sample_file ??
-          s.sample_file_path ??
-          s.sample_files ??
-          s.files ??
-          s.file_path ??
-          s.attachment ??
-          s.attachment_path ??
-          "";
-        const sampleFile = pickSampleFilePath(sampleFileRaw);
-        const sampleClient = resolveSampleClient(s, s.project_id);
-          const toDisplayItems = (rawItems) => {
-            const list = Array.isArray(rawItems) ? rawItems : [];
-            if (list.length === 0) return [];
-
-          const fieldVal = (row, key) => {
-            const fields = parseMaybeJson(row?.add_fields, []);
-            if (!Array.isArray(fields)) return "";
-            const found = fields.find((f) => String(f?.key || "").trim() === key);
-            return found?.value ?? "";
-          };
-
-          // If items are stored as { add_fields: [...] } rows (Samples create flow), normalize for preview table.
-          const looksLikeAddFields = list.some((row) => row && typeof row === "object" && Array.isArray(row.add_fields));
-          if (looksLikeAddFields) {
-            return list.map((row, index) => {
-              const sr = row?.sr_no ?? row?.srno ?? row?.srNo ?? String(index + 1);
-              const itemName =
-                row?.item_name ??
-                row?.itemName ??
-                fieldVal(row, "item_name") ??
-                fieldVal(row, "itemName") ??
-                row?.name ??
-                "";
-              const itemCode =
-                row?.item_code ??
-                row?.itemCode ??
-                row?.code ??
-                fieldVal(row, "item_code") ??
-                fieldVal(row, "itemCode") ??
-                fieldVal(row, "code") ??
-                "";
-              const brandName =
-                row?.brand_name ??
-                row?.brandName ??
-                fieldVal(row, "brand_name") ??
-                fieldVal(row, "brandName") ??
-                "";
-              const description =
-                fieldVal(row, "description") ||
-                fieldVal(row, "item") ||
-                fieldVal(row, "material_description") ||
-                fieldVal(row, "item_name") ||
-                row?.description ||
-                row?.item_name ||
-                itemName ||
-                "";
-              const unit =
-                (row?.unit ?? row?.uom ?? row?.UOM ?? "") ||
-                fieldVal(row, "unit") ||
-                fieldVal(row, "uom") ||
-                fieldVal(row, "UOM") ||
-                "";
-              const qty =
-                getEffectiveQty(row) ||
-                fieldVal(row, "selected_qty") ||
-                fieldVal(row, "qty") ||
-                fieldVal(row, "quantity") ||
-                "";
-              const rate = fieldVal(row, "rate") || "";
-              const amount = fieldVal(row, "amount") || fieldVal(row, "value") || "";
-              const inventoryId =
-                (row?.inventory_id ?? row?.inventoryId ?? row?.inventoryID ?? null) ||
-                fieldVal(row, "inventory_id") ||
-                fieldVal(row, "inventoryId") ||
-                null;
-              const boqId =
-                (row?.boq_id ?? row?.boqId ?? "") ||
-                fieldVal(row, "boq_id") ||
-                fieldVal(row, "boqId") ||
-                "";
-              const issuedQty =
-                (row?.issued_qty ?? row?.issuedQty ?? "") ||
-                fieldVal(row, "issued_qty") ||
-                fieldVal(row, "issuedQty") ||
-                "";
-              const boqIssuedQty =
-                (row?.boq_issued_qty ?? row?.boqIssuedQty ?? "") ||
-                fieldVal(row, "boq_issued_qty") ||
-                fieldVal(row, "boqIssuedQty") ||
-                "";
-              const boqItemCode =
-                (row?.boq_item_code ?? row?.boqItemCode ?? "") ||
-                fieldVal(row, "boq_item_code") ||
-                fieldVal(row, "boqItemCode") ||
-                "";
-              const boqRemainingQty =
-                (row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "") ||
-                fieldVal(row, "boq_remaining_quantity") ||
-                fieldVal(row, "boqRemainingQuantity") ||
-                "";
-              const computedValue = (() => {
-                const q = Number(String(qty).replace(/,/g, "").trim());
-                const r = Number(String(rate).replace(/,/g, "").trim());
-                if (Number.isFinite(q) && Number.isFinite(r)) return String(q * r);
-                return "";
-              })();
-              return {
-                sr_no: sr,
-                item_no:
-                  row?.item_no ??
-                  row?.itemNo ??
-                  fieldVal(row, "item_no") ??
-                  fieldVal(row, "itemNo") ??
-                  "",
-                item_name:
-                  getSamplePrimaryIdentifier(row, sampleClient) ||
-                  row?.item_name ||
-                  row?.itemName ||
-                  fieldVal(row, "item_name") ||
-                  fieldVal(row, "itemName") ||
-                  row?.name ||
-                  "",
-                brand_name: brandName,
-                description,
-                item_code: itemCode,
-                specification:
-                  row?.specification ??
-                  row?.spec ??
-                  fieldVal(row, "specification") ??
-                  fieldVal(row, "spec") ??
-                  "",
-                unit,
-                quantity: qty,
-                value: computedValue || amount,
-                inventory_id: inventoryId,
-                issued_qty: issuedQty,
-                boq_id: boqId,
-                boq_issued_qty: boqIssuedQty,
-                boq_item_code: boqItemCode,
-                boq_remaining_quantity: boqRemainingQty,
-              };
-            });
+          if (!previewStateSample) {
+            setSample(null);
+            setDisplayItems([]);
           }
-
-          // Otherwise assume items are already normalized.
-          return list.map((row, index) => ({
-            sr_no: row?.sr_no ?? row?.srno ?? row?.srNo ?? String(index + 1),
-            item_no: row?.item_no ?? row?.itemNo ?? "",
-            item_name: getSamplePrimaryIdentifier(row, sampleClient) || row?.item_name || row?.itemName || row?.name || "",
-            brand_name: row?.brand_name ?? row?.brandName ?? "",
-            description: row?.description ?? row?.material_description ?? row?.item ?? row?.item_name ?? row?.itemName ?? "",
-            item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? "",
-            specification: row?.specification ?? row?.spec ?? "",
-            unit: row?.unit ?? row?.uom ?? row?.UOM ?? "",
-            quantity: getEffectiveQty(row) || row?.quantity || row?.qty || row?.req_qty || "",
-            value: row?.value ?? row?.amount ?? "",
-            inventory_id: row?.inventory_id ?? row?.inventoryId ?? row?.inventoryID ?? null,
-            issued_qty: row?.issued_qty ?? row?.issuedQty ?? "",
-            boq_id: row?.boq_id ?? row?.boqId ?? "",
-            boq_issued_qty: row?.boq_issued_qty ?? row?.boqIssuedQty ?? "",
-            boq_item_code: row?.boq_item_code ?? row?.boqItemCode ?? "",
-            boq_remaining_quantity: row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "",
-          }));
-        };
-
-        const normalizedDisplayItems = toDisplayItems(items);
-        setDisplayItems(normalizedDisplayItems);
-
-        setSample({
-          sample_id: s.sample_id || s.id,
-          project_id: s.project_id,
-          building_name: s.building_name || "",
-          site_name: s.site_name || "",
-          flats: s.flats || "",
-          floors: s.floors || s.floor || loc?.floor || "",
-          work_done: s.work_done || "",
-          sample_file: sampleFile,
-          location: loc && typeof loc === 'object' ? loc : {},
-          item_description: Array.isArray(items) ? items : [],
-          add_fields: Array.isArray(adds) ? adds : [],
-          created_at: s.created_at,
-          updated_at: s.updated_at,
-        });
+          return;
+        }
+        hydrateSample(res.data);
       } catch {
-        setSample(null);
-        setDisplayItems([]);
+        if (!previewStateSample) {
+          setSample(null);
+          setDisplayItems([]);
+        }
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [id, projectId]);
+  }, [id, projectId, previewStateSample]);
 
   useEffect(() => {
     const loadBackpath = async () => {

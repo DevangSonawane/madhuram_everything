@@ -93,6 +93,10 @@ const getEffectiveSampleQty = (row) => {
     row?.selectedQty,
     getFieldValue(row, "selected_qty"),
     getFieldValue(row, "selectedQty"),
+    row?.quantity,
+    row?.qty,
+    getFieldValue(row, "quantity"),
+    getFieldValue(row, "qty"),
     row?.issued_qty,
     row?.issuedQty,
     getFieldValue(row, "issued_qty"),
@@ -369,6 +373,23 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
   const tableStartY = frameY + titleH + headerH;
   const items = normalizeSampleItems(sample, sampleClient);
   const additionalFields = normalizeAdditionalFields(sample);
+  const isBoqLinkedRow = (item = {}) =>
+    Boolean(
+      item?.boq_id ||
+        item?.boqId ||
+        item?.boq_key ||
+        item?.boqKey ||
+        item?.boq_match_key ||
+        item?.boqMatchKey ||
+        item?.boq_item_code ||
+        item?.boqItemCode
+    );
+  const getDisplayItemNo = (item = {}) => {
+    const itemNo = asText(item.item_no, "");
+    if (itemNo) return itemNo;
+    if (!isBoqLinkedRow(item)) return asText(item.item_name, "-");
+    return "-";
+  };
 
   renderFrame();
   doc.setLineWidth(0.5);
@@ -400,15 +421,16 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
     theme: "grid",
     head: [
       sampleClient === "hiranandani"
-        ? ["Item No", "Description", "BOQ Item Code", "Specification", "Brand", "Unit", "Quantity"]
+        ? ["Sr No", "Item No", "Description", "BOQ Item Code", "Specification", "Brand", "Unit", "Quantity"]
         : sampleClient === "lodha"
-          ? ["Item No", "BOQ Item Code", "Description", "Specification", "Brand", "Unit", "Quantity"]
-          : ["Item Code", "Item Name", "Description", "BOQ Item Code", "Specification", "Brand", "Unit", "Quantity"],
+          ? ["Sr No", "Item No", "BOQ Item Code", "Description", "Specification", "Brand", "Unit", "Quantity"]
+          : ["Sr No", "Item Code", "Item Name", "Description", "BOQ Item Code", "Specification", "Brand", "Unit", "Quantity"],
     ],
     body: items.map((item) =>
       sampleClient === "hiranandani"
         ? [
-            asText(item.item_name || item.item_no || item.item_code, "-"),
+            asText(item.sr_no, ""),
+            getDisplayItemNo(item),
             asText(item.description || item.item_name, "-"),
             asText(item.boq_item_code || item.item_code, "-"),
             asText(item.specification, "-"),
@@ -418,7 +440,8 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
           ]
         : sampleClient === "lodha"
           ? [
-              asText(item.item_name || item.item_no || item.item_code, "-"),
+              asText(item.sr_no, ""),
+              getDisplayItemNo(item),
               asText(item.boq_item_code || item.item_code, "-"),
               asText(item.description || item.item_name, "-"),
               asText(item.specification, "-"),
@@ -427,6 +450,7 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
               asText(item.quantity, "-"),
             ]
         : [
+            asText(item.sr_no, ""),
             asText(item.item_code || item.boq_item_code, "-"),
             asText(item.item_name, "-"),
             asText(item.description, "-"),
@@ -458,33 +482,36 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
     columnStyles:
       sampleClient === "hiranandani"
         ? {
-            0: { cellWidth: 18, halign: "center" },
-            1: { cellWidth: 42 },
-            2: { cellWidth: 26, halign: "center" },
-            3: { cellWidth: 30 },
-            4: { cellWidth: 18, halign: "center" },
-            5: { cellWidth: 14, halign: "center" },
-            6: { cellWidth: 16, halign: "center" },
+            0: { cellWidth: 10, halign: "center" },
+            1: { cellWidth: 16, halign: "center" },
+            2: { cellWidth: 36 },
+            3: { cellWidth: 24, halign: "center" },
+            4: { cellWidth: 28 },
+            5: { cellWidth: 16, halign: "center" },
+            6: { cellWidth: 12, halign: "center" },
+            7: { cellWidth: 14, halign: "center" },
           }
         : sampleClient === "lodha"
           ? {
-              0: { cellWidth: 18, halign: "center" },
-              1: { cellWidth: 28, halign: "center" },
-              2: { cellWidth: 36 },
-              3: { cellWidth: 30 },
-              4: { cellWidth: 18, halign: "center" },
-              5: { cellWidth: 14, halign: "center" },
-              6: { cellWidth: 16, halign: "center" },
+              0: { cellWidth: 10, halign: "center" },
+              1: { cellWidth: 16, halign: "center" },
+              2: { cellWidth: 24, halign: "center" },
+              3: { cellWidth: 34 },
+              4: { cellWidth: 28 },
+              5: { cellWidth: 16, halign: "center" },
+              6: { cellWidth: 12, halign: "center" },
+              7: { cellWidth: 14, halign: "center" },
             }
         : {
-            0: { cellWidth: 12, halign: "center" },
-            1: { cellWidth: 28 },
-            2: { cellWidth: 33 },
-            3: { cellWidth: 24, halign: "center" },
-            4: { cellWidth: 33 },
-            5: { cellWidth: 20, halign: "center" },
+            0: { cellWidth: 10, halign: "center" },
+            1: { cellWidth: 14, halign: "center" },
+            2: { cellWidth: 24 },
+            3: { cellWidth: 24 },
+            4: { cellWidth: 20, halign: "center" },
+            5: { cellWidth: 24 },
             6: { cellWidth: 16, halign: "center" },
-            7: { cellWidth: 18, halign: "center" },
+            7: { cellWidth: 12, halign: "center" },
+            8: { cellWidth: 14, halign: "center" },
           },
     didDrawPage: () => {
       renderFrame();
