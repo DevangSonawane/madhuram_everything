@@ -886,10 +886,12 @@ export default function SamplePreview() {
       row?.name ||
       "-";
     const itemName =
-      getSamplePrimaryIdentifier(row, sampleClient) ||
       row?.item_name ||
       row?.itemName ||
       row?.name ||
+      row?.boq_description ||
+      row?.description ||
+      getSamplePrimaryIdentifier(row, sampleClient) ||
       "-";
     const itemNo =
       row?.item_no ??

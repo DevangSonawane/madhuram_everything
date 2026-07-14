@@ -2692,36 +2692,16 @@ export const api = {
   },
 
   updateSample: async (id, data) => {
-    const candidates = [`/api/sample/${id}`, `/api/samples/${id}`];
-    const modes = [false, true]; // raw first, then stringify JSON fields
-    const methods = ['PUT', 'PATCH'];
-    let lastError = null;
-
-    for (const path of candidates) {
-      for (const method of methods) {
-        for (const stringifyJsonFields of modes) {
-          const payload = api._normalizeSamplePayload(data, { stringifyJsonFields });
-          const response = await fetch(`${BASE_URL}${path}`, {
-            method,
-            headers: {
-              ...getAuthHeaders(),
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-          });
-          const res = await handleResponse(response);
-          if (res.success) return res;
-          lastError = res;
-
-          // Auth errors should not be retried on alternate paths/payloads/methods.
-          if (res.status === 401 || res.status === 403) return res;
-
-          // Try next path on not found.
-          if (res.status === 404) break;
-        }
-      }
-    }
-    return lastError || { success: false, error: 'Update path not found', status: 404 };
+    const payload = api._normalizeSamplePayload(data, { stringifyJsonFields: false });
+    const response = await fetch(`${BASE_URL}/api/sample/${encodeURIComponent(String(id))}`, {
+      method: 'PUT',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
   },
 
   deleteSample: async (id) => {

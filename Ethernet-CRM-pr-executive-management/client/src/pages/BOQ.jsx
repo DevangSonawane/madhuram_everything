@@ -92,20 +92,28 @@ function syncBoqAmount(form) {
   };
 }
 
-function compareHiranandaniBoqOrder(a, b) {
-  const toOrderValue = (item) => {
-    const raw = String(item?.item_no ?? item?.code ?? item?.item_code ?? "").trim();
-    const match = raw.match(/\d+/);
-    if (!match) return null;
-    const n = Number(match[0]);
-    return Number.isFinite(n) ? n : null;
-  };
+function getBoqSequenceParts(item) {
+  const raw = String(item?.item_no ?? item?.code ?? item?.item_code ?? "").trim();
+  if (!raw) return [];
+  const parts = raw.match(/\d+/g);
+  return Array.isArray(parts) ? parts.map((part) => Number(part)).filter((part) => Number.isFinite(part)) : [];
+}
 
-  const aOrder = toOrderValue(a);
-  const bOrder = toOrderValue(b);
-  if (aOrder != null && bOrder != null && aOrder !== bOrder) return aOrder - bOrder;
-  if (aOrder != null && bOrder == null) return -1;
-  if (aOrder == null && bOrder != null) return 1;
+function compareBoqDisplayOrder(a, b) {
+  const aParts = getBoqSequenceParts(a);
+  const bParts = getBoqSequenceParts(b);
+
+  if (aParts.length > 0 || bParts.length > 0) {
+    const maxLength = Math.max(aParts.length, bParts.length);
+    for (let i = 0; i < maxLength; i++) {
+      const aPart = aParts[i];
+      const bPart = bParts[i];
+      if (aPart == null && bPart == null) break;
+      if (aPart == null) return 1;
+      if (bPart == null) return -1;
+      if (aPart !== bPart) return aPart - bPart;
+    }
+  }
 
   const aId = toFiniteNumber(a?.boq_id ?? a?.id);
   const bId = toFiniteNumber(b?.boq_id ?? b?.id);
@@ -416,7 +424,7 @@ export default function BOQ() {
     }
     setLoading(true);
     try {
-      const res = await api.getBOQs();
+      const res = projectId ? await api.getBOQsByProject(projectId) : await api.getBOQs();
       const errorText = String(res?.error || "").toLowerCase();
       const isNoBoq =
         errorText.includes("no boq") ||
@@ -441,9 +449,11 @@ export default function BOQ() {
         .map(normalizeBoqItem)
         .filter((item) => String(item?.project_id ?? "") === String(projectId));
 
-      if (filteredRows.length > 0) {
+      const orderedRows = [...filteredRows].sort(compareBoqDisplayOrder);
+
+      if (orderedRows.length > 0) {
         const rowsWithUsage = await Promise.all(
-          filteredRows.map(async (item) => {
+          orderedRows.map(async (item) => {
             try {
               const detailRes = await api.getBOQById(item.id);
               if (!detailRes?.success || !detailRes.data) return item;
@@ -552,8 +562,7 @@ export default function BOQ() {
     const matched = byFile.filter((i) => matchesActiveClient(i, activeClient));
     // Never show an empty table purely due to missing client metadata.
     const next = matched.length > 0 ? matched : byFile;
-    if (activeClient === "hiranandani") return [...next].sort(compareHiranandaniBoqOrder);
-    return next;
+    return [...next].sort(compareBoqDisplayOrder);
   }, [items, activeFileKey, activeClient, isNewBoqMode]);
 
   // If the project already has any BOQ items, allow both "Add" and "Replace".

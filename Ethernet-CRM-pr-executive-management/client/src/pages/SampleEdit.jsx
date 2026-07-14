@@ -8,13 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { syncSampleBoqQuantities } from "@/lib/sampleBoqSync";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Loader2, Plus, Eye, Search, Minus } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Eye, Search, Minus, Layers, Save, Trash2 } from "lucide-react";
 import InventoryPicker from "@/components/InventoryPicker";
 import { useResolvedProject } from "@/hooks/useResolvedProject";
-import { getSamplePrimaryIdentifier, resolveSampleClient } from "@/lib/sampleDisplay";
+import { getSamplePrimaryIdentifier, getSamplePrimaryIdentifierLabel, resolveSampleClient } from "@/lib/sampleDisplay";
 
 const pickSampleFilePath = (value) => {
   if (!value) return "";
@@ -64,6 +65,8 @@ export default function SampleEdit() {
   const [boqSearch, setBoqSearch] = useState("");
   const [activeBoqClient, setActiveBoqClient] = useState("");
   const [pendingBoqQty, setPendingBoqQty] = useState({});
+  const [uploadFilePaths, setUploadFilePaths] = useState([]);
+  const [isAttachmentDragActive, setIsAttachmentDragActive] = useState(false);
   const [form, setForm] = useState({
     building_name: "",
     site_name: "",
@@ -108,43 +111,59 @@ export default function SampleEdit() {
     };
   };
 
-  const normalizeLoadedItemRow = (row, { flatCount, floorCount }) => {
-    const isBoqRow = Boolean(
-      String(row?._row_type || "").toLowerCase() === "boq" ||
-      row?.boq_id ||
-      row?.boqId ||
-      row?.boq_key ||
-      row?.boqKey ||
-      row?.boq_match_key ||
-      row?.boqMatchKey
-    );
-    const baseQty = toFiniteNumber(
-      row?.qty_per_flat ??
-        row?.boq_base_qty ??
-        row?.selected_qty ??
-        row?.quantity ??
-        row?.qty ??
-        row?.issued_qty ??
-        row?.boq_issued_qty
-    ) || 0;
-    const explicitTotal = toFiniteNumber(row?.total_qty ?? row?.totalQty);
-    const multiplier = flatCount > 0 && floorCount > 0 ? flatCount * floorCount : 0;
-    const totalQty = explicitTotal || (isBoqRow && baseQty > 0 && multiplier > 0 ? baseQty * multiplier : baseQty);
-    const nextQty = totalQty > 0 ? String(totalQty) : String(row?.quantity ?? "");
-
+  const mapLoadedSampleRow = (row) => {
+    const raw = row && typeof row === "object" ? row : {};
+    const itemFields = parseMaybe(raw?.add_fields, []);
+    const fieldVal = (key) => {
+      if (!Array.isArray(itemFields)) return "";
+      const found = itemFields.find((field) => String(field?.key || "").trim() === key);
+      return found?.value ?? "";
+    };
+    const itemName =
+      raw?.item_name ??
+      raw?.itemName ??
+      fieldVal("item_name") ??
+      fieldVal("itemName") ??
+      raw?.name ??
+      "";
+    const itemCode =
+      raw?.item_code ??
+      raw?.itemCode ??
+      raw?.code ??
+      fieldVal("item_code") ??
+      fieldVal("itemCode") ??
+      fieldVal("code") ??
+      raw?.boq_item_code ??
+      raw?.boqItemCode ??
+      "";
     return {
-      ...row,
-      quantity: nextQty,
-      issued_qty: totalQty > 0 ? String(totalQty) : row?.issued_qty ?? null,
-      boq_issued_qty: totalQty > 0 ? String(totalQty) : row?.boq_issued_qty ?? null,
-      total_qty: totalQty > 0 ? String(totalQty) : row?.total_qty ?? "",
-      qty_per_flat: baseQty > 0 ? String(baseQty) : row?.qty_per_flat ?? "",
-      selected_qty: baseQty > 0 ? String(baseQty) : row?.selected_qty ?? "",
-      flat_count: flatCount > 0 ? String(flatCount) : row?.flat_count ?? "",
-      floors: floorCount > 0 ? String(floorCount) : row?.floors ?? "",
-      boq_flat_multiplier: flatCount > 0 ? String(flatCount) : row?.boq_flat_multiplier ?? "",
-      boq_floor_multiplier: floorCount > 0 ? String(floorCount) : row?.boq_floor_multiplier ?? "",
-      boq_base_qty: baseQty > 0 ? String(baseQty) : row?.boq_base_qty ?? "",
+      sr_no: raw?.sr_no ?? raw?.srNo ?? raw?.srno ?? "",
+      item_name: itemName,
+      item_code: itemCode,
+      code: raw?.code ?? itemCode,
+      brand_name: raw?.brand_name ?? raw?.brandName ?? fieldVal("brand_name") ?? fieldVal("brandName") ?? "",
+      description: raw?.description ?? fieldVal("description") ?? fieldVal("item_description") ?? "",
+      specification: raw?.specification ?? raw?.spec ?? fieldVal("specification") ?? fieldVal("spec") ?? "",
+      unit: raw?.unit ?? raw?.uom ?? raw?.UOM ?? fieldVal("unit") ?? fieldVal("uom") ?? fieldVal("UOM") ?? "",
+      quantity: raw?.quantity ?? raw?.qty ?? fieldVal("quantity") ?? fieldVal("qty") ?? fieldVal("selected_qty") ?? "",
+      value: raw?.value ?? fieldVal("value") ?? fieldVal("amount") ?? "",
+      inventory_id: raw?.inventory_id ?? raw?.inventoryId ?? raw?.inventoryID ?? null,
+      issued_qty: raw?.issued_qty ?? raw?.issuedQty ?? fieldVal("issued_qty") ?? fieldVal("issuedQty") ?? null,
+      boq_id: raw?.boq_id ?? raw?.boqId ?? fieldVal("boq_id") ?? fieldVal("boqId") ?? null,
+      boq_qty: raw?.boq_qty ?? raw?.boqQty ?? fieldVal("boq_qty") ?? fieldVal("boqQty") ?? null,
+      boq_issued_qty: raw?.boq_issued_qty ?? raw?.boqIssuedQty ?? fieldVal("boq_issued_qty") ?? fieldVal("boqIssuedQty") ?? null,
+      qty_per_flat: raw?.qty_per_flat ?? raw?.qtyPerFlat ?? fieldVal("qty_per_flat") ?? fieldVal("qtyPerFlat") ?? "",
+      total_qty: raw?.total_qty ?? raw?.totalQty ?? fieldVal("total_qty") ?? fieldVal("totalQty") ?? "",
+      selected_qty: raw?.selected_qty ?? raw?.selectedQty ?? fieldVal("selected_qty") ?? fieldVal("selectedQty") ?? "",
+      flat_count: raw?.flat_count ?? raw?.flatCount ?? fieldVal("flat_count") ?? fieldVal("flatCount") ?? "",
+      floors: raw?.floors ?? raw?.floor_count ?? raw?.floorCount ?? fieldVal("floors") ?? fieldVal("floor_count") ?? fieldVal("floorCount") ?? "",
+      boq_flat_multiplier: raw?.boq_flat_multiplier ?? raw?.boqFlatMultiplier ?? fieldVal("boq_flat_multiplier") ?? fieldVal("boqFlatMultiplier") ?? "",
+      boq_floor_multiplier: raw?.boq_floor_multiplier ?? raw?.boqFloorMultiplier ?? fieldVal("boq_floor_multiplier") ?? fieldVal("boqFloorMultiplier") ?? "",
+      boq_base_qty: raw?.boq_base_qty ?? raw?.boqBaseQty ?? fieldVal("boq_base_qty") ?? fieldVal("boqBaseQty") ?? "",
+      boq_key: raw?.boq_key ?? raw?.boqKey ?? fieldVal("boq_key") ?? fieldVal("boqKey") ?? "",
+      boq_match_key: raw?.boq_match_key ?? raw?.boqMatchKey ?? fieldVal("boq_match_key") ?? fieldVal("boqMatchKey") ?? "",
+      boq_item_code: raw?.boq_item_code ?? raw?.boqItemCode ?? fieldVal("boq_item_code") ?? fieldVal("boqItemCode") ?? "",
+      add_fields: Array.isArray(itemFields) ? itemFields : [],
     };
   };
 
@@ -339,7 +358,7 @@ export default function SampleEdit() {
       const nextRow = {
         _row_type: "boq",
         sr_no: matchIndex >= 0 ? rows[matchIndex]?.sr_no || String(matchIndex + 1) : String(rows.length + 1),
-        item_name: normalizeBoqRowName(derived),
+        item_name: existing.item_name || derived.description || normalizeBoqRowName(derived),
         item_no: normalizeBoqRowName(derived),
         item_code: derived.item_code || derived.item_no || derived.hsn || derived.sac_code || "",
         code: derived.item_code || derived.item_no || derived.hsn || derived.sac_code || "",
@@ -389,7 +408,7 @@ export default function SampleEdit() {
         nextRow.issued_qty = nextQty;
         nextRow.boq_issued_qty = nextQty;
         nextRow.sr_no = existing.sr_no || nextRow.sr_no;
-        nextRow.item_name = existing.item_no || existing.item_name || nextRow.item_name;
+        nextRow.item_name = existing.item_name || nextRow.item_name;
         nextRow.item_no = existing.item_no || nextRow.item_no;
         nextRow.item_code = existing.item_code || nextRow.item_code;
         nextRow.code = existing.code || nextRow.code;
@@ -460,6 +479,20 @@ export default function SampleEdit() {
   const flatCount = parsePositiveCount(form.flats);
   const floorCount = parsePositiveCount(form.location?.floor);
   const floorFlatMultiplier = flatCount > 0 && floorCount > 0 ? flatCount * floorCount : 0;
+  const sampleItemNameLabel = getSamplePrimaryIdentifierLabel(sampleClient);
+  const calculatedSampleRows = useMemo(() => {
+    return (Array.isArray(form.item_description) ? form.item_description : []).map((row) => {
+      const qtyPerFlat = toFiniteNumber(row?.qty_per_flat ?? row?.selected_qty ?? row?.quantity ?? row?.qty ?? row?.issued_qty ?? row?.boq_issued_qty) || 0;
+      const totalQty = qtyPerFlat > 0 && floorFlatMultiplier > 0 ? qtyPerFlat * floorFlatMultiplier : toFiniteNumber(row?.total_qty ?? row?.quantity ?? row?.qty) || "";
+      return {
+        ...row,
+        qty_per_flat: qtyPerFlat > 0 ? String(qtyPerFlat) : row?.qty_per_flat || "",
+        total_qty: totalQty ? String(totalQty) : row?.total_qty || "",
+        flats: String(flatCount || ""),
+        floors: String(floorCount || ""),
+      };
+    });
+  }, [form.item_description, floorFlatMultiplier, flatCount, floorCount]);
 
   const closeBoqQtySelector = (key) => {
     setPendingBoqQty((prev) => {
@@ -467,6 +500,62 @@ export default function SampleEdit() {
       delete next[key];
       return next;
     });
+  };
+
+  const extractUploadedFilePaths = (value) => {
+    const list = [];
+    const pushPath = (item) => {
+      if (!item) return;
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        if (trimmed) list.push(trimmed);
+        return;
+      }
+      if (Array.isArray(item)) {
+        item.forEach(pushPath);
+        return;
+      }
+      if (typeof item === "object") {
+        [
+          item.path,
+          item.filePath,
+          item.file_path,
+          item.url,
+          item.sample_file,
+          item.sampleFile,
+          item.attachment,
+        ].forEach(pushPath);
+      }
+    };
+    pushPath(value?.paths ?? value?.files ?? value?.data ?? value?.result ?? value);
+    return Array.from(new Set(list));
+  };
+
+  const uploadSampleFiles = async (files) => {
+    if (!files.length) return;
+    const res = await api.uploadSampleFiles(files);
+    const paths = res.success ? extractUploadedFilePaths(res.data) : [];
+    if (paths.length > 0) {
+      setUploadFilePaths((prev) => Array.from(new Set([...prev, ...paths])));
+      setForm((prev) => ({ ...prev, sample_file: prev.sample_file || paths[0] || "" }));
+      toast({ title: "Uploaded", description: `${paths.length} file(s) uploaded` });
+    } else {
+      toast({ title: "Upload failed", description: res.error || "Error", variant: "destructive" });
+    }
+  };
+
+  const handleSampleUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    await uploadSampleFiles(files);
+    e.target.value = "";
+  };
+
+  const handleAttachmentDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsAttachmentDragActive(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    await uploadSampleFiles(files);
   };
 
   useEffect(() => {
@@ -485,7 +574,6 @@ export default function SampleEdit() {
         const loc = parseMaybe(sample.location, {});
         const items = parseMaybe(sample.item_description, []);
         const adds = parseMaybe(sample.add_fields, []);
-        const { flatCount, floorCount } = getBoqMultiplier(sample.flats, loc?.floor || sample.floors || sample.floor);
         const sampleFileRaw =
           sample.sample_file ??
           sample.sample_file_path ??
@@ -516,47 +604,7 @@ export default function SampleEdit() {
             coordinates: loc?.coordinates || "",
           },
           item_description: normalizedItems.length
-            ? normalizedItems.map((it) => {
-              const normalizedRow = normalizeLoadedItemRow(it, { flatCount, floorCount });
-              const itemFields = parseMaybe(it?.add_fields, []);
-              const inventoryField = Array.isArray(itemFields)
-                  ? itemFields.find((field) => String(field?.key || "") === "inventory_id")
-                  : null;
-                const itemName = String(
-                  normalizedRow.item_name ||
-                    normalizedRow.itemName ||
-                    normalizedRow.item_no ||
-                    normalizedRow.itemNo ||
-                    normalizedRow.code ||
-                    normalizedRow.item_code ||
-                    getSamplePrimaryIdentifier(normalizedRow, resolvedClient) ||
-                    ""
-                ).trim();
-                const brandName = normalizedRow.brand_name || normalizedRow.brandName || "";
-                return {
-                  sr_no: normalizedRow.sr_no || "",
-                  item_name: itemName,
-                  item_code: normalizedRow.item_code || normalizedRow.itemCode || normalizedRow.code || normalizedRow.boq_item_code || normalizedRow.hsn || "",
-                  code: normalizedRow.code || normalizedRow.item_code || normalizedRow.itemCode || normalizedRow.boq_item_code || normalizedRow.hsn || "",
-                  brand_name: brandName,
-                  description: normalizedRow.description || "",
-                  specification: normalizedRow.specification || normalizedRow.spec || "",
-                  unit: normalizedRow.unit || normalizedRow.uom || normalizedRow.UOM || "",
-                  quantity: normalizedRow.quantity || "",
-                  value: normalizedRow.value || "",
-                  inventory_id: normalizedRow.inventory_id ?? (inventoryField?.value ? Number(inventoryField.value) : null),
-                  issued_qty: normalizedRow.issued_qty ?? null,
-                  boq_id: normalizedRow.boq_id ?? (Array.isArray(itemFields) ? Number(itemFields.find((field) => String(field?.key || "") === "boq_id")?.value || null) : null),
-                  boq_qty: normalizedRow.boq_qty ?? (Array.isArray(itemFields) ? Number(itemFields.find((field) => String(field?.key || "") === "boq_qty")?.value || null) : null),
-                  boq_issued_qty: normalizedRow.boq_issued_qty ?? null,
-                  qty_per_flat: normalizedRow.qty_per_flat || "",
-                  total_qty: normalizedRow.total_qty || "",
-                  flat_count: normalizedRow.flat_count || "",
-                  floors: normalizedRow.floors || "",
-                  boq_flat_multiplier: normalizedRow.boq_flat_multiplier || "",
-                  boq_floor_multiplier: normalizedRow.boq_floor_multiplier || "",
-                };
-              })
+            ? normalizedItems.map((it) => mapLoadedSampleRow(it))
             : [{ sr_no: "", item_name: "", item_code: "", code: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }],
           add_fields: Array.isArray(adds)
             ? adds.map((f) => ({ key: f.key || "", value: f.value || "" }))
@@ -622,61 +670,42 @@ export default function SampleEdit() {
 
     setSaving(true);
     try {
-      const { flatCount, floorCount, multiplier } = getBoqMultiplier(form.flats, form.location?.floor);
-      const normalizedItems = (Array.isArray(form.item_description) ? form.item_description : []).map((row) => {
-        const isBoqRow = Boolean(
-          String(row?._row_type || "").toLowerCase() === "boq" ||
-          row?.boq_id ||
-          row?.boqId ||
-          row?.boq_key ||
-          row?.boqKey ||
-          row?.boq_match_key ||
-          row?.boqMatchKey
-        );
-        if (!isBoqRow) return row;
-        const perFlatQty = toFiniteNumber(
-          row?.qty_per_flat ??
-            row?.boq_base_qty ??
-            row?.selected_qty ??
-            row?.issued_qty ??
-            row?.boq_issued_qty ??
-            row?.quantity ??
-            row?.qty
-        ) || 0;
-        const explicitTotal = toFiniteNumber(row?.total_qty ?? row?.totalQty);
-        const nextTotalQty = explicitTotal || (perFlatQty > 0 && multiplier > 0 ? perFlatQty * multiplier : perFlatQty);
-        const itemNo = String(
-          row?.item_no ||
-            row?.itemNo ||
-            row?.item_code ||
-            row?.itemCode ||
-            row?.code ||
-            row?.boq_item_code ||
-            row?.boqItemCode ||
-            "-"
-        ).trim() || "-";
-        return {
-          ...row,
-          item_name: itemNo,
-          item_no: itemNo,
-          quantity: nextTotalQty > 0 ? String(nextTotalQty) : row.quantity,
-          issued_qty: nextTotalQty > 0 ? String(nextTotalQty) : row.issued_qty,
-          boq_issued_qty: nextTotalQty > 0 ? String(nextTotalQty) : row.boq_issued_qty,
-          total_qty: nextTotalQty > 0 ? String(nextTotalQty) : row.total_qty,
-          qty_per_flat: perFlatQty > 0 ? String(perFlatQty) : row.qty_per_flat,
-          selected_qty: perFlatQty > 0 ? String(perFlatQty) : row.selected_qty,
-          flat_count: flatCount > 0 ? String(flatCount) : row.flat_count,
-          floors: floorCount > 0 ? String(floorCount) : row.floors,
-          boq_flat_multiplier: flatCount > 0 ? String(flatCount) : row.boq_flat_multiplier,
-          boq_floor_multiplier: floorCount > 0 ? String(floorCount) : row.boq_floor_multiplier,
-          boq_base_qty: perFlatQty > 0 ? String(perFlatQty) : row.boq_base_qty,
-        };
-      });
+      const normalizedItems = (Array.isArray(form.item_description) ? form.item_description : []).map((row) => ({
+        ...row,
+        sr_no: row?.sr_no ?? "",
+        item_name: row?.item_name ?? row?.itemName ?? "",
+        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? "",
+        code: row?.code ?? row?.item_code ?? row?.itemCode ?? "",
+        brand_name: row?.brand_name ?? row?.brandName ?? "",
+        description: row?.description ?? "",
+        specification: row?.specification ?? row?.spec ?? "",
+        unit: row?.unit ?? row?.uom ?? row?.UOM ?? "",
+        quantity: row?.quantity ?? "",
+        value: row?.value ?? "",
+        inventory_id: row?.inventory_id ?? null,
+        issued_qty: row?.issued_qty ?? null,
+        boq_id: row?.boq_id ?? null,
+        boq_qty: row?.boq_qty ?? null,
+        boq_issued_qty: row?.boq_issued_qty ?? null,
+        qty_per_flat: row?.qty_per_flat ?? "",
+        total_qty: row?.total_qty ?? "",
+        selected_qty: row?.selected_qty ?? "",
+        flat_count: row?.flat_count ?? "",
+        floors: row?.floors ?? "",
+        boq_flat_multiplier: row?.boq_flat_multiplier ?? "",
+        boq_floor_multiplier: row?.boq_floor_multiplier ?? "",
+        boq_base_qty: row?.boq_base_qty ?? "",
+        boq_key: row?.boq_key ?? "",
+        boq_match_key: row?.boq_match_key ?? "",
+        boq_item_code: row?.boq_item_code ?? "",
+      }));
       const nextAddFields = [
         ...(Array.isArray(form.add_fields) ? form.add_fields.filter((field) => String(field?.key || "").trim() !== "sample_client") : []),
         ...(sampleClient ? [{ key: "sample_client", value: sampleClient }] : []),
       ];
-      const res = await api.updateSample(id, {
+      const nextProjectId = sampleProjectId || effectiveProjectId || resolvedProject.projectId || "";
+      const updatePayload = {
+        sample_id: form.sample_id || id,
         building_name: form.building_name,
         site_name: form.site_name,
         work_done: form.work_done,
@@ -690,7 +719,10 @@ export default function SampleEdit() {
         },
         item_description: normalizedItems,
         add_fields: nextAddFields,
-      });
+      };
+      if (nextProjectId) updatePayload.project_id = nextProjectId;
+
+      const res = await api.updateSample(id, updatePayload);
       if (!res.success) {
         toast({ title: "Update failed", description: res.error || "Error", variant: "destructive" });
         return;
@@ -728,57 +760,60 @@ export default function SampleEdit() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pb-8 sm:px-6 lg:px-10">
-      <div className="flex items-center justify-between pt-2">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Edit Sample</h1>
-          <p className="text-muted-foreground mt-2">Update sample details and save changes.</p>
-        </div>
-        <Button variant="outline" onClick={() => navigate(`/${projectId}/samples/preview/${id}`, { replace: true })}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Preview
-        </Button>
-      </div>
-
       <Card>
         <CardHeader>
-          <CardTitle>Sample #{id}</CardTitle>
-          <CardDescription>Editing project sample data</CardDescription>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <CardTitle>Edit Sample</CardTitle>
+              <CardDescription>Fill the sample details and save them to the system.</CardDescription>
+            </div>
+            <Button variant="outline" onClick={() => navigate(`/${projectId}/samples/preview/${id}`, { replace: true })} className="w-full sm:w-auto">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Preview
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-14">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="space-y-2">
-                <Label>Building Name</Label>
-                <Input value={form.building_name} onChange={(e) => setForm({ ...form, building_name: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Site Name</Label>
-                <Input value={form.site_name} onChange={(e) => setForm({ ...form, site_name: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Work Done</Label>
-                <Input value={form.work_done} onChange={(e) => setForm({ ...form, work_done: e.target.value })} />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label>Project ID</Label>
+                  <Input value={sampleProjectId || effectiveProjectId || projectId || ""} readOnly placeholder="Select a project" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Sample ID</Label>
+                  <Input type="text" value={form.sample_id || id} onChange={(e) => setForm({ ...form, sample_id: e.target.value })} placeholder="Enter sample ID (e.g. SAMPLE-001)" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Building Name</Label>
+                  <Input value={form.building_name} onChange={(e) => setForm({ ...form, building_name: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Site Name</Label>
+                  <Input value={form.site_name} onChange={(e) => setForm({ ...form, site_name: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Work Done</Label>
+                  <Input value={form.work_done} onChange={(e) => setForm({ ...form, work_done: e.target.value })} />
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div className="space-y-2">
-                  <Label>Floor</Label>
+                  <Label>Floor/Shaft</Label>
                   <Input
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={form.location.floor}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        location: { ...form.location, floor: String(e.target.value || "").replace(/[^\d]/g, "") },
-                      })
-                    }
+                    onChange={(e) => setForm({ ...form, location: { ...form.location, floor: String(e.target.value || "").replace(/[^\d]/g, "") } })}
+                    placeholder="e.g. 10"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Flats</Label>
+                  <Label>Flat/Zone</Label>
                   <Input
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -823,15 +858,73 @@ export default function SampleEdit() {
                   </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Attachment</Label>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">Other documents/diagrams</div>
+                </div>
+                <div
+                  className={`border rounded-md p-3 transition-colors ${isAttachmentDragActive ? 'border-primary bg-primary/5' : 'border-dashed'}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsAttachmentDragActive(true);
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsAttachmentDragActive(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsAttachmentDragActive(false);
+                  }}
+                  onDrop={handleAttachmentDrop}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="text-xs text-muted-foreground">
+                      Drag and drop files here, or select multiple files
+                    </div>
+                    <Label
+                      htmlFor="sample-attachments-upload"
+                      className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-xs font-medium cursor-pointer hover:bg-muted"
+                    >
+                      Select Files
+                    </Label>
+                  </div>
+                  <Input
+                    id="sample-attachments-upload"
+                    type="file"
+                    multiple
+                    onChange={handleSampleUpload}
+                    className="hidden"
+                  />
+                  {uploadFilePaths.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      <Label className="text-xs">Uploaded files</Label>
+                      <Select
+                        value={form.sample_file || ""}
+                        onValueChange={(value) => setForm({ ...form, sample_file: value })}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder="Select uploaded file" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {uploadFilePaths.map((path) => (
+                            <SelectItem key={path} value={path}>
+                              {path.split('/').pop() || path}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                </div>
                 {fileUrl ? (
                   <Button type="button" variant="outline" onClick={() => setAttachmentOpen(true)} className="mt-1">
                     <Eye className="mr-2 h-4 w-4" /> Preview Attachment
                   </Button>
-                ) : (
-                  <div className="text-sm text-muted-foreground">No attachment found</div>
-                )}
+                ) : null}
               </div>
 
               <div className="space-y-3">
@@ -841,16 +934,19 @@ export default function SampleEdit() {
                     <Button size="sm" onClick={() => setBoqPickerOpen(true)}>
                       View Items from BOQ
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setForm({ ...form, item_description: [...form.item_description, { sr_no: "", item_name: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }] })}>
-                      <Plus className="mr-2 h-4 w-4" /> Add Row
+                    <Button size="sm" variant="outline" onClick={() => setForm({ ...form, item_description: [...form.item_description, { sr_no: "", item_name: "", item_code: "", code: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }] })}>
+                      <Plus className="mr-2 h-4 w-4" /> Add Item
                     </Button>
                   </div>
                 </div>
                 <div className="space-y-3">
                   {form.item_description.map((row, idx) => (
-                    <div key={idx} className="grid grid-cols-1 md:grid-cols-10 gap-3">
+                    <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-3">
                       <Input placeholder="Sr No" value={row.sr_no} onChange={(e) => {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], sr_no: e.target.value }; setForm({ ...form, item_description: next });
+                      }} />
+                      <Input placeholder={sampleItemNameLabel} value={row.item_name || ""} onChange={(e) => {
+                        const next = [...form.item_description]; next[idx] = { ...next[idx], item_name: e.target.value }; setForm({ ...form, item_description: next });
                       }} />
                       <div className="flex flex-col gap-2 md:col-span-3">
                         <Textarea className="min-h-20 resize-y" placeholder="Description" value={row.description} onChange={(e) => {
@@ -881,6 +977,9 @@ export default function SampleEdit() {
                           }}
                         />
                       </div>
+                      <Input placeholder="Item Code" value={row.item_code || ""} onChange={(e) => {
+                        const next = [...form.item_description]; next[idx] = { ...next[idx], item_code: e.target.value, code: e.target.value }; setForm({ ...form, item_description: next });
+                      }} />
                       <Input placeholder="Brand Name" value={row.brand_name || ""} onChange={(e) => {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], brand_name: e.target.value }; setForm({ ...form, item_description: next });
                       }} />
@@ -919,40 +1018,79 @@ export default function SampleEdit() {
               </div>
 
               <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label>Additional Fields</Label>
-                  <Button size="sm" variant="outline" type="button" onClick={() => setForm({ ...form, add_fields: [...form.add_fields, { key: "", value: "" }] })}>
-                    <Plus className="mr-2 h-4 w-4" /> Add
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {form.add_fields.map((f, idx) => (
-                    <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
-                      <Input placeholder="Key" value={f.key} onChange={(e) => {
-                        const next = [...form.add_fields]; next[idx] = { ...next[idx], key: e.target.value }; setForm({ ...form, add_fields: next });
-                      }} />
-                      <Input placeholder="Value" value={f.value} onChange={(e) => {
-                        const next = [...form.add_fields]; next[idx] = { ...next[idx], value: e.target.value }; setForm({ ...form, add_fields: next });
-                      }} />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => setForm({ ...form, add_fields: form.add_fields.filter((_, i) => i !== idx) })}
-                        className="md:w-auto w-full"
-                      >
-                        Delete
-                      </Button>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold tracking-wide">Calculated Preview</div>
+                    <div className="text-xs text-muted-foreground">Read-only totals calculated from `flats count x floors x qty per flat`.</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-lg border bg-background px-3 py-2">
+                      <div className="uppercase text-muted-foreground">Flats Count</div>
+                      <div className="mt-1 font-semibold">{flatCount || "-"}</div>
                     </div>
-                  ))}
+                    <div className="rounded-lg border bg-background px-3 py-2">
+                      <div className="uppercase text-muted-foreground">Floors</div>
+                      <div className="mt-1 font-semibold">{floorCount || "-"}</div>
+                    </div>
+                    <div className="rounded-lg border bg-background px-3 py-2">
+                      <div className="uppercase text-muted-foreground">Multiplier</div>
+                      <div className="mt-1 font-semibold">{floorFlatMultiplier || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[1750px]">
+                      <TableHeader>
+                        <TableRow className="bg-muted/40">
+                          <TableHead className="w-[220px]">{sampleItemNameLabel}</TableHead>
+                          <TableHead className="w-[520px]">Description</TableHead>
+                          <TableHead className="w-[220px]">Item Code</TableHead>
+                          <TableHead className="w-[420px]">Specification</TableHead>
+                          <TableHead className="w-[260px]">Brand Name</TableHead>
+                          <TableHead className="w-[180px]">Unit</TableHead>
+                          <TableHead className="text-right">Qty / Flat</TableHead>
+                          <TableHead className="border-l border-border/70 text-center">Flats</TableHead>
+                          <TableHead className="border-l border-border/70 text-center">Floors</TableHead>
+                          <TableHead className="border-l border-border/70 text-center">Multiplier</TableHead>
+                          <TableHead className="text-right">Total Qty</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {calculatedSampleRows.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">No rows to preview</TableCell>
+                          </TableRow>
+                        ) : (
+                          calculatedSampleRows.map((row, index) => (
+                            <TableRow key={`preview-${index}`}>
+                              <TableCell>{row.item_name || getSamplePrimaryIdentifier(row, sampleClient) || "-"}</TableCell>
+                              <TableCell>{row.description || "-"}</TableCell>
+                              <TableCell>{row.item_code || "-"}</TableCell>
+                              <TableCell>{row.specification || "-"}</TableCell>
+                              <TableCell>{row.brand_name || "-"}</TableCell>
+                              <TableCell>{row.unit || "-"}</TableCell>
+                              <TableCell className="text-right">{row.qty_per_flat || row.quantity || "-"}</TableCell>
+                              <TableCell className="border-l border-border/70 text-center font-medium">{row.flats || "-"}</TableCell>
+                              <TableCell className="border-l border-border/70 text-center font-medium">{row.floors || "-"}</TableCell>
+                              <TableCell className="border-l border-border/70 text-center font-semibold">
+                                {row.flats && row.floors ? `${row.flats} x ${row.floors} = ${Number(row.flats) * Number(row.floors)}` : "-"}
+                              </TableCell>
+                              <TableCell className="text-right">{row.total_qty || "-"}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => navigate(`/${projectId}/samples/preview/${id}`, { replace: true })}>Cancel</Button>
                 <Button onClick={save} disabled={saving}>
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Save
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  {saving ? "Saving..." : "Save"}
                 </Button>
               </div>
             </div>

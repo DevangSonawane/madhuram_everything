@@ -437,8 +437,7 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
       }
       return itemName || description || itemCode || itemNo || "-";
     }
-    if (itemNo) return itemNo;
-    return "-";
+    return itemName || description || itemNo || itemCode || "-";
   };
 
   renderFrame();
