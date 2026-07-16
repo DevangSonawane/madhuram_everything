@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { useParams } from "react-router-dom";
 import { CheckCircle2, Loader2, Upload } from "lucide-react";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import * as XLSX from "xlsx";
 import { api } from "@/lib/api";
 import { parseComparisonWorkbook } from "@/lib/vendorComparisonParser";
@@ -502,6 +504,418 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Vendor Comparison");
   return wb;
+};
+
+const DEFAULT_DOWNLOAD_VENDORS = ["Vendor 1", "Vendor 2", "Vendor 3", "Vendor 4"];
+
+const CATEGORY_FIELDS = [
+  "category",
+  "category_name",
+  "categoryName",
+  "group",
+  "group_name",
+  "groupName",
+  "section",
+  "section_name",
+  "sectionName",
+  "item_category",
+  "itemCategory",
+  "item_group",
+  "itemGroup",
+  "subcategory",
+  "sub_category",
+  "subCategory",
+  "head",
+  "head_name",
+  "headName",
+];
+
+const getItemCategoryInfo = (item = {}) => {
+  for (const key of CATEGORY_FIELDS) {
+    const value = item?.[key];
+    const text = String(value ?? "").trim();
+    if (text) return { key: text, name: text };
+  }
+  return { key: "", name: "" };
+};
+
+const groupItemsForDownload = (items = []) => {
+  const hasCategoryField = (Array.isArray(items) ? items : []).some((item) => getItemCategoryInfo(item).key);
+  if (!hasCategoryField) {
+    return [{ type: "items", label: "", items: Array.isArray(items) ? items : [] }];
+  }
+
+  const groups = [];
+  const groupMap = new Map();
+  const uncategorized = [];
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const info = getItemCategoryInfo(item);
+    if (!info.key) {
+      uncategorized.push(item);
+      return;
+    }
+    if (!groupMap.has(info.key)) {
+      const group = { type: "category", label: info.key, name: info.name, items: [] };
+      groupMap.set(info.key, group);
+      groups.push(group);
+    }
+    groupMap.get(info.key).items.push(item);
+  });
+
+  if (uncategorized.length > 0) {
+    groups.push({ type: "items", label: "", items: uncategorized });
+  }
+
+  return groups;
+};
+
+const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Madhuram Enterprises";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+  workbook.calcProperties.fullCalcOnLoad = true;
+
+  const worksheet = workbook.addWorksheet("Comparison", {
+    views: [{ state: "frozen", xSplit: 5, ySplit: 8 }],
+  });
+
+  const exportVendors = (Array.isArray(vendors) && vendors.length > 0 ? vendors : DEFAULT_DOWNLOAD_VENDORS)
+    .map((vendor) => (typeof vendor === "string" ? vendor : String(vendor?.displayName || vendor?.name || "").trim()))
+    .filter(Boolean);
+
+  const itemGroups = groupItemsForDownload(selectedItems);
+  const lastCol = 5 + exportVendors.length * 2;
+  const colLetter = (colNumber) => XLSX.utils.encode_col(colNumber - 1);
+
+  const rowFill = (rowNumber, fill, font = null) => {
+    for (let col = 1; col <= lastCol; col += 1) {
+      const cell = worksheet.getCell(rowNumber, col);
+      cell.fill = fill;
+      cell.border = {
+        top: { style: "thin", color: { argb: "FF000000" } },
+        left: { style: "thin", color: { argb: "FF000000" } },
+        bottom: { style: "thin", color: { argb: "FF000000" } },
+        right: { style: "thin", color: { argb: "FF000000" } },
+      };
+      if (font) cell.font = font;
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    }
+  };
+
+  const setBorderRange = (rowNumber, startCol, endCol, options = {}) => {
+    for (let col = startCol; col <= endCol; col += 1) {
+      const cell = worksheet.getCell(rowNumber, col);
+      cell.border = {
+        top: { style: "thin", color: { argb: "FF000000" } },
+        left: { style: "thin", color: { argb: "FF000000" } },
+        bottom: { style: "thin", color: { argb: "FF000000" } },
+        right: { style: "thin", color: { argb: "FF000000" } },
+      };
+      if (options.fill) cell.fill = options.fill;
+      if (options.font) cell.font = options.font;
+      if (options.alignment) cell.alignment = options.alignment;
+      if (options.numFmt && col === options.numFmtCol) cell.numFmt = options.numFmt;
+    }
+  };
+
+  const styleThinBorderCell = (cell, { fill = null, font = null, alignment = null, numFmt = null } = {}) => {
+    cell.border = {
+      top: { style: "thin", color: { argb: "FF000000" } },
+      left: { style: "thin", color: { argb: "FF000000" } },
+      bottom: { style: "thin", color: { argb: "FF000000" } },
+      right: { style: "thin", color: { argb: "FF000000" } },
+    };
+    if (fill) cell.fill = fill;
+    if (font) cell.font = font;
+    if (alignment) cell.alignment = alignment;
+    if (numFmt) cell.numFmt = numFmt;
+  };
+
+  const fontArial10 = { name: "Arial", size: 10 };
+  const fontArial10Bold = { name: "Arial", size: 10, bold: true };
+  const fontArial10WhiteBold = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+
+  const navyFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } };
+  const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F5496" } };
+  const categoryFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+
+  const metadata = [
+    ["Company Name:", "Madhuram Enterprises"],
+    ["Project Name:", String(pr?.project_name || "").trim()],
+    ["Indent No:", String(pr?.workorder_no || pr?.pr_number || "").trim()],
+    ["Indent Date:", String(pr?.date || "").trim()],
+    ["Comparison Date:", todayISO()],
+  ];
+
+  metadata.forEach(([label, value], index) => {
+    const rowNumber = index + 1;
+    const labelCell = worksheet.getCell(rowNumber, 1);
+    const valueCell = worksheet.getCell(rowNumber, 2);
+    labelCell.value = label;
+    valueCell.value = value || "";
+    labelCell.font = fontArial10Bold;
+    valueCell.font = fontArial10;
+    labelCell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+    valueCell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+    setBorderRange(rowNumber, 1, lastCol);
+  });
+
+  const vendorRow = 7;
+  const headerRow = 8;
+  rowFill(vendorRow, navyFill, fontArial10WhiteBold);
+  rowFill(headerRow, headerFill, fontArial10WhiteBold);
+
+  for (let col = 6; col <= lastCol; col += 2) {
+    const vendorIndex = Math.floor((col - 6) / 2);
+    const rateCol = col;
+    const amountCol = col + 1;
+    const vendorName = exportVendors[vendorIndex] || `Vendor ${vendorIndex + 1}`;
+
+    worksheet.mergeCells(vendorRow, rateCol, vendorRow, amountCol);
+    const vendorCell = worksheet.getCell(vendorRow, rateCol);
+    vendorCell.value = vendorName;
+    vendorCell.font = fontArial10WhiteBold;
+    vendorCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(vendorCell, { fill: navyFill, font: fontArial10WhiteBold, alignment: vendorCell.alignment });
+
+    styleThinBorderCell(worksheet.getCell(vendorRow, amountCol), { fill: navyFill, font: fontArial10WhiteBold });
+
+    const rateHeader = worksheet.getCell(headerRow, rateCol);
+    const amountHeader = worksheet.getCell(headerRow, amountCol);
+    rateHeader.value = "Rate";
+    amountHeader.value = "Amount";
+    rateHeader.font = fontArial10WhiteBold;
+    amountHeader.font = fontArial10WhiteBold;
+    rateHeader.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    amountHeader.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(rateHeader, { fill: headerFill, font: fontArial10WhiteBold, alignment: rateHeader.alignment });
+    styleThinBorderCell(amountHeader, { fill: headerFill, font: fontArial10WhiteBold, alignment: amountHeader.alignment });
+  }
+
+  ["Sr. No.", "HSN Code", "Item Description", "Qty", "UOM"].forEach((text, index) => {
+    const cell = worksheet.getCell(headerRow, index + 1);
+    cell.value = text;
+    cell.font = fontArial10WhiteBold;
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(cell, { fill: headerFill, font: fontArial10WhiteBold, alignment: cell.alignment });
+  });
+
+  let currentRow = 9;
+  const itemRowNumbers = [];
+  let itemSerial = 1;
+
+  itemGroups.forEach((group) => {
+    if (group.type === "category" && group.label) {
+      worksheet.mergeCells(currentRow, 3, currentRow, 5);
+      worksheet.getCell(currentRow, 1).value = group.label;
+      worksheet.getCell(currentRow, 3).value = group.name || group.label;
+      worksheet.getCell(currentRow, 1).font = fontArial10Bold;
+      worksheet.getCell(currentRow, 3).font = fontArial10Bold;
+      worksheet.getCell(currentRow, 1).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      worksheet.getCell(currentRow, 3).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+      for (let col = 1; col <= lastCol; col += 1) {
+        styleThinBorderCell(worksheet.getCell(currentRow, col), {
+          fill: categoryFill,
+          font: col === 1 || col === 3 ? fontArial10Bold : fontArial10,
+          alignment: col === 1 ? { horizontal: "center", vertical: "middle", wrapText: true } : { horizontal: "left", vertical: "middle", wrapText: true },
+        });
+      }
+      worksheet.getRow(currentRow).height = 23.25;
+      currentRow += 1;
+    }
+
+    group.items.forEach((item) => {
+      const rowNumber = currentRow;
+      itemRowNumbers.push(rowNumber);
+      worksheet.getCell(rowNumber, 1).value = itemSerial;
+      worksheet.getCell(rowNumber, 2).value = item?.hsn_code || item?.hsn || item?.hsnCode || "";
+      worksheet.getCell(rowNumber, 3).value = getPrItemDescription(item) || item?.material_description || item?.description || "";
+      worksheet.getCell(rowNumber, 4).value = item?.req_qty ?? item?.qty ?? item?.quantity ?? "";
+      worksheet.getCell(rowNumber, 5).value = item?.unit ?? item?.uom ?? item?.UOM ?? "";
+
+      worksheet.getCell(rowNumber, 1).numFmt = "0";
+      worksheet.getCell(rowNumber, 4).numFmt = "#,##0";
+
+      worksheet.getCell(rowNumber, 1).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      worksheet.getCell(rowNumber, 2).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      worksheet.getCell(rowNumber, 3).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+      worksheet.getCell(rowNumber, 4).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      worksheet.getCell(rowNumber, 5).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+
+      for (let col = 1; col <= lastCol; col += 1) {
+        styleThinBorderCell(worksheet.getCell(rowNumber, col), {
+          font: fontArial10,
+          alignment:
+            col === 3
+              ? { horizontal: "left", vertical: "middle", wrapText: true }
+              : { horizontal: "center", vertical: "middle", wrapText: true },
+        });
+      }
+
+      for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
+        const rateCol = 6 + vendorIndex * 2;
+        const amountCol = rateCol + 1;
+        const rateCell = worksheet.getCell(rowNumber, rateCol);
+        const amountCell = worksheet.getCell(rowNumber, amountCol);
+        rateCell.value = "";
+        rateCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        amountCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        rateCell.numFmt = "#,##0.00";
+        amountCell.numFmt = "#,##0.00";
+        amountCell.value = { formula: `${colLetter(rateCol)}${rowNumber}*$D${rowNumber}` };
+        styleThinBorderCell(rateCell, { font: fontArial10, alignment: rateCell.alignment });
+        styleThinBorderCell(amountCell, { font: fontArial10, alignment: amountCell.alignment });
+      }
+
+      worksheet.getRow(rowNumber).height = 15.75;
+      currentRow += 1;
+      itemSerial += 1;
+    });
+  });
+
+  const firstItemRow = itemRowNumbers[0] || currentRow;
+  const lastItemRow = itemRowNumbers[itemRowNumbers.length - 1] || currentRow - 1;
+
+  const subtotalRow = currentRow;
+  worksheet.getCell(subtotalRow, 1).value = "Subtotal";
+  worksheet.getCell(subtotalRow, 1).font = fontArial10Bold;
+  worksheet.getCell(subtotalRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
+    const rateCol = 6 + vendorIndex * 2;
+    const amountCol = rateCol + 1;
+    const amountCell = worksheet.getCell(subtotalRow, amountCol);
+    worksheet.getCell(subtotalRow, rateCol).value = "";
+    amountCell.value = { formula: `SUM(${colLetter(amountCol)}${firstItemRow}:${colLetter(amountCol)}${lastItemRow})` };
+    amountCell.numFmt = "#,##0.00";
+    amountCell.font = fontArial10Bold;
+    amountCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(worksheet.getCell(subtotalRow, rateCol), { font: fontArial10Bold });
+    styleThinBorderCell(amountCell, { font: fontArial10Bold, alignment: amountCell.alignment });
+  }
+  for (let col = 1; col <= lastCol; col += 1) {
+    styleThinBorderCell(worksheet.getCell(subtotalRow, col), { font: fontArial10Bold });
+  }
+  worksheet.getRow(subtotalRow).height = 15.75;
+  currentRow += 1;
+
+  const discountRow = currentRow;
+  worksheet.getCell(discountRow, 1).value = "Discount";
+  worksheet.getCell(discountRow, 1).font = fontArial10Bold;
+  worksheet.getCell(discountRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
+    const rateCol = 6 + vendorIndex * 2;
+    const amountCol = rateCol + 1;
+    const rateCell = worksheet.getCell(discountRow, rateCol);
+    const amountCell = worksheet.getCell(discountRow, amountCol);
+    rateCell.value = 0;
+    rateCell.numFmt = "0.00";
+    amountCell.value = { formula: `${colLetter(rateCol)}${discountRow}*${colLetter(amountCol)}${subtotalRow}` };
+    amountCell.numFmt = "#,##0.00";
+    rateCell.font = fontArial10;
+    amountCell.font = fontArial10Bold;
+    rateCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    amountCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(rateCell, { font: fontArial10, alignment: rateCell.alignment });
+    styleThinBorderCell(amountCell, { font: fontArial10Bold, alignment: amountCell.alignment });
+  }
+  for (let col = 1; col <= lastCol; col += 1) {
+    styleThinBorderCell(worksheet.getCell(discountRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+  }
+  worksheet.getRow(discountRow).height = 15.75;
+  currentRow += 1;
+
+  const netRow = currentRow;
+  worksheet.getCell(netRow, 1).value = "Net Amount";
+  worksheet.getCell(netRow, 1).font = fontArial10Bold;
+  worksheet.getCell(netRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
+    const rateCol = 6 + vendorIndex * 2;
+    const amountCol = rateCol + 1;
+    const netAmountCell = worksheet.getCell(netRow, amountCol);
+    netAmountCell.value = { formula: `${colLetter(amountCol)}${subtotalRow}-${colLetter(amountCol)}${discountRow}` };
+    netAmountCell.numFmt = "#,##0.00";
+    netAmountCell.font = fontArial10Bold;
+    netAmountCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(worksheet.getCell(netRow, rateCol), { font: fontArial10 });
+    styleThinBorderCell(netAmountCell, { font: fontArial10Bold, alignment: netAmountCell.alignment });
+  }
+  for (let col = 1; col <= lastCol; col += 1) {
+    styleThinBorderCell(worksheet.getCell(netRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+  }
+  worksheet.getRow(netRow).height = 15.75;
+  currentRow += 1;
+
+  const gstRow = currentRow;
+  worksheet.getCell(gstRow, 1).value = "GST";
+  worksheet.getCell(gstRow, 1).font = fontArial10Bold;
+  worksheet.getCell(gstRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
+    const rateCol = 6 + vendorIndex * 2;
+    const amountCol = rateCol + 1;
+    const rateCell = worksheet.getCell(gstRow, rateCol);
+    const amountCell = worksheet.getCell(gstRow, amountCol);
+    rateCell.value = 0.18;
+    rateCell.numFmt = "0.00";
+    amountCell.value = { formula: `${colLetter(rateCol)}${gstRow}*${colLetter(amountCol)}${netRow}` };
+    amountCell.numFmt = "#,##0.00";
+    rateCell.font = fontArial10;
+    amountCell.font = fontArial10Bold;
+    rateCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    amountCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(rateCell, { font: fontArial10, alignment: rateCell.alignment });
+    styleThinBorderCell(amountCell, { font: fontArial10Bold, alignment: amountCell.alignment });
+  }
+  for (let col = 1; col <= lastCol; col += 1) {
+    styleThinBorderCell(worksheet.getCell(gstRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+  }
+  worksheet.getRow(gstRow).height = 15.75;
+  currentRow += 1;
+
+  const totalRow = currentRow;
+  worksheet.getCell(totalRow, 1).value = "Total Value";
+  worksheet.getCell(totalRow, 1).font = fontArial10Bold;
+  worksheet.getCell(totalRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
+    const rateCol = 6 + vendorIndex * 2;
+    const amountCol = rateCol + 1;
+    const totalCell = worksheet.getCell(totalRow, amountCol);
+    totalCell.value = { formula: `${colLetter(amountCol)}${netRow}+${colLetter(amountCol)}${gstRow}` };
+    totalCell.numFmt = "#,##0.00";
+    totalCell.font = fontArial10Bold;
+    totalCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    styleThinBorderCell(worksheet.getCell(totalRow, rateCol), { font: fontArial10 });
+    styleThinBorderCell(totalCell, { font: fontArial10Bold, alignment: totalCell.alignment });
+  }
+  for (let col = 1; col <= lastCol; col += 1) {
+    styleThinBorderCell(worksheet.getCell(totalRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+  }
+  worksheet.getRow(totalRow).height = 15.75;
+  currentRow += 2;
+
+  ["Delivery", "Payment", "Transportation"].forEach((label) => {
+    const rowNumber = currentRow;
+    worksheet.getCell(rowNumber, 1).value = label;
+    worksheet.getCell(rowNumber, 1).font = fontArial10Bold;
+    worksheet.getCell(rowNumber, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+    for (let col = 1; col <= lastCol; col += 1) {
+      styleThinBorderCell(worksheet.getCell(rowNumber, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+    }
+    worksheet.getRow(rowNumber).height = 15.75;
+    currentRow += 1;
+  });
+
+  for (let col = 1; col <= lastCol; col += 1) {
+    const column = worksheet.getColumn(col);
+    if (col === 1) column.width = 9;
+    else if (col === 2) column.width = 22;
+    else if (col === 3) column.width = 101.57;
+    else if (col === 4 || col === 5) column.width = 8;
+    else column.width = col % 2 === 0 ? 13 : 12;
+  }
+
+  return workbook;
 };
 
 export default function VendorComparisonModule() {
@@ -1112,6 +1526,32 @@ export default function VendorComparisonModule() {
     }
   };
 
+  const handleDownloadItemsExcel = async () => {
+    const pr = fullPrRef.current || selectedPr || {};
+    const itemsToExport = selectedPrItemList;
+    if (!pr || !prItemsConfirmed || itemsToExport.length === 0) {
+      toast({ title: "Nothing to export", description: "Confirm the PR items first.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const wb = await buildItemsExcelWorkbook({
+        pr,
+        selectedItems: selectedPrItemList,
+        vendors,
+      });
+
+      const baseName = String(pr?.sample_id || pr?.pr_number || pr?.workorder_no || "HelloTest123").trim();
+      const fileName = `${baseName || "HelloTest123"}.xlsx`;
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      saveAs(blob, fileName);
+      toast({ title: "Downloaded", description: fileName });
+    } catch (e) {
+      toast({ title: "Export failed", description: e?.message || "Could not generate Excel.", variant: "destructive" });
+    }
+  };
+
   const handleCreateComparison = async () => {
     if (creatingComparison) return;
     if (disableUpload) {
@@ -1475,7 +1915,18 @@ export default function VendorComparisonModule() {
               </Table>
             </div>
 
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              {prItemsConfirmed ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDownloadItemsExcel}
+                  className="border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
+                  disabled={loadingPrDetails || parsingExcel || vendorCheckLoading || (comparisonRows.length === 0 && selectedPrItemList.length === 0)}
+                >
+                  Download Items Excel
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
