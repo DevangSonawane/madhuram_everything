@@ -589,8 +589,8 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
   const lastCol = 5 + exportVendors.length * 2;
   const colLetter = (colNumber) => XLSX.utils.encode_col(colNumber - 1);
 
-  const rowFill = (rowNumber, fill, font = null) => {
-    for (let col = 1; col <= lastCol; col += 1) {
+  const fillRange = (rowNumber, startCol, endCol, fill, font = null, alignment = { horizontal: "center", vertical: "middle", wrapText: true }) => {
+    for (let col = startCol; col <= endCol; col += 1) {
       const cell = worksheet.getCell(rowNumber, col);
       cell.fill = fill;
       cell.border = {
@@ -600,7 +600,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
         right: { style: "thin", color: { argb: "FF000000" } },
       };
       if (font) cell.font = font;
-      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.alignment = alignment;
     }
   };
 
@@ -664,9 +664,6 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
 
   const vendorRow = 7;
   const headerRow = 8;
-  rowFill(vendorRow, navyFill, fontArial10WhiteBold);
-  rowFill(headerRow, headerFill, fontArial10WhiteBold);
-
   for (let col = 6; col <= lastCol; col += 2) {
     const vendorIndex = Math.floor((col - 6) / 2);
     const rateCol = col;
@@ -693,6 +690,8 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
     styleThinBorderCell(rateHeader, { fill: headerFill, font: fontArial10WhiteBold, alignment: rateHeader.alignment });
     styleThinBorderCell(amountHeader, { fill: headerFill, font: fontArial10WhiteBold, alignment: amountHeader.alignment });
   }
+
+  fillRange(headerRow, 1, lastCol, headerFill, fontArial10WhiteBold);
 
   ["Sr. No.", "HSN Code", "Item Description", "Qty", "UOM"].forEach((text, index) => {
     const cell = worksheet.getCell(headerRow, index + 1);
