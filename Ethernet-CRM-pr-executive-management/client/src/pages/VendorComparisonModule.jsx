@@ -640,6 +640,8 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
   const navyFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3864" } };
   const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F5496" } };
   const categoryFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+  const summaryFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
+  const totalValueFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6E0B4" } };
 
   const metadata = [
     ["Company Name:", "Madhuram Enterprises"],
@@ -794,7 +796,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
     styleThinBorderCell(amountCell, { font: fontArial10Bold, alignment: amountCell.alignment });
   }
   for (let col = 1; col <= lastCol; col += 1) {
-    styleThinBorderCell(worksheet.getCell(subtotalRow, col), { font: fontArial10Bold });
+    styleThinBorderCell(worksheet.getCell(subtotalRow, col), { fill: summaryFill, font: fontArial10Bold });
   }
   worksheet.getRow(subtotalRow).height = 15.75;
   currentRow += 1;
@@ -820,7 +822,10 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
     styleThinBorderCell(amountCell, { font: fontArial10Bold, alignment: amountCell.alignment });
   }
   for (let col = 1; col <= lastCol; col += 1) {
-    styleThinBorderCell(worksheet.getCell(discountRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+    styleThinBorderCell(worksheet.getCell(discountRow, col), {
+      fill: summaryFill,
+      font: col === 1 ? fontArial10Bold : fontArial10,
+    });
   }
   worksheet.getRow(discountRow).height = 15.75;
   currentRow += 1;
@@ -841,7 +846,10 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
     styleThinBorderCell(netAmountCell, { font: fontArial10Bold, alignment: netAmountCell.alignment });
   }
   for (let col = 1; col <= lastCol; col += 1) {
-    styleThinBorderCell(worksheet.getCell(netRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+    styleThinBorderCell(worksheet.getCell(netRow, col), {
+      fill: summaryFill,
+      font: col === 1 ? fontArial10Bold : fontArial10,
+    });
   }
   worksheet.getRow(netRow).height = 15.75;
   currentRow += 1;
@@ -867,7 +875,10 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
     styleThinBorderCell(amountCell, { font: fontArial10Bold, alignment: amountCell.alignment });
   }
   for (let col = 1; col <= lastCol; col += 1) {
-    styleThinBorderCell(worksheet.getCell(gstRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+    styleThinBorderCell(worksheet.getCell(gstRow, col), {
+      fill: summaryFill,
+      font: col === 1 ? fontArial10Bold : fontArial10,
+    });
   }
   worksheet.getRow(gstRow).height = 15.75;
   currentRow += 1;
@@ -888,7 +899,10 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
     styleThinBorderCell(totalCell, { font: fontArial10Bold, alignment: totalCell.alignment });
   }
   for (let col = 1; col <= lastCol; col += 1) {
-    styleThinBorderCell(worksheet.getCell(totalRow, col), { font: col === 1 ? fontArial10Bold : fontArial10 });
+    styleThinBorderCell(worksheet.getCell(totalRow, col), {
+      fill: totalValueFill,
+      font: col === 1 ? fontArial10Bold : fontArial10,
+    });
   }
   worksheet.getRow(totalRow).height = 15.75;
   currentRow += 2;
