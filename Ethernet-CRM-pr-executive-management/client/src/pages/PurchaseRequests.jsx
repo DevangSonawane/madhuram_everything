@@ -1649,6 +1649,10 @@ export default function PurchaseRequests() {
         pr_number: String(form.pr_number || "").trim(),
         project_name: String(form.project_name || "").trim(),
         workorder_no: String(form.workorder_no || "").trim(),
+        floor_no: String(form.floor_no || "").trim(),
+        floorNo: String(form.floor_no || "").trim(),
+        flat_no: String(form.flat_no || "").trim(),
+        flatNo: String(form.flat_no || "").trim(),
         location: String(form.location || "").trim(),
         mirno: String(form.mirno || "").trim(),
         urgency: form.urgency || "Medium",
@@ -2109,7 +2113,7 @@ export default function PurchaseRequests() {
         margin: { left: frameX, right: frameX },
         tableWidth: frameW,
         theme: "grid",
-        head: [["BOQ No.", "Item Name", "Description", "Unit", "Qty"]],
+        head: [["BOQ No.", "Item No.", "Description", "Unit", "Qty"]],
         body: tableRows,
         styles: {
           font: "times",
@@ -2119,6 +2123,7 @@ export default function PurchaseRequests() {
           lineWidth: 0.2,
           textColor: [0, 0, 0],
           valign: "middle",
+          overflow: "linebreak",
         },
         headStyles: {
           fontStyle: "bold",
@@ -2129,10 +2134,10 @@ export default function PurchaseRequests() {
         },
         columnStyles: {
           0: { cellWidth: 18, halign: "center" },
-          1: { cellWidth: 38 },
-          2: { cellWidth: 48 },
-          3: { cellWidth: 16, halign: "center" },
-          4: { cellWidth: 18, halign: "center" },
+          1: { cellWidth: 44 },
+          2: { cellWidth: 82 },
+          3: { cellWidth: 18, halign: "center" },
+          4: { cellWidth: 28, halign: "center" },
         },
         didDrawPage: (data) => {
           if (data.pageNumber > 1) {

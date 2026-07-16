@@ -139,6 +139,21 @@ const buildVendorPayload = (draft) => ({
   status: String(draft?.status || "active").trim() || "active",
 });
 
+const isFilledText = (value) => String(value ?? "").trim().length > 0;
+
+const isValidVendorEmail = (value) => {
+  const email = String(value ?? "").trim();
+  if (!email) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
+const isVendorDraftComplete = (draft = {}) =>
+  isFilledText(draft.vendor_name) &&
+  isFilledText(draft.vendor_company_name) &&
+  isValidVendorEmail(draft.vendor_email) &&
+  isFilledText(draft.mobile_number) &&
+  isFilledText(draft.location);
+
 const toNumberOrNull = (value) => {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -548,6 +563,11 @@ export default function VendorComparisonModule() {
     const selected = new Set(Array.isArray(selectedPrItemKeys) ? selectedPrItemKeys : []);
     return (Array.isArray(prItems) ? prItems : []).filter((item, index) => selected.has(getPrItemKey(item, index)));
   }, [prItems, selectedPrItemKeys]);
+
+  const vendorDraftsReady = useMemo(
+    () => vendorDrafts.length > 0 && vendorDrafts.every((draft) => isVendorDraftComplete(draft)),
+    [vendorDrafts]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1237,6 +1257,14 @@ export default function VendorComparisonModule() {
 
   const handleVendorDraftSubmit = async () => {
     if (!pendingVendorUpload) return;
+    if (!vendorDraftsReady) {
+      toast({
+        title: "Missing required fields",
+        description: "Please fill company name, email, mobile number, and location for every vendor before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (vendorDrafts.length === 0) {
       setVendorDialogOpen(false);
       setPendingVendorUpload(null);
@@ -1773,7 +1801,7 @@ export default function VendorComparisonModule() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`vendor_company_name_${index}`}>Company Name</Label>
+                    <Label htmlFor={`vendor_company_name_${index}`}>Company Name *</Label>
                     <Input
                       id={`vendor_company_name_${index}`}
                       value={draft.vendor_company_name}
@@ -1783,7 +1811,7 @@ export default function VendorComparisonModule() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`vendor_email_${index}`}>Email</Label>
+                    <Label htmlFor={`vendor_email_${index}`}>Email *</Label>
                     <Input
                       id={`vendor_email_${index}`}
                       type="email"
@@ -1794,7 +1822,7 @@ export default function VendorComparisonModule() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`mobile_number_${index}`}>Mobile Number</Label>
+                    <Label htmlFor={`mobile_number_${index}`}>Mobile Number *</Label>
                     <Input
                       id={`mobile_number_${index}`}
                       value={draft.mobile_number}
@@ -1804,7 +1832,7 @@ export default function VendorComparisonModule() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`location_${index}`}>Location</Label>
+                    <Label htmlFor={`location_${index}`}>Location *</Label>
                     <Input
                       id={`location_${index}`}
                       value={draft.location}
@@ -1834,11 +1862,15 @@ export default function VendorComparisonModule() {
             ))}
           </div>
 
+          <div className="text-sm text-muted-foreground">
+            Fill all required fields marked with * to enable saving the vendor registration.
+          </div>
+
           <DialogFooter className="flex-row gap-3 sm:gap-2">
             <Button type="button" variant="outline" onClick={handleVendorDialogCancel} disabled={creatingComparison}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleVendorDraftSubmit} disabled={creatingComparison || vendorDrafts.length === 0}>
+            <Button type="button" onClick={handleVendorDraftSubmit} disabled={creatingComparison || !vendorDraftsReady}>
               {creatingComparison ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving vendors...

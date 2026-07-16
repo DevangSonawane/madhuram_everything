@@ -466,7 +466,7 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
   autoTable(doc, {
     startY: tableStartY,
     margin: { left: frameX, right: frameX },
-    tableWidth: "wrap",
+    tableWidth: frameW,
     theme: "grid",
     head: [
       sampleClient === "hiranandani"
@@ -533,34 +533,34 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
         ? {
             0: { cellWidth: 10, halign: "center" },
             1: { cellWidth: 16, halign: "center" },
-            2: { cellWidth: 36 },
-            3: { cellWidth: 24, halign: "center" },
-            4: { cellWidth: 28 },
-            5: { cellWidth: 16, halign: "center" },
+            2: { cellWidth: 74 },
+            3: { cellWidth: 20, halign: "center" },
+            4: { cellWidth: 22 },
+            5: { cellWidth: 14, halign: "center" },
             6: { cellWidth: 12, halign: "center" },
-            7: { cellWidth: 14, halign: "center" },
+            7: { cellWidth: 22, halign: "center" },
           }
         : sampleClient === "lodha"
           ? {
               0: { cellWidth: 10, halign: "center" },
               1: { cellWidth: 16, halign: "center" },
-              2: { cellWidth: 24, halign: "center" },
-              3: { cellWidth: 34 },
-              4: { cellWidth: 28 },
-              5: { cellWidth: 16, halign: "center" },
+              2: { cellWidth: 20, halign: "center" },
+              3: { cellWidth: 74 },
+              4: { cellWidth: 22 },
+              5: { cellWidth: 14, halign: "center" },
               6: { cellWidth: 12, halign: "center" },
-              7: { cellWidth: 14, halign: "center" },
+              7: { cellWidth: 22, halign: "center" },
             }
         : {
             0: { cellWidth: 10, halign: "center" },
             1: { cellWidth: 14, halign: "center" },
-            2: { cellWidth: 24 },
-            3: { cellWidth: 24 },
-            4: { cellWidth: 20, halign: "center" },
-            5: { cellWidth: 24 },
-            6: { cellWidth: 16, halign: "center" },
+            2: { cellWidth: 18 },
+            3: { cellWidth: 72 },
+            4: { cellWidth: 18, halign: "center" },
+            5: { cellWidth: 16 },
+            6: { cellWidth: 10, halign: "center" },
             7: { cellWidth: 12, halign: "center" },
-            8: { cellWidth: 14, halign: "center" },
+            8: { cellWidth: 20, halign: "center" },
           },
     didDrawPage: () => {
       renderFrame();

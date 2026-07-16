@@ -220,6 +220,10 @@ export default function PurchaseRequestCreate() {
   );
 
   const getResolvedSampleId = () => String(form.sample_id || selectedSampleId || "").trim();
+  const selectedSample = useMemo(
+    () => sampleOptions.find((sample) => String(sample.sample_id || sample.id) === String(form.sample_id || selectedSampleId || "")) || null,
+    [form.sample_id, sampleOptions, selectedSampleId]
+  );
 
   useEffect(() => {
     setLoadingProjects(true);
@@ -646,7 +650,7 @@ export default function PurchaseRequestCreate() {
           item?.req_qty ||
             item?.sample_total_qty ||
             item?.sample_qty_per_flat ||
-            (isManualLikeRow(item) ? resolveManualRowQty(item, sample) : 0)
+            (isManualLikeRow(item) ? resolveManualRowQty(item, selectedSample || {}) : 0)
         );
         const inventoryId = parseIntegerOrNull(item.inventory_id);
         const payload = {
@@ -687,6 +691,10 @@ export default function PurchaseRequestCreate() {
         pr_number: String(form.pr_number || "").trim(),
         project_name: String(form.project_name || "").trim(),
         workorder_no: String(form.workorder_no || "").trim(),
+        floor_no: String(form.floor_no || "").trim(),
+        floorNo: String(form.floor_no || "").trim(),
+        flat_no: String(form.flat_no || "").trim(),
+        flatNo: String(form.flat_no || "").trim(),
         location: String(form.location || "").trim(),
         mirno: String(form.mirno || "").trim(),
         urgency: form.urgency || "Medium",
