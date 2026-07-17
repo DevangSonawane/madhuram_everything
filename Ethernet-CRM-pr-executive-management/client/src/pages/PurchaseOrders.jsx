@@ -164,6 +164,8 @@ const formatPrNumber = (pr = {}) => {
   return `PR-${datePart}-${sequence}-${project}`;
 };
 
+const keepRawText = (value) => (value == null ? "" : String(value));
+
 export default function PurchaseOrders() {
   const location = useLocation();
   const { projectId: routeProjectId } = useParams();
@@ -842,6 +844,7 @@ export default function PurchaseOrders() {
   };
 
   const updateItem = (index, field, value) => {
+    if (field === "rate") return;
     const numericIntegerFields = new Set(["srNo"]);
     const numericDecimalFields = new Set(["qty", "rate", "amount"]);
     const nextValue = numericIntegerFields.has(field)
@@ -904,8 +907,13 @@ export default function PurchaseOrders() {
         "";
 
       const uom =
-        String(item?.unit || "").trim() ||
-        String(inv?.unit ?? inv?.units ?? inv?.uom ?? inv?.UOM ?? "").trim() ||
+        keepRawText(item?.unit) ||
+        keepRawText(item?.uom) ||
+        keepRawText(item?.UOM) ||
+        keepRawText(inv?.unit) ||
+        keepRawText(inv?.units) ||
+        keepRawText(inv?.uom) ||
+        keepRawText(inv?.UOM) ||
         "";
 
       const rateRaw =
@@ -1026,7 +1034,7 @@ export default function PurchaseOrders() {
       const computedAmount =
         Number.isFinite(Number(qty)) && Number.isFinite(Number(rate)) ? String(Number(qty) * Number(rate)) : "";
       const itemDescription = String(item?.item_description ?? item?.description ?? item?.item_name ?? "").trim();
-      const uom = String(item?.unit ?? item?.uom ?? item?.UOM ?? "").trim();
+      const uom = keepRawText(item?.unit) || keepRawText(item?.uom) || keepRawText(item?.UOM) || "";
       const hsn = String(item?.hsn ?? item?.hsn_code ?? item?.hsnCode ?? "").trim();
       const vendorName = String(item?.vendor_name ?? item?.vendorName ?? item?.vendor ?? "").trim();
       return {
@@ -1140,7 +1148,7 @@ export default function PurchaseOrders() {
           hsnCode: String(item?.hsn ?? item?.hsn_code ?? item?.hsnCode ?? "").trim() || "",
           description: itemDescriptionRaw,
           qty: qtyRaw == null ? "" : String(qtyRaw),
-          uom: String(item?.unit || item?.uom || item?.UOM || "").trim() || "",
+          uom: keepRawText(item?.unit) || keepRawText(item?.uom) || keepRawText(item?.UOM) || "",
           rate: rateRaw == null || rateRaw === "" ? "" : String(rateRaw),
           amount: amountRaw == null || amountRaw === "" ? "" : String(amountRaw),
           remarks,
@@ -1217,8 +1225,12 @@ export default function PurchaseOrders() {
           String(row?.description ?? "").trim() ||
           String(fieldVal(row, "description") || "").trim();
         const uom =
-          String(row?.unit ?? row?.uom ?? row?.UOM ?? "").trim() ||
-          String(fieldVal(row, "unit") || fieldVal(row, "UOM") || fieldVal(row, "uom") || "").trim();
+          keepRawText(row?.unit) ||
+          keepRawText(row?.uom) ||
+          keepRawText(row?.UOM) ||
+          keepRawText(fieldVal(row, "unit")) ||
+          keepRawText(fieldVal(row, "UOM")) ||
+          keepRawText(fieldVal(row, "uom"));
         const qtyRaw =
           row?.quantity ??
           fieldVal(row, "selected_qty") ??
@@ -2194,7 +2206,8 @@ export default function PurchaseOrders() {
                             step="any"
                             className="sm:col-span-1"
                             value={item.rate}
-                            onChange={(event) => updateItem(idx, "rate", event.target.value)}
+                            readOnly
+                            placeholder="Fixed"
                           />
                           <div className="flex items-center gap-2 sm:col-span-1">
                             <Input

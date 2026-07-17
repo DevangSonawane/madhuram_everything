@@ -699,10 +699,10 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
   const footerContentWidth = w - 4;
 
   const FOOTER_DEFAULTS = {
-    discount: "",
+    discount: "Nil",
     tax: "GST - 18%",
     delivery: "Immediate",
-    payment: "As Discussed",
+    payment: "Against P.I",
     terms: [
       "Please send your order acceptance on receipt of this order.",
       "Send all the material in single trip along with delivery challan & test certificate.",
@@ -856,7 +856,7 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
   doc.text("Total Amount", x + w - 56, totalsBaseY + 10);
   doc.text(toAmount(po.totalAmount) || "-", x + w - 2, totalsBaseY + 10, { align: "right" });
 
-  const signY = Math.max(y + h - 10, totalsBaseY + 18);
+  const signY = Math.max(y + h - 10, footerCursorY + 8);
   doc.setFont("times", "normal");
   doc.setFontSize(7.6);
   doc.text("Authorised Signatory", x + w - 40, signY + 6, { align: "center" });

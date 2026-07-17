@@ -433,11 +433,12 @@ export default function PurchaseOrdersPreview() {
   };
 
   const updateItem = (index, field, value) => {
+    if (field === "rate" || field === "amount") return;
     setPoData((prev) => {
       const nextItems = [...prev.items];
       const nextItem = { ...nextItems[index], [field]: value };
 
-      if (field === "qty" || field === "rate") {
+      if (field === "qty") {
         const qty = toNumberOrNull(nextItem.qty);
         const rate = toNumberOrNull(nextItem.rate);
         nextItem.amount = qty != null && rate != null ? formatCalculatedNumber(qty * rate) : "";
@@ -674,9 +675,9 @@ export default function PurchaseOrdersPreview() {
                 <Input className="sm:col-span-2" value={item.description} onChange={(event) => updateItem(idx, "description", event.target.value)} />
                 <Input className="sm:col-span-1" value={item.qty} onChange={(event) => updateItem(idx, "qty", event.target.value)} />
                 <Input className="sm:col-span-1" value={item.uom} onChange={(event) => updateItem(idx, "uom", event.target.value)} />
-                <Input className="sm:col-span-1" value={item.rate} onChange={(event) => updateItem(idx, "rate", event.target.value)} />
+                <Input className="sm:col-span-1" value={item.rate} readOnly placeholder="Fixed" />
                 <div className="flex items-center gap-2 sm:col-span-1">
-                  <Input value={item.amount} onChange={(event) => updateItem(idx, "amount", event.target.value)} />
+                  <Input value={item.amount} readOnly />
                   <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(idx)}>
                     <Minus className="h-4 w-4" />
                   </Button>
