@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useProject } from "@/contexts/useProject";
 import { api } from "@/lib/api";
 import { downloadPurchaseOrderPdf } from "@/lib/poPdf";
+import { matchAgainstPrItems } from "@/lib/prItemMatcher";
 import { EMPTY_PO, normalizePoData, sanitizeNumberInput, sanitizePhoneInput } from "@/pages/poShared";
 import { RowActionsMenu } from "@/components/RowActionsMenu";
 
@@ -92,10 +93,14 @@ const buildItemPayloads = (items) => {
   if (!Array.isArray(items)) return [];
   return items
     .map((item, index) => {
+      const boqItemCode = String(item.boq_item_code || item.boqItemCode || item.item_code || item.itemCode || item.code || item.itemName || item.item_name || item.description || "").trim();
+      const itemName = String(item.item_name || item.itemName || item.material_description || item.description || boqItemCode || "").trim();
+      const description = String(item.description || item.material_description || itemName || boqItemCode).trim();
       const payload = {
         srno: item.srNo || item.srno || index + 1,
         hsn: item.hsnCode || item.hsn || "",
-        description: item.description || "",
+        description,
+        item_name: itemName || boqItemCode || description,
         qty: item.qty || item.quantity || "",
         UOM: item.uom || item.UOM || "",
         Rate: item.rate || item.Rate || "",
@@ -103,6 +108,7 @@ const buildItemPayloads = (items) => {
         remark: item.remarks || item.remark || "",
         boq_id: item.boq_id || item.boqId || "",
         boq_qty: item.boq_qty || item.boqQty || item.qty || item.quantity || "",
+        boq_item_code: boqItemCode || itemName || description || "",
       };
       const hasContent = payload.description || payload.hsn || payload.qty || payload.Rate || payload.Amount;
       return hasContent ? payload : null;
@@ -856,6 +862,22 @@ export default function PurchaseOrders() {
       const nextItems = [...prev.items];
       const nextItem = { ...nextItems[index], [field]: nextValue };
 
+      if (field === "item_name") {
+        nextItem.description = nextValue;
+        if (!String(nextItem.boq_item_code || "").trim()) {
+          nextItem.boq_item_code = nextValue;
+        }
+      }
+      if (field === "description") {
+        nextItem.item_name = nextValue;
+        if (!String(nextItem.boq_item_code || "").trim()) {
+          nextItem.boq_item_code = nextValue;
+        }
+      }
+      if (field === "boq_item_code" && !String(nextItem.item_name || "").trim()) {
+        nextItem.item_name = nextValue;
+      }
+
       if (field === "qty" || field === "rate") {
         const qty = Number(nextItem.qty);
         const rate = Number(nextItem.rate);
@@ -874,7 +896,20 @@ export default function PurchaseOrders() {
       ...prev,
       items: [
         ...prev.items,
-        { srNo: String(prev.items.length + 1), hsnCode: "", description: "", qty: "", uom: "", rate: "", amount: "", remarks: "", boq_id: "", boq_qty: "" },
+        {
+          srNo: String(prev.items.length + 1),
+          hsnCode: "",
+          item_name: "",
+          boq_item_code: "",
+          description: "",
+          qty: "",
+          uom: "",
+          rate: "",
+          amount: "",
+          remarks: "",
+          boq_id: "",
+          boq_qty: "",
+        },
       ],
       source: "Manual",
     }));
@@ -931,10 +966,27 @@ export default function PurchaseOrders() {
         Number.isFinite(qtyNum) && qtyNum > 0 && Number.isFinite(rateNum) && rateNum >= 0
           ? String(qtyNum * rateNum)
           : "";
+      const itemName = String(
+        item?.item_name ??
+          item?.itemName ??
+          item?.material_description ??
+          item?.item_description ??
+          item?.description ??
+          ""
+      ).trim();
+      const boqItemCode = String(
+        item?.boq_item_code ??
+          item?.boqItemCode ??
+          item?.item_code ??
+          item?.itemCode ??
+          item?.code ??
+          itemName
+      ).trim();
       return {
         srNo: String(index + 1),
         hsnCode: hsn,
-        description: String(item?.material_description || "").trim(),
+        item_name: itemName || boqItemCode,
+        description: String(item?.material_description || item?.item_description || item?.description || itemName || boqItemCode || "").trim(),
         qty,
         uom,
         rate,
@@ -942,6 +994,7 @@ export default function PurchaseOrders() {
         remarks,
         boq_id: item?.boq_id ?? item?.boqId ?? "",
         boq_qty: item?.boq_qty ?? item?.boqQty ?? qty,
+        boq_item_code: boqItemCode || itemName,
       };
     });
   };
@@ -1034,18 +1087,21 @@ export default function PurchaseOrders() {
       const computedAmount =
         Number.isFinite(Number(qty)) && Number.isFinite(Number(rate)) ? String(Number(qty) * Number(rate)) : "";
       const itemDescription = String(item?.item_description ?? item?.description ?? item?.item_name ?? "").trim();
+      const boqItemCode = String(item?.boq_item_code ?? item?.boqItemCode ?? item?.item_code ?? item?.itemCode ?? item?.code ?? itemDescription).trim();
       const uom = keepRawText(item?.unit) || keepRawText(item?.uom) || keepRawText(item?.UOM) || "";
       const hsn = String(item?.hsn ?? item?.hsn_code ?? item?.hsnCode ?? "").trim();
       const vendorName = String(item?.vendor_name ?? item?.vendorName ?? item?.vendor ?? "").trim();
       return {
         srNo: String(index + 1),
         hsnCode: hsn,
+        item_name: itemDescription || boqItemCode,
         description: itemDescription,
         qty,
         uom,
         rate,
         amount: computedAmount || (amountRaw == null ? "" : String(amountRaw)),
         remarks: vendorName ? `Vendor: ${vendorName}` : "",
+        boq_item_code: boqItemCode || itemDescription,
       };
     });
   };
@@ -1054,13 +1110,16 @@ export default function PurchaseOrders() {
     if ((!prNo && !prId) || !projectIdValue) return { items: [], approvedVendorName: "" };
     try {
       const makeByDescription = new Map();
+      const boqItemCodeByDescription = new Map();
       (Array.isArray(prItems) ? prItems : []).forEach((prItem) => {
         const desc = String(prItem?.material_description ?? prItem?.description ?? "").trim();
         if (!desc) return;
         const key = desc.toLowerCase().replace(/\s+/g, " ").trim();
         const make = String(prItem?.make ?? "").trim();
+        const boqItemCode = String(prItem?.boq_item_code ?? prItem?.boqItemCode ?? prItem?.item_name ?? prItem?.itemName ?? "").trim();
         if (!make) return;
         if (!makeByDescription.has(key)) makeByDescription.set(key, make);
+        if (boqItemCode && !boqItemCodeByDescription.has(key)) boqItemCodeByDescription.set(key, boqItemCode);
       });
 
       const unwrapList = (res) => {
@@ -1139,6 +1198,25 @@ export default function PurchaseOrders() {
         const itemDescriptionRaw = String(item?.item_description || item?.description || "").trim();
         const makeKey = itemDescriptionRaw.toLowerCase().replace(/\s+/g, " ").trim();
         const make = makeByDescription.get(makeKey) || "";
+        const boqItemCode = boqItemCodeByDescription.get(makeKey) || "";
+        const prMatch = matchAgainstPrItems(item, prItems);
+        const matchedPrItem = prMatch?.matchedPrItem || null;
+        const matchedPrName = String(
+          matchedPrItem?.item_name ??
+            matchedPrItem?.itemName ??
+            matchedPrItem?.material_description ??
+            matchedPrItem?.item_description ??
+            matchedPrItem?.description ??
+            ""
+        ).trim();
+        const matchedPrCode = String(
+          matchedPrItem?.boq_item_code ??
+            matchedPrItem?.boqItemCode ??
+            matchedPrItem?.item_code ??
+            matchedPrItem?.itemCode ??
+            matchedPrItem?.code ??
+            ""
+        ).trim();
         const qtyRaw = item?.total_qty ?? item?.qty ?? item?.quantity ?? "";
         const rateRaw = item?.rate ?? "";
         const amountRaw = item?.amount ?? "";
@@ -1146,7 +1224,8 @@ export default function PurchaseOrders() {
         return {
           srNo: String(index + 1),
           hsnCode: String(item?.hsn ?? item?.hsn_code ?? item?.hsnCode ?? "").trim() || "",
-          description: itemDescriptionRaw,
+          item_name: matchedPrName || boqItemCode || itemDescriptionRaw,
+          description: String(item?.item_description || item?.description || matchedPrName || boqItemCode || itemDescriptionRaw || "").trim(),
           qty: qtyRaw == null ? "" : String(qtyRaw),
           uom: keepRawText(item?.unit) || keepRawText(item?.uom) || keepRawText(item?.UOM) || "",
           rate: rateRaw == null || rateRaw === "" ? "" : String(rateRaw),
@@ -1154,6 +1233,7 @@ export default function PurchaseOrders() {
           remarks,
           boq_id: item?.boq_id ?? item?.boqId ?? "",
           boq_qty: item?.boq_qty ?? item?.boqQty ?? (qtyRaw == null ? "" : String(qtyRaw)),
+          boq_item_code: matchedPrCode || boqItemCode || matchedPrName || itemDescriptionRaw,
         };
       });
       return { items, approvedVendorName };
@@ -2165,8 +2245,9 @@ export default function PurchaseOrders() {
                   </div>
                 ) : (
                   <>
-                    <div className="hidden sm:grid sm:grid-cols-8 gap-2 text-xs font-medium text-muted-foreground px-1">
+                    <div className="hidden sm:grid sm:grid-cols-9 gap-2 text-xs font-medium text-muted-foreground px-1">
                       <div>Sr No</div>
+                      <div>BOQ Item Code</div>
                       <div>HSN</div>
                       <div className="sm:col-span-2">Description</div>
                       <div>Qty</div>
@@ -2176,7 +2257,7 @@ export default function PurchaseOrders() {
                     </div>
                     {poData.items.map((item, idx) => (
                       <div key={`${item.srNo}-${idx}`} className="space-y-3 rounded-lg border border-border/70 bg-card/60 p-3 sm:p-4">
-                        <div className="grid gap-2 sm:grid-cols-8 items-center">
+                        <div className="grid gap-2 sm:grid-cols-9 items-center">
                           <Input
                             type="number"
                             inputMode="numeric"
@@ -2184,6 +2265,12 @@ export default function PurchaseOrders() {
                             className="sm:col-span-1"
                             value={item.srNo}
                             onChange={(event) => updateItem(idx, "srNo", event.target.value)}
+                          />
+                          <Input
+                            type="text"
+                            className="sm:col-span-1"
+                            value={item.boq_item_code || item.item_name || item.description}
+                            onChange={(event) => updateItem(idx, "boq_item_code", event.target.value)}
                           />
                           <Input
                             type="text"

@@ -79,10 +79,14 @@ const buildItemPayloads = (items) => {
   if (!Array.isArray(items)) return [];
   return items
     .map((item, index) => {
+      const boqItemCode = String(item.boq_item_code || item.boqItemCode || item.item_code || item.itemCode || item.code || item.itemName || item.item_name || item.description || "").trim();
+      const itemName = String(item.item_name || item.itemName || item.material_description || item.description || boqItemCode || "").trim();
+      const description = String(item.description || item.material_description || itemName || boqItemCode).trim();
       const payload = {
         srno: item.srNo || item.srno || index + 1,
         hsn: item.hsnCode || item.hsn || "",
-        description: item.description || "",
+        description,
+        item_name: itemName || boqItemCode || description,
         qty: item.qty || item.quantity || "",
         UOM: item.uom || item.UOM || "",
         Rate: item.rate || item.Rate || "",
@@ -90,6 +94,7 @@ const buildItemPayloads = (items) => {
         remark: item.remarks || item.remark || "",
         boq_id: item.boq_id || item.boqId || "",
         boq_qty: item.boq_qty || item.boqQty || item.qty || item.quantity || "",
+        boq_item_code: boqItemCode || itemName || description || "",
       };
       const hasContent = payload.description || payload.hsn || payload.qty || payload.Rate || payload.Amount;
       return hasContent ? payload : null;
@@ -438,6 +443,21 @@ export default function PurchaseOrdersPreview() {
       const nextItems = [...prev.items];
       const nextItem = { ...nextItems[index], [field]: value };
 
+      if (field === "item_name") {
+        nextItem.description = value;
+        if (!String(nextItem.boq_item_code || "").trim()) {
+          nextItem.boq_item_code = value;
+        }
+      }
+      if (field === "description") {
+        nextItem.item_name = value;
+        if (!String(nextItem.boq_item_code || "").trim()) {
+          nextItem.boq_item_code = value;
+        }
+      }
+      if (field === "boq_item_code" && !String(nextItem.item_name || "").trim()) {
+        nextItem.item_name = value;
+      }
       if (field === "qty") {
         const qty = toNumberOrNull(nextItem.qty);
         const rate = toNumberOrNull(nextItem.rate);
@@ -454,7 +474,7 @@ export default function PurchaseOrdersPreview() {
       ...prev,
       items: [
         ...prev.items,
-        { srNo: String(prev.items.length + 1), hsnCode: "", description: "", qty: "", uom: "", rate: "", amount: "", remarks: "" },
+        { srNo: String(prev.items.length + 1), hsnCode: "", item_name: "", boq_item_code: "", description: "", qty: "", uom: "", rate: "", amount: "", remarks: "" },
       ],
     }));
   };
@@ -659,8 +679,9 @@ export default function PurchaseOrdersPreview() {
             </div>
           ) : (
             <>
-              <div className="hidden sm:grid sm:grid-cols-8 gap-2 text-xs font-medium text-muted-foreground px-1">
+              <div className="hidden sm:grid sm:grid-cols-9 gap-2 text-xs font-medium text-muted-foreground px-1">
                 <div>Sr No</div>
+                <div>BOQ Item Code</div>
                 <div>HSN</div>
                 <div className="sm:col-span-2">Description</div>
                 <div>Qty</div>
@@ -669,8 +690,9 @@ export default function PurchaseOrdersPreview() {
                 <div>Amount</div>
               </div>
               {poData.items.map((item, idx) => (
-              <div key={`${item.srNo}-${idx}`} className="grid gap-2 sm:grid-cols-8 items-center">
+              <div key={`${item.srNo}-${idx}`} className="grid gap-2 sm:grid-cols-9 items-center">
                 <Input className="sm:col-span-1" value={item.srNo} onChange={(event) => updateItem(idx, "srNo", event.target.value)} />
+                <Input className="sm:col-span-1" value={item.boq_item_code || item.item_name || item.description} onChange={(event) => updateItem(idx, "boq_item_code", event.target.value)} />
                 <Input className="sm:col-span-1" value={item.hsnCode} onChange={(event) => updateItem(idx, "hsnCode", event.target.value)} />
                 <Input className="sm:col-span-2" value={item.description} onChange={(event) => updateItem(idx, "description", event.target.value)} />
                 <Input className="sm:col-span-1" value={item.qty} onChange={(event) => updateItem(idx, "qty", event.target.value)} />

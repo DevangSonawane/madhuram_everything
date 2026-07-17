@@ -2100,7 +2100,9 @@ export const api = {
   },
 
   getPosByProject: async (projectId) => {
-    const response = await fetch(`${BASE_URL}/api/po/project/${projectId}`, {
+    const resolvedProjectId = await resolveProjectNumericId(projectId);
+    const targetProjectId = resolvedProjectId ?? projectId;
+    const response = await fetch(`${BASE_URL}/api/po/project/${targetProjectId}`, {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);
@@ -2956,7 +2958,8 @@ export const api = {
   listVendorComparisons: async (params = {}) => {
     const query = new URLSearchParams();
     if (params.project_id != null && params.project_id !== '') {
-      query.set('project_id', String(params.project_id));
+      const resolvedProjectId = await resolveProjectNumericId(params.project_id);
+      query.set('project_id', String(resolvedProjectId ?? params.project_id));
     }
     if (params.pr_no != null && params.pr_no !== '') {
       query.set('pr_no', String(params.pr_no));

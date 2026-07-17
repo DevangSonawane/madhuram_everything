@@ -162,7 +162,8 @@ const mapServerItemsToUi = (items) => {
   return items.map((item, index) => ({
     srNo: item.srno != null ? String(item.srno) : item.srNo || String(index + 1),
     hsnCode: item.hsn || item.hsnCode || "",
-    description: item.description || "",
+    item_name: item.item_name || item.itemName || item.material_description || item.item_description || item.description || "",
+    description: item.description || item.material_description || item.item_description || item.item_name || item.itemName || "",
     qty: item.qty != null ? String(item.qty) : item.qty || "",
     uom: item.UOM || item.uom || "",
     rate: item.Rate != null ? String(item.Rate) : item.rate || "",
@@ -170,6 +171,7 @@ const mapServerItemsToUi = (items) => {
     remarks: item.remark || item.remarks || "",
     boq_id: item.boq_id ?? item.boqId ?? "",
     boq_qty: item.boq_qty ?? item.boqQty ?? item.qty ?? item.quantity ?? "",
+    boq_item_code: item.boq_item_code ?? item.boqItemCode ?? item.item_code ?? item.itemCode ?? item.code ?? item.item_name ?? item.itemName ?? "",
   }));
 };
 
