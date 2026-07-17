@@ -784,6 +784,19 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
   const footerPageTopY = needsDedicatedFooterPage ? y : footerStartY;
   let footerCursorY = footerPageTopY;
 
+  const totalsBaseY = Math.max(footerCursorY, footerPageTopY + 1);
+  doc.setFont("times", "bold");
+  doc.setFontSize(7.6);
+  doc.text(`CGST - ${asText(po.taxes?.cgst?.percent, "-")}%`, x + w - 56, totalsBaseY);
+  doc.text(toAmount(po.taxes?.cgst?.amount) || "-", x + w - 2, totalsBaseY, { align: "right" });
+  doc.text(`SGST - ${asText(po.taxes?.sgst?.percent, "-")}%`, x + w - 56, totalsBaseY + 4);
+  doc.text(toAmount(po.taxes?.sgst?.amount) || "-", x + w - 2, totalsBaseY + 4, { align: "right" });
+  doc.setFontSize(8.2);
+  doc.text("Total Amount", x + w - 56, totalsBaseY + 10);
+  doc.text(toAmount(po.totalAmount) || "-", x + w - 2, totalsBaseY + 10, { align: "right" });
+
+  footerCursorY = totalsBaseY + 14;
+
   drawUnderlinedRow({
     label: "Discount:",
     value: footerDiscount,
@@ -819,7 +832,22 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
     valueOffset: 18,
   });
 
-  footerCursorY += 8;
+  footerCursorY += 6;
+
+  if (footerNoteLines.length) {
+    doc.setFont("times", "bold");
+    doc.setFontSize(7.8);
+    doc.text("Notes:", footerSummaryX, footerCursorY);
+    doc.setFont("times", "normal");
+    doc.setFontSize(7.2);
+    footerNoteLines.forEach((line, idx) => {
+      footerCursorY += 3.4;
+      doc.text(`${idx + 1}) ${compactNoteText(line)}`, footerSummaryX, footerCursorY);
+    });
+    footerCursorY += 3;
+  }
+
+  footerCursorY += 5;
   doc.setFont("times", "bold");
   doc.setFontSize(7.8);
   doc.text("Terms & Conditions:", footerSummaryX, footerCursorY);
@@ -832,29 +860,6 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
       doc.text(wrappedLine, footerSummaryX, footerCursorY);
     });
   });
-
-  footerCursorY += 4;
-  doc.setFont("times", "bold");
-  doc.setFontSize(7.8);
-  doc.text("Notes:", footerSummaryX, footerCursorY);
-  doc.setFont("times", "normal");
-  doc.setFontSize(7.2);
-  footerNoteLines.forEach((line, idx) => {
-    footerCursorY += 3.4;
-    doc.text(`${idx + 1}) ${compactNoteText(line)}`, footerSummaryX, footerCursorY);
-  });
-
-  footerCursorY += 3;
-  const totalsBaseY = Math.max(footerCursorY, footerPageTopY + 1);
-  doc.setFont("times", "bold");
-  doc.setFontSize(7.6);
-  doc.text(`CGST - ${asText(po.taxes?.cgst?.percent, "-")}%`, x + w - 56, totalsBaseY);
-  doc.text(toAmount(po.taxes?.cgst?.amount) || "-", x + w - 2, totalsBaseY, { align: "right" });
-  doc.text(`SGST - ${asText(po.taxes?.sgst?.percent, "-")}%`, x + w - 56, totalsBaseY + 4);
-  doc.text(toAmount(po.taxes?.sgst?.amount) || "-", x + w - 2, totalsBaseY + 4, { align: "right" });
-  doc.setFontSize(8.2);
-  doc.text("Total Amount", x + w - 56, totalsBaseY + 10);
-  doc.text(toAmount(po.totalAmount) || "-", x + w - 2, totalsBaseY + 10, { align: "right" });
 
   const signY = Math.max(y + h - 10, footerCursorY + 8);
   doc.setFont("times", "normal");

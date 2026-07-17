@@ -1692,6 +1692,16 @@ export default function PurchaseOrders() {
       await downloadPurchaseOrderPdf(poPayload, {
         fileName: `Purchase-Order-${String(poPayload.orderNo || item.id || "PO")}.pdf`,
       });
+      toast({
+        title: "Downloaded",
+        description: `Purchase-Order-${String(poPayload.orderNo || item.id || "PO")}.pdf`,
+      });
+    } catch (error) {
+      toast({
+        title: "Download failed",
+        description: error?.message || "Could not generate the PO PDF.",
+        variant: "destructive",
+      });
     } finally {
       setPoDownloadingId(null);
     }

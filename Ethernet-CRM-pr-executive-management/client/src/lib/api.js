@@ -1,3 +1,5 @@
+import { resolveProjectNumericId } from '@/lib/resolveProjectId';
+
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://api.madhuram.enterprises').replace(/\/$/, '');
 
 const MIR_STRING_FIELDS = [
@@ -1839,7 +1841,9 @@ export const api = {
   },
 
   getPrsByProject: async (projectId) => {
-    const response = await fetch(`${BASE_URL}/api/pr/project/${projectId}`, {
+    const resolvedProjectId = await resolveProjectNumericId(projectId);
+    const targetProjectId = resolvedProjectId ?? projectId;
+    const response = await fetch(`${BASE_URL}/api/pr/project/${targetProjectId}`, {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);

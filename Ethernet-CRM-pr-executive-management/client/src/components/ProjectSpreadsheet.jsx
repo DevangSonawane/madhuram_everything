@@ -1,6 +1,7 @@
 import React from "react";
 import * as XLSX from "xlsx";
 import { api } from "@/lib/api";
+import { resolveProjectNumericId } from "@/lib/resolveProjectId";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -2500,6 +2501,8 @@ const getAuthToken = () => {
 };
 
 const fetchProjectData = async (projectId) => {
+  const numericProjectId = await resolveProjectNumericId(projectId);
+  const resolvedProjectId = numericProjectId ?? projectId;
   const baseUrl = (import.meta.env.VITE_API_BASE_URL || "https://api.madhuram.enterprises").replace(/\/$/, "");
   const token = getAuthToken();
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -2519,7 +2522,7 @@ const fetchProjectData = async (projectId) => {
     return body;
   };
 
-  const urls = [`${baseUrl}/api/projects/${projectId}`];
+  const urls = [`${baseUrl}/api/projects/${resolvedProjectId}`];
   for (const url of urls) {
     try {
       return await tryFetch(url);
@@ -2528,7 +2531,11 @@ const fetchProjectData = async (projectId) => {
     }
   }
 
-  const fallback = await api.getProjectById(projectId);
+  if (!numericProjectId) {
+    throw new Error("Invalid project id");
+  }
+
+  const fallback = await api.getProjectById(numericProjectId);
   if (!fallback?.success) throw new Error(fallback?.error || "Failed to load project data");
   return fallback.data;
 };
@@ -3218,6 +3225,8 @@ const buildInitialWorkbookSheets = (_project) => {
 };
 
 const fetchProjectWorkbookData = async (projectId) => {
+  const numericProjectId = await resolveProjectNumericId(projectId);
+  const resolvedProjectId = numericProjectId ?? projectId;
   const baseUrl = (import.meta.env.VITE_API_BASE_URL || "https://api.madhuram.enterprises").replace(/\/$/, "");
   const token = getAuthToken();
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -3240,9 +3249,9 @@ const fetchProjectWorkbookData = async (projectId) => {
   const project = await fetchProjectData(projectId);
 
   const endpoints = [
-    ["DeliveryChallans", `${baseUrl}/api/dc/project/${projectId}`],
-    ["BOQ", `${baseUrl}/api/boq/project/${projectId}`],
-    ["Samples", `${baseUrl}/api/sample/project/${projectId}`],
+    ["DeliveryChallans", `${baseUrl}/api/dc/project/${resolvedProjectId}`],
+    ["BOQ", `${baseUrl}/api/boq/project/${resolvedProjectId}`],
+    ["Samples", `${baseUrl}/api/sample/project/${resolvedProjectId}`],
   ];
 
   const results = await Promise.allSettled(endpoints.map(([, url]) => fetchJson(url)));
