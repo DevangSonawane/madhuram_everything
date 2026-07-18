@@ -135,19 +135,28 @@ export default function SampleEdit() {
         fieldVal("boq_match_key") ||
         fieldVal("boqMatchKey")
     );
-    const itemNo =
-      raw?.item_no ??
-      raw?.itemNo ??
-      fieldVal("item_no") ??
-      fieldVal("itemNo") ??
-      "";
+    const itemNo = isBoqRow
+      ? (fieldVal("item_code") ??
+        fieldVal("itemCode") ??
+        fieldVal("code") ??
+        raw?.item_code ??
+        raw?.itemCode ??
+        raw?.code ??
+        raw?.boq_item_code ??
+        raw?.boqItemCode ??
+        "")
+      : (fieldVal("item_no") ??
+        fieldVal("itemNo") ??
+        raw?.item_no ??
+        raw?.itemNo ??
+        "");
     const itemCode =
-      raw?.item_code ??
-      raw?.itemCode ??
-      raw?.code ??
       fieldVal("item_code") ??
       fieldVal("itemCode") ??
       fieldVal("code") ??
+      raw?.item_code ??
+      raw?.itemCode ??
+      raw?.code ??
       raw?.boq_item_code ??
       raw?.boqItemCode ??
       "";
@@ -404,7 +413,7 @@ export default function SampleEdit() {
         _row_type: "boq",
         sr_no: matchIndex >= 0 ? rows[matchIndex]?.sr_no || String(matchIndex + 1) : String(rows.length + 1),
         item_name: existing.item_name || derived.description || normalizeBoqRowName(derived),
-        item_no: String(derived.item_no || derived.itemNo || normalizeBoqRowName(derived) || "").trim() || "-",
+        item_no: String(derived.item_code || derived.itemCode || derived.code || derived.item_no || derived.itemNo || normalizeBoqRowName(derived) || "").trim() || "-",
         item_code: derived.item_code || derived.item_no || "",
         code: derived.item_code || derived.item_no || "",
         description: derived.description || "-",
@@ -431,7 +440,7 @@ export default function SampleEdit() {
           { key: "boq_id", value: String(derived.id || "") },
           { key: "boq_key", value: key },
           { key: "boq_match_key", value: key },
-          { key: "item_no", value: normalizeBoqRowName(derived) },
+          { key: "item_no", value: String(derived.item_code || derived.itemCode || derived.code || derived.item_no || derived.itemNo || normalizeBoqRowName(derived) || "") },
           { key: "item_code", value: String(derived.item_code || derived.item_no || "") },
           { key: "description", value: String(derived.description || "-") },
           { key: "unit", value: String(derived.unit || "") },
@@ -529,7 +538,7 @@ export default function SampleEdit() {
     return (Array.isArray(form.item_description) ? form.item_description : []).map((row) => {
       const qtyPerFlat = toFiniteNumber(row?.quantity ?? row?.total_qty ?? row?.selected_qty ?? row?.issued_qty ?? row?.boq_issued_qty ?? row?.qty_per_flat ?? row?.qty) || 0;
       const totalQty = qtyPerFlat > 0 && floorFlatMultiplier > 0 ? qtyPerFlat * floorFlatMultiplier : toFiniteNumber(row?.total_qty ?? row?.quantity ?? row?.qty) || "";
-      const displayItemNo = row?.item_no || row?.itemNo || row?.boq_description || row?.description || getSamplePrimaryIdentifier(row, sampleClient) || "";
+      const displayItemNo = row?.item_no || row?.itemNo || row?.item_code || row?.itemCode || row?.code || row?.boq_description || row?.description || getSamplePrimaryIdentifier(row, sampleClient) || "";
       return {
         ...row,
         item_no: displayItemNo,
@@ -721,9 +730,9 @@ export default function SampleEdit() {
         ...row,
         sr_no: row?.sr_no ?? "",
         item_name: row?.item_name ?? row?.itemName ?? "",
-        item_no: row?.item_no ?? row?.itemNo ?? row?.item_name ?? row?.itemName ?? "",
-        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? "",
-        code: row?.code ?? row?.item_code ?? row?.itemCode ?? "",
+        item_no: row?.item_no ?? row?.itemNo ?? row?.item_code ?? row?.itemCode ?? row?.code ?? row?.item_name ?? row?.itemName ?? "",
+        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? row?.item_no ?? row?.itemNo ?? "",
+        code: row?.code ?? row?.item_code ?? row?.itemCode ?? row?.item_no ?? row?.itemNo ?? "",
         brand_name: row?.brand_name ?? row?.brandName ?? "",
         description: row?.description ?? "",
         specification: row?.specification ?? row?.spec ?? "",

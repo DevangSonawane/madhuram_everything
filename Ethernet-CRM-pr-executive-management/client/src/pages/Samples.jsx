@@ -330,6 +330,19 @@ export default function Samples() {
     next = setSampleItemFieldValue(next, "per_flat_amount", baseAmount ? String(baseAmount) : "");
     next = setSampleItemFieldValue(next, "total_amount", totalAmount ? String(totalAmount) : "");
     next = setSampleItemFieldValue(next, "amount", totalAmount ? String(totalAmount) : "");
+    if (isBoqRow) {
+      const boqItemNo = String(
+        getSampleItemFieldValue(base, "item_code") ||
+          base.item_code ||
+          base.itemCode ||
+          base.code ||
+          ""
+      ).trim();
+      if (boqItemNo) {
+        next.item_no = boqItemNo;
+        next = setSampleItemFieldValue(next, "item_no", boqItemNo);
+      }
+    }
     if (rate) next = setSampleItemFieldValue(next, "rate", String(rate));
 
     return next;
@@ -427,10 +440,9 @@ export default function Samples() {
         row = setSampleItemFieldValue(row, "spec", String(sourceSpec));
       }
       row.item_no = String(
-        row.item_no ||
-        row.itemNo ||
-          getSampleItemFieldValue(row, "item_no") ||
-          getSampleItemFieldValue(row, "itemNo") ||
+        (isBoqRow
+          ? getSampleItemFieldValue(row, "item_code") || row.item_code || row.itemCode || row.code
+          : getSampleItemFieldValue(row, "item_no") || getSampleItemFieldValue(row, "itemNo") || row.item_no || row.itemNo) ||
           "-"
       ).trim() || "-";
       row.item_name = String(
@@ -1129,7 +1141,7 @@ export default function Samples() {
     const boqMatchKey = getBoqExactMatchKey(boqItem) || (boqId ? `id${boqId}` : `key${String(key).trim()}`);
     const primaryCode = String(derived.item_code || derived.code || derived.item_no || "-");
     const itemName = String(derived.item_name || derived.itemName || derived.description || "").trim();
-    const itemNo = String(derived.item_no || derived.item_code || derived.code || "-");
+    const itemNo = String(primaryCode || derived.item_no || derived.code || "-");
     const nextRow = {
       _row_type: "boq",
       sr_no: String(createForm.item_description.length + 1),
@@ -1216,8 +1228,12 @@ export default function Samples() {
         item_code: String(existing.item_code || existing.code || derived.item_code || derived.code || derived.item_no || "-"),
         code: String(existing.code || existing.item_code || derived.code || derived.item_code || derived.item_no || "-"),
         item_no: String(
-          (derived.item_no || derived.code) ||
-            existing.item_no ||
+          derived.item_code ||
+            derived.code ||
+            getSampleItemFieldValue(existing, "item_code") ||
+            existing.item_code ||
+            existing.code ||
+            derived.item_no ||
             getSampleItemFieldValue(existing, "item_no") ||
             "-"
         ),
@@ -1249,8 +1265,12 @@ export default function Samples() {
         merged,
         "item_no",
         String(
-          (derived.item_no || derived.code) ||
-            existing.item_no ||
+          derived.item_code ||
+            derived.code ||
+            getSampleItemFieldValue(existing, "item_code") ||
+            existing.item_code ||
+            existing.code ||
+            derived.item_no ||
             getSampleItemFieldValue(existing, "item_no") ||
             "-"
         )
