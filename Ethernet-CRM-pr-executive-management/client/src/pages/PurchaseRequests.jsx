@@ -548,8 +548,10 @@ const normalizePr = (item = {}) => {
             sample_flat_count: row?.sample_flat_count ?? row?.flat_count ?? (rowFlatCount > 0 ? rowFlatCount : ""),
             sample_floor_count: row?.sample_floor_count ?? row?.floor_count ?? (rowFloorCount > 0 ? rowFloorCount : ""),
             sample_multiplier: row?.sample_multiplier ?? row?.multiplier ?? (rowMultiplier > 1 ? rowMultiplier : ""),
-            item_no: row?.item_name || row?.item_no || row?.itemName || "",
-            item_name: row?.item_name || row?.item_no || row?.itemName || "",
+            item_no: row?.item_no || row?.boq_item_code || row?.item_code || row?.itemName || row?.item_name || "",
+            item_name: row?.item_name || row?.item_no || row?.boq_item_code || row?.itemCode || "",
+            item_code: row?.item_code || row?.code || row?.boq_item_code || row?.item_no || "",
+            boq_item_code: row?.boq_item_code || row?.boqItemCode || row?.item_code || row?.item_no || "",
             make: row?.make || "",
             row_source: row?.boq_id || row?.boqId ? "sample" : "manual",
           };
@@ -651,7 +653,7 @@ function PrFormDialog({
     setForm((prev) => {
       const rows = Array.isArray(prev.items) ? prev.items : [];
       let changed = false;
-      const nextRows = rows.map((row, index) => {
+      const nextRows = rows.map((row) => {
         if (!(row?.sample_total_qty || row?.sample_qty_per_flat || row?.sample_multiplier)) return row;
         const nextQty = parseNumberOrZero(row?.req_qty || row?.sample_total_qty || row?.sample_qty_per_flat);
         const nextValue = Number.isFinite(nextQty) && nextQty > 0 ? String(nextQty) : "";
@@ -1223,9 +1225,9 @@ function PrViewDialog({ open, onOpenChange, pr }) {
                   </TableRow>
                 ) : (
                   pr.items.map((item, idx) => (
-                    <TableRow key={`${item.pr_item_id || idx}`}>
+                      <TableRow key={`${item.pr_item_id || idx}`}>
                       <TableCell className="font-medium">
-                        {item.item_no || item.item_name || item.itemName || item.make || item.Make || extractMakeFromRemark(item.remark) || "-"}
+                        {item.item_no || item.boq_item_code || item.item_code || item.item_name || item.itemName || item.make || item.Make || extractMakeFromRemark(item.remark) || "-"}
                       </TableCell>
                       <TableCell>
                         {inventoryNameMap?.[Number(item?.inventory_id)] || item.material_description || "-"}
@@ -1550,18 +1552,21 @@ export default function PurchaseRequests() {
       prFile: null,
       signatureFile: null,
       items: Array.isArray(pr.items) && pr.items.length > 0
-        ? pr.items.map((item) => ({
+          ? pr.items.map((item) => ({
             material_description: item.material_description || "",
             unit: item.unit || "NOS",
             req_qty: item.req_qty ?? "",
             item_no: item.item_name || item.item_no || item.itemName || "",
             item_name: item.item_name || item.item_no || item.itemName || "",
+            item_code: item.item_code || item.code || item.item_no || "",
+            boq_item_code: item.boq_item_code || item.boqItemCode || item.item_no || "",
             make: item.make || "",
             place_of_utilisation: item.place_of_utilisation || "",
             inventory_id: item.inventory_id ?? item.inventoryId ?? null,
             issued_qty: item.issued_qty ?? item.issuedQty ?? null,
             boq_id: item.boq_id ?? item.boqId ?? "",
             boq_qty: item.boq_qty ?? item.boqQty ?? "",
+            row_source: item.boq_id || item.boqId ? "sample" : "manual",
             sample_total_qty: item.sample_total_qty ?? item.total_qty ?? "",
             sample_qty_per_flat: item.sample_qty_per_flat ?? item.qty_per_flat ?? "",
             sample_flat_count: item.sample_flat_count ?? item.flat_count ?? "",

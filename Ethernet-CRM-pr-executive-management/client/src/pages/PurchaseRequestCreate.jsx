@@ -120,28 +120,6 @@ const resolveManualRowQty = (row = {}, sample = {}) => {
   return 0;
 };
 
-const getSampleQuantityMeta = (row = {}, sample = {}) => {
-  const sampleTotalQty = parseNumberOrZero(
-    row?.total_qty ||
-      row?.quantity ||
-      row?.qty ||
-      getAddFieldValue(row, "total_qty") ||
-      getAddFieldValue(row, "selected_qty") ||
-      getAddFieldValue(row, "boq_base_qty")
-  );
-  const sampleFlatCount = parseNumberOrZero(sample?.flats || sample?.location?.flat_no || sample?.location?.flats);
-  const sampleFloorCount = parseNumberOrZero(sample?.location?.floor || sample?.location?.floor_no || sample?.location?.floors);
-  const sampleMultiplier = Math.max(1, sampleFlatCount * sampleFloorCount);
-  const sampleQtyPerFlat = sampleTotalQty > 0 ? sampleTotalQty : 0;
-  return {
-    sampleTotalQty,
-    sampleQtyPerFlat,
-    sampleFlatCount,
-    sampleFloorCount,
-    sampleMultiplier,
-  };
-};
-
 export default function PurchaseRequestCreate() {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -150,12 +128,10 @@ export default function PurchaseRequestCreate() {
   const [submitting, setSubmitting] = useState(false);
   const [sampleOptions, setSampleOptions] = useState([]);
   const [loadingSamples, setLoadingSamples] = useState(false);
-  const [prOptions, setPrOptions] = useState([]);
   const [loadingSampleItems, setLoadingSampleItems] = useState(false);
   const [projectOptions, setProjectOptions] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [prItemSearch, setPrItemSearch] = useState("");
-  const [loadingProjectMeta, setLoadingProjectMeta] = useState(false);
   const [sampleCatalogItems, setSampleCatalogItems] = useState([]);
   const [prItemSearchOpen, setPrItemSearchOpen] = useState(false);
   const [selectedSampleId, setSelectedSampleId] = useState("");
@@ -289,7 +265,6 @@ export default function PurchaseRequestCreate() {
       // Only fetch if we still don't have these derived fields.
       if (String(form.workorder_no || "").trim() && String(form.location || "").trim()) return;
 
-      setLoadingProjectMeta(true);
       try {
         const res = await api.getProjectById(pid);
         if (!mounted) return;
@@ -303,8 +278,8 @@ export default function PurchaseRequestCreate() {
           workorder_no: String(prev.workorder_no || "").trim() ? prev.workorder_no : wo,
           location: String(prev.location || "").trim() ? prev.location : loc,
         }));
-      } finally {
-        if (mounted) setLoadingProjectMeta(false);
+      } catch {
+        // Keep the current form values if project metadata cannot be loaded.
       }
     };
     loadProjectMeta();
@@ -344,42 +319,6 @@ export default function PurchaseRequestCreate() {
     };
 
     loadSamples();
-    return () => {
-      mounted = false;
-    };
-  }, [effectiveProjectId]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadPrOptions = async () => {
-      try {
-        if (!effectiveProjectId) {
-          setPrOptions([]);
-          return;
-        }
-
-        const result = await api.getPrsByProject(effectiveProjectId);
-
-        if (!mounted) return;
-        if (!result.success || !Array.isArray(result.data)) {
-          setPrOptions([]);
-          return;
-        }
-
-        const byId = new Map();
-        result.data.forEach((pr) => {
-          const id = pr?.pr_id ?? pr?.id;
-          if (id == null || id === "") return;
-          byId.set(String(id), pr);
-        });
-        setPrOptions(Array.from(byId.values()));
-      } catch {
-        if (mounted) setPrOptions([]);
-      }
-    };
-
-    loadPrOptions();
     return () => {
       mounted = false;
     };
