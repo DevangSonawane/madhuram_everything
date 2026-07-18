@@ -53,6 +53,40 @@ const parseNumberOrZero = (value) => {
 const getAddFieldValue = (row, fieldKey) =>
   (Array.isArray(row?.add_fields) ? row.add_fields : []).find((field) => String(field?.key || "").trim() === fieldKey)?.value ?? "";
 
+const isLikelyItemCode = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  if (/^\(?\d+(\.\d+){0,3}\)?$/.test(text)) return true;
+  if (/^[A-Z0-9][A-Z0-9._/-]{2,}$/.test(text) && !/\s/.test(text)) return true;
+  return false;
+};
+
+const resolveSamplePrItemLabel = (item = {}) => {
+  const candidates = [
+    item?.item_name,
+    item?.itemName,
+    getAddFieldValue(item, "item_name"),
+    getAddFieldValue(item, "itemName"),
+    item?.description,
+    item?.material_description,
+    item?.item,
+    item?.name,
+  ];
+
+  for (const candidate of candidates) {
+    const text = String(candidate ?? "").trim();
+    if (text && !isLikelyItemCode(text)) return text;
+  }
+
+  return String(
+    item?.item_no ||
+      item?.itemNo ||
+      getAddFieldValue(item, "item_no") ||
+      getAddFieldValue(item, "itemNo") ||
+      ""
+  ).trim();
+};
+
 const isManualLikeRow = (row = {}) => {
   const description = String(
     row?.description || row?.material_description || row?.item_no || row?.itemNo || row?.item_name || row?.itemName || row?.item_code || row?.code || ""
@@ -384,16 +418,7 @@ export default function PurchaseRequestCreate() {
       .map((item) => {
         const itemTotalQty = resolveManualRowQty(item, sample);
         const resolvedQty = itemTotalQty > 0 ? itemTotalQty : parseNumberOrZero(item?.qty_per_flat || item?.sample_qty_per_flat || item?.req_qty);
-        const explicitItemNo = String(
-          item?.item_name ||
-          item?.itemName ||
-          getAddFieldValue(item, "item_name") ||
-          getAddFieldValue(item, "itemName") ||
-          item?.item_no ||
-          item?.itemNo ||
-          getAddFieldValue(item, "item_no") ||
-          ""
-        ).trim();
+        const explicitItemNo = resolveSamplePrItemLabel(item);
         const explicitMake = String(item?.make || getAddFieldValue(item, "make") || "").trim();
         return {
           row_source: "sample",
@@ -458,6 +483,7 @@ export default function PurchaseRequestCreate() {
 
   const addCatalogItemToPr = (catalogItem) => {
     if (!catalogItem) return;
+    const resolvedItemNo = resolveSamplePrItemLabel(catalogItem);
     setForm((prev) => ({
         ...prev,
         items: [
@@ -466,8 +492,8 @@ export default function PurchaseRequestCreate() {
             ...createEmptyItem(),
             ...catalogItem,
             row_source: "sample",
-            item_no: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
-            item_name: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
+            item_no: resolvedItemNo,
+            item_name: resolvedItemNo,
             make: String(catalogItem?.make || "").trim(),
           },
         ],
@@ -966,7 +992,7 @@ export default function PurchaseRequestCreate() {
                         <TableRow key={`item-${index}`}>
                         <TableCell className="align-top">
                         <Input
-                          value={item.item_name || item.item_no || item.make}
+                          value={item.item_no || item.item_name || item.itemName || item.make}
                           onChange={(e) => setItemField(index, "item_no", e.target.value)}
                           placeholder="Item no."
                           className="h-9"

@@ -15,7 +15,6 @@ import { downloadSamplePdf } from "@/lib/samplePdf";
 import { extractCPVCData, mapCPVCItemsToSamples } from "@/lib/cpvcExtractor";
 import { extractSuspendedWorkData, mapSuspendedWorkItemsToSamples } from "@/lib/suspendedWorkExtractor";
 import { syncSampleBoqQuantities } from "@/lib/sampleBoqSync";
-import { getSamplePrimaryIdentifier, getSamplePrimaryIdentifierLabel } from "@/lib/sampleDisplay";
 // Diagram/other-doc preview removed from Samples create flow.
 import { useProject } from "@/contexts/useProject";
 import { api } from "@/lib/api";
@@ -46,7 +45,6 @@ export default function Samples() {
   
   // PDF extraction state - CPVC
   const [extractedDiagrams, setExtractedDiagrams] = useState([]);
-  const [extractedValues, setExtractedValues] = useState([]);
   const [processingPdf, setProcessingPdf] = useState(false);
   const [extractionProgress, setExtractionProgress] = useState({ current: 0, total: 0, message: '' });
   
@@ -145,11 +143,6 @@ export default function Samples() {
   };
 
   const isInsufficientStockError = (error) => /insufficient\s+stock/i.test(String(error || ""));
-
-  const toIntOrNull = (value) => {
-    const n = Number(String(value ?? "").replace(/,/g, "").trim());
-    return Number.isInteger(n) && n > 0 ? n : null;
-  };
 
   // BOQ in sample-management should display the BOQ rows "as-is" from the API.
   // We still derive a minimal set of fields for rendering/actions without mutating the original item.
@@ -351,15 +344,6 @@ export default function Samples() {
   const getCalculatedSampleRows = (rows = createForm.item_description, { flatCount = getFlatCount(), floorMultiplier = getFloorCount() } = {}) => {
     return reindexSampleRows(rows).map((row, index) => {
       const isManualRow = isManualLikeRow(row);
-      const isBoqRow = Boolean(
-        String(row?._row_type || "").toLowerCase() === "boq" ||
-        row?.boq_id ||
-        row?.boqId ||
-        row?.boq_key ||
-        row?.boqKey ||
-        row?.boq_match_key ||
-        row?.boqMatchKey
-      );
       const perFlatQty = Math.max(0, toFiniteNumber(row?.quantity) || 0);
       const perFlatAmount =
         toFiniteNumber(row?.value) ||
@@ -371,36 +355,36 @@ export default function Samples() {
       const totalAmount = perFlatAmount > 0 ? perFlatAmount * multiplier : 0;
       return {
         sr_no: row?.sr_no ?? row?.srno ?? row?.srNo ?? String(index + 1),
-        item_name: isBoqRow
-          ? String(
-              row?.item_no ||
-                row?.itemNo ||
-                getSampleItemFieldValue(row, "item_no") ||
-                getSampleItemFieldValue(row, "itemNo") ||
-                row?.item_code ||
-                row?.itemCode ||
-                row?.code ||
-                "-"
-            ).trim() || "-"
-          : String(
-              row?.item_name ||
-                row?.itemName ||
-                getSampleItemFieldValue(row, "item_name") ||
-                getSampleItemFieldValue(row, "itemName") ||
-                row?.description ||
-                ""
-            ).trim(),
+        item_no: String(
+          row?.item_no ||
+            row?.itemNo ||
+            getSampleItemFieldValue(row, "item_no") ||
+            getSampleItemFieldValue(row, "itemNo") ||
+            row?.item_code ||
+            row?.itemCode ||
+            row?.code ||
+            "-"
+        ).trim() || "-",
+        item_name: String(
+          row?.item_name ||
+            row?.itemName ||
+            getSampleItemFieldValue(row, "item_name") ||
+            getSampleItemFieldValue(row, "itemName") ||
+            row?.description ||
+            ""
+        ).trim(),
         description: row?.description ?? "",
-        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? row?.hsn ?? "",
+        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? "",
         specification: row?.specification ?? "",
         brand_name: row?.brand_name ?? "",
         unit: row?.unit ?? "",
         qty_per_flat: perFlatQty,
         flats: String(parsePositiveCount(flatCount)),
-        floors: parsePositiveCount(floorMultiplier),
-        total_qty: totalQty,
+        floors: String(parsePositiveCount(floorMultiplier)),
+        multiplier: String(multiplier),
+        total_qty: String(totalQty),
         per_flat_amount: perFlatAmount,
-        total_amount: totalAmount,
+        total_amount: String(totalAmount),
       };
     });
   };
@@ -442,32 +426,29 @@ export default function Samples() {
         row = setSampleItemFieldValue(row, "specification", String(sourceSpec));
         row = setSampleItemFieldValue(row, "spec", String(sourceSpec));
       }
-      row.item_name = isBoqRow
-        ? String(
-            row.item_no ||
-              row.itemNo ||
-              getSampleItemFieldValue(row, "item_no") ||
-              getSampleItemFieldValue(row, "itemNo") ||
-              row.item_code ||
-              row.itemCode ||
-              row.code ||
-              "-"
-          ).trim() || "-"
-        : String(
-            row.item_name ||
-              row.itemName ||
-              getSampleItemFieldValue(row, "item_name") ||
-              getSampleItemFieldValue(row, "itemName") ||
-              row.description ||
-              ""
-          ).trim();
+      row.item_no = String(
+        row.item_no ||
+        row.itemNo ||
+          getSampleItemFieldValue(row, "item_no") ||
+          getSampleItemFieldValue(row, "itemNo") ||
+          "-"
+      ).trim() || "-";
+      row.item_name = String(
+        row.item_name ||
+          row.itemName ||
+          getSampleItemFieldValue(row, "item_name") ||
+          getSampleItemFieldValue(row, "itemName") ||
+          row.description ||
+          ""
+      ).trim();
       row = setSampleItemFieldValue(row, "item_name", row.item_name);
+      row = setSampleItemFieldValue(row, "item_no", row.item_no);
       row.quantity = item.total_qty ? String(item.total_qty) : "";
       row.value = item.total_amount ? String(item.total_amount) : "";
       row.issued_qty = item.total_qty ? String(item.total_qty) : null;
       const rowBoqKey = String(row.boq_key || getSampleItemFieldValue(row, "boq_key") || boqId || "").trim();
       row.boq_key = rowBoqKey;
-      row.item_code = String(row.item_code || row.itemCode || row.code || row.hsn || getSampleItemFieldValue(row, "item_code") || "");
+      row.item_code = String(row.item_code || row.itemCode || row.code || getSampleItemFieldValue(row, "item_code") || "");
       row.code = String(row.code || row.item_code || row.itemCode || getSampleItemFieldValue(row, "code") || "");
       if (boqQty) {
         row.boq_qty = boqQty;
@@ -476,6 +457,7 @@ export default function Samples() {
       row = setSampleItemFieldValue(row, "qty_per_flat", item.qty_per_flat ? String(item.qty_per_flat) : "");
       row = setSampleItemFieldValue(row, "flat_count", isBoqRow ? "" : String(item.flats || ""));
       row = setSampleItemFieldValue(row, "floors", isBoqRow ? "" : String(item.floors || 0));
+      row = setSampleItemFieldValue(row, "multiplier", item.flats && item.floors ? String(Number(item.flats) * Number(item.floors)) : "");
       row = setSampleItemFieldValue(row, "total_qty", item.total_qty ? String(item.total_qty) : "");
       row = setSampleItemFieldValue(row, "per_flat_amount", item.per_flat_amount ? String(item.per_flat_amount) : "");
       row = setSampleItemFieldValue(row, "total_amount", item.total_amount ? String(item.total_amount) : "");
@@ -539,7 +521,7 @@ export default function Samples() {
     const explicit = String(derived?.client || "").trim().toLowerCase();
     if (explicit && explicit === c) return true;
 
-    const itemNo = String(derived?.item_no || derived?.item_code || "").trim();
+    const itemNo = String(derived?.item_no || derived?.item_code || derived?.code || "").trim();
     const hasHsn = String(derived?.hsn || "").trim() !== "";
     const hasSac = String(derived?.sac_code || "").trim() !== "";
     const isLodhaNo = /^\d+(\.\d+){1,3}$/.test(itemNo);
@@ -589,17 +571,6 @@ export default function Samples() {
       // ignore storage errors
     }
   };
-
-  const normalizeInventory = (item = {}) => ({
-    inventory_id: item.inventory_id || item.id,
-    project_id: item.project_id,
-    brand: item.brand || "",
-    name: item.name || "",
-    quantity: Number(item.current_quantity ?? item.quantity) || 0,
-    price: Number(item.price) || 0,
-    stockin: Boolean(item.stockin),
-    billing: Boolean(item.billing),
-  });
 
   const refreshProjectSamples = async () => {
     const pid = getSelectedProjectId();
@@ -1156,15 +1127,13 @@ export default function Samples() {
     const selectedBaseAmount = rateNum && qtyToAdd ? rateNum * qtyToAdd : 0;
     const boqId = String(derived.id || "").trim();
     const boqMatchKey = getBoqExactMatchKey(boqItem) || (boqId ? `id${boqId}` : `key${String(key).trim()}`);
-    const primaryCode = isHiranandaniClient
-      ? String(derived.sac_code || derived.item_code || derived.code || derived.item_no || "-")
-      : String(derived.item_code || derived.hsn || derived.item_no || derived.code || "-");
-    const itemName = String(derived.item_no || derived.item_name || derived.itemName || derived.item_code || derived.sac_code || derived.code || "").trim();
-    const itemNo = String(derived.item_no || derived.item_code || derived.sac_code || derived.code || "-");
+    const primaryCode = String(derived.item_code || derived.code || derived.item_no || "-");
+    const itemName = String(derived.item_name || derived.itemName || derived.description || "").trim();
+    const itemNo = String(derived.item_no || derived.item_code || derived.code || "-");
     const nextRow = {
       _row_type: "boq",
       sr_no: String(createForm.item_description.length + 1),
-      item_name: itemName,
+      item_name: itemName || String(derived.description || "-"),
       brand_name: "",
       description: String(derived.description || "-"),
       item_code: primaryCode,
@@ -1238,17 +1207,16 @@ export default function Samples() {
           getSampleItemFieldValue(existing, "item_name") ||
             existing.item_name ||
             existing.itemName ||
-            derived.item_no ||
-            derived.item_code ||
-            derived.sac_code ||
-            derived.code ||
+            derived.item_name ||
+            derived.itemName ||
+            derived.description ||
             "-"
         ).trim() || "-",
         description: String(existing.description || derived.description || "-"),
-        item_code: String(existing.item_code || existing.code || existing.hsn || derived.sac_code || derived.item_code || derived.hsn || derived.item_no || derived.code || "-"),
-        code: String(existing.code || existing.item_code || existing.hsn || derived.sac_code || derived.item_code || derived.hsn || derived.item_no || derived.code || "-"),
+        item_code: String(existing.item_code || existing.code || derived.item_code || derived.code || derived.item_no || "-"),
+        code: String(existing.code || existing.item_code || derived.code || derived.item_code || derived.item_no || "-"),
         item_no: String(
-          (derived.item_no || derived.item_code || derived.sac_code || derived.code) ||
+          (derived.item_no || derived.code) ||
             existing.item_no ||
             getSampleItemFieldValue(existing, "item_no") ||
             "-"
@@ -1281,21 +1249,22 @@ export default function Samples() {
         merged,
         "item_no",
         String(
-          (derived.item_no || derived.item_code || derived.sac_code || derived.code) ||
+          (derived.item_no || derived.code) ||
             existing.item_no ||
             getSampleItemFieldValue(existing, "item_no") ||
             "-"
         )
       );
-        merged = setSampleItemFieldValue(
+      merged = setSampleItemFieldValue(
         merged,
         "item_name",
         String(
           getSampleItemFieldValue(existing, "item_name") ||
-            getSampleItemFieldValue(existing, "item_name") ||
             getSampleItemFieldValue(existing, "itemName") ||
-            derived.item_no ||
-            getSamplePrimaryIdentifier(derived, activeBoqClient) ||
+            existing.item_name ||
+            derived.item_name ||
+            derived.itemName ||
+            derived.description ||
             ""
         ).trim()
       );
@@ -1480,37 +1449,41 @@ export default function Samples() {
     return filtered;
   }, [projectBoqItems, boqSearch, activeBoqClient, compareHiranandaniBoqOrder, deriveBoqFields]);
 
-  const inventoryTableKeys = useMemo(() => {
-    // Show only the fields the user cares about in the "items added" table.
-    // Order: Item Name -> Description -> Item Code -> Specification -> Brand -> Unit -> Qty
-    const preferredOrder = [
-      "item_name",
-      "description",
-      "item_code",
-      "specification",
-      "brand_name",
-      "unit",
-      "qty",
-    ];
-    const dynamicKeys = Array.from(
-      new Set(
-        createForm.item_description.flatMap((row) =>
-          (row.add_fields || [])
-            .map((field) => (field?.key || "").trim())
-            .filter(Boolean)
-        )
-      )
-    );
-    if (createForm.item_description.length > 0) {
-      ["item_name", "description", "item_code", "specification", "brand_name", "unit", "qty"].forEach((k) => {
-        if (!dynamicKeys.includes(k)) dynamicKeys.push(k);
-      });
-    }
-    const ordered = preferredOrder.filter((key) => dynamicKeys.includes(key));
-    return ordered;
-  }, [createForm.item_description]);
+  const sampleItemNoLabel = "Item No";
+  const sampleTableColumns = [
+    { key: "item_no", label: "Item No", widthClass: "w-[220px]", cellClass: "min-w-[220px]" },
+    { key: "description", label: "Description", widthClass: "w-[520px]", cellClass: "min-w-[520px]" },
+    { key: "item_code", label: "Item Code", widthClass: "w-[220px]", cellClass: "min-w-[220px]" },
+    { key: "specification", label: "Specification", widthClass: "w-[420px]", cellClass: "min-w-[420px]" },
+    { key: "brand_name", label: "Brand Name", widthClass: "w-[260px]", cellClass: "min-w-[260px]" },
+    { key: "unit", label: "Unit", widthClass: "w-[180px]", cellClass: "min-w-[180px]" },
+    { key: "qty_per_flat", label: "Qty / Flat", widthClass: "w-[140px]", cellClass: "min-w-[140px]" },
+    { key: "flats", label: "Flats", widthClass: "w-[110px]", cellClass: "min-w-[110px]" },
+    { key: "floors", label: "Floors", widthClass: "w-[110px]", cellClass: "min-w-[110px]" },
+    { key: "multiplier", label: "Multiplier", widthClass: "w-[150px]", cellClass: "min-w-[150px]" },
+    { key: "total_qty", label: "Total Qty", widthClass: "w-[140px]", cellClass: "min-w-[140px]" },
+  ];
 
-  const sampleItemNameLabel = getSamplePrimaryIdentifierLabel(activeBoqClient);
+  const getSampleTableValue = (row, key) => {
+    const field = (row.add_fields || []).find((f) => (f?.key || "").trim() === key);
+    const fieldValue = field?.value;
+    if (key === "item_no") return row?.item_no || row?.itemNo || fieldValue || "-";
+    if (key === "description") return row?.description ?? fieldValue ?? "-";
+    if (key === "item_code") return row?.item_code ?? row?.itemCode ?? row?.code ?? fieldValue ?? "-";
+    if (key === "specification") return row?.specification ?? fieldValue ?? "-";
+    if (key === "brand_name") return row?.brand_name ?? fieldValue ?? "-";
+    if (key === "unit") return row?.unit ?? fieldValue ?? "-";
+    if (key === "qty_per_flat") return row?.qty_per_flat ?? row?.quantity ?? fieldValue ?? "-";
+    if (key === "flats") return row?.flats ?? (String(getFlatCount()) || "-");
+    if (key === "floors") return row?.floors ?? (String(getFloorCount()) || "-");
+    if (key === "multiplier") {
+      const flats = Number(row?.flats ?? getFlatCount() ?? 0) || 0;
+      const floors = Number(row?.floors ?? getFloorCount() ?? 0) || 0;
+      return flats > 0 && floors > 0 ? `${flats} x ${floors} = ${flats * floors}` : fieldValue || "-";
+    }
+    if (key === "total_qty") return row?.total_qty ?? fieldValue ?? "-";
+    return fieldValue ?? "-";
+  };
 
   const boqReservedQtyByKey = useMemo(() => {
     const rows = Array.isArray(createForm.item_description) ? createForm.item_description : [];
@@ -1678,7 +1651,6 @@ export default function Samples() {
           }
           
           const cpvcData = extractCPVCData(text);
-          setExtractedValues(cpvcData.items);
           console.log(`Parsed ${cpvcData.items.length} CPVC items from text`);
           
           // Update floor count if found in PDF
@@ -1913,7 +1885,6 @@ export default function Samples() {
     setSuspendedWorkFile(null);
     setFloorPlanPreview(null);
     setExtractedDiagrams([]);
-    setExtractedValues([]);
     setSuspendedDiagrams([]);
     setSuspendedValues([]);
     setSamples(MOCK_SAMPLES);
@@ -2466,38 +2437,9 @@ export default function Samples() {
                 <Table className="min-w-[1900px]">
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      {inventoryTableKeys.map((key) => (
-                        <TableHead
-                          key={key}
-                          className={`whitespace-nowrap capitalize text-xs font-semibold tracking-wide text-muted-foreground ${
-                            key === "item_name"
-                              ? "w-[420px]"
-                              : key === "description"
-                                ? "w-[520px]"
-                                : key === "specification"
-                                  ? "w-[420px]"
-                                  : key === "brand_name"
-                                    ? "w-[260px]"
-                                    : key === "unit"
-                                      ? "w-[180px]"
-                                      : key === "item_code"
-                                        ? "w-[220px]"
-                                        : ""
-                          }`}
-                        >
-                          {key === "item_name"
-                            ? sampleItemNameLabel
-                            : key === "brand_name"
-                            ? "Brand Name"
-                            : key === "item_code"
-                              ? "Item Code"
-                            : key === "specification"
-                              ? "Specification"
-                            : key === "qty"
-                              ? "Qty / Flat"
-                            : key === "unit"
-                                  ? "Unit"
-                                  : "Description"}
+                      {sampleTableColumns.map((column) => (
+                        <TableHead key={column.key} className={`whitespace-nowrap text-xs font-semibold tracking-wide text-muted-foreground ${column.widthClass}`}>
+                          {column.label}
                         </TableHead>
                       ))}
                       <TableHead className="w-[90px]"></TableHead>
@@ -2506,51 +2448,27 @@ export default function Samples() {
                   <TableBody>
                     {createForm.item_description.map((row, idx) => (
                       <TableRow key={`${idx}-${row?.sr_no || "row"}`}>
-                      {inventoryTableKeys.map((key) => {
-                          const field = (row.add_fields || []).find((f) => (f?.key || "").trim() === key);
-                          const rawValue = (() => {
-                            if (key === "item_name") return row?.item_name || getSamplePrimaryIdentifier(row, activeBoqClient) || field?.value || "-";
-                            if (key === "description") return row?.description ?? field?.value ?? "-";
-                            if (key === "item_code") return row?.item_code ?? field?.value ?? "-";
-                            if (key === "specification") return row?.specification ?? field?.value ?? "-";
-                            if (key === "brand_name") return row?.brand_name ?? field?.value ?? "-";
-                            if (key === "unit") return row?.unit ?? field?.value ?? "-";
-                            if (key === "qty") return row?.quantity ?? field?.value ?? "-";
-                            return field?.value ?? "-";
-                          })();
+                      {sampleTableColumns.map((column) => {
+                          const rawValue = getSampleTableValue(row, column.key);
                           const rawText = String(rawValue ?? "").trim();
-                          const displayValue = (() => {
-                            if (key === "description") return truncateWords(rawText, 14);
-                            if (key === "specification") return truncateWords(rawText, 12);
-                            return rawText || "-";
-                          })();
+                          const displayValue = column.key === "description"
+                            ? truncateWords(rawText, 14)
+                            : column.key === "specification"
+                              ? truncateWords(rawText, 12)
+                              : rawText || "-";
                           return (
                             <TableCell
-                              key={`${idx}-${key}`}
-                              className={`text-sm font-medium ${
-                                key === "item_name"
-                                  ? "min-w-[420px]"
-                                  : key === "description"
-                                    ? "min-w-[520px]"
-                                    : key === "specification"
-                                      ? "min-w-[420px]"
-                                      : key === "brand_name"
-                                        ? "min-w-[260px]"
-                                        : key === "unit"
-                                          ? "min-w-[180px]"
-                                          : key === "item_code"
-                                            ? "min-w-[220px]"
-                                            : ""
-                              }`}
+                              key={`${idx}-${column.key}`}
+                              className={`text-sm font-medium ${column.cellClass}`}
                             >
-                              {key === "item_name" ? (
+                              {column.key === "item_no" ? (
                                 <Input
                                   className="h-9 w-full min-w-0 text-sm"
-                                  placeholder={sampleItemNameLabel}
-                                  value={row?.item_name || ""}
-                                  onChange={(e) => updateSampleItemRow(idx, { item_name: e.target.value })}
+                                  placeholder={sampleItemNoLabel}
+                                  value={row?.item_no || ""}
+                                  onChange={(e) => updateSampleItemRow(idx, { item_no: e.target.value })}
                                 />
-                              ) : key === "description" ? (
+                              ) : column.key === "description" ? (
                                 <div className="space-y-2">
                                   <Textarea
                                     className="min-h-20 w-full resize-y text-sm"
@@ -2576,47 +2494,45 @@ export default function Samples() {
                                     onClear={() => updateSampleItemRow(idx, { inventory_id: null, issued_qty: null })}
                                   />
                                 </div>
-                              ) : key === "brand_name" ? (
+                              ) : column.key === "brand_name" ? (
                                 <Input
                                   className="h-9 text-sm"
                                   placeholder="Brand Name"
                                   value={row?.brand_name || ""}
                                   onChange={(e) => updateSampleItemRow(idx, { brand_name: e.target.value })}
                                 />
-                              ) : key === "item_code" ? (
+                              ) : column.key === "item_code" ? (
                                 <Input
                                   className="h-9 text-sm"
                                   placeholder="Item Code"
                                   value={row?.item_code || ""}
                                   onChange={(e) => updateSampleItemRow(idx, { item_code: e.target.value })}
                                 />
-                              ) : key === "specification" ? (
+                              ) : column.key === "specification" ? (
                                 <Textarea
                                   className="min-h-16 resize-y text-sm"
                                   placeholder="Specification"
                                   value={row?.specification || ""}
                                   onChange={(e) => updateSampleItemRow(idx, { specification: e.target.value })}
                                 />
-                              ) : key === "unit" ? (
+                              ) : column.key === "unit" ? (
                                 <Input
                                   className="h-9 text-sm"
                                   placeholder="Unit"
                                   value={row?.unit || ""}
                                   onChange={(e) => updateSampleItemRow(idx, { unit: e.target.value })}
                                 />
-                              ) : key === "qty" ? (
+                              ) : column.key === "qty_per_flat" ? (
                                 <Input
                                   className="h-9 text-sm"
                                   placeholder="Qty / Flat"
                                   value={row?.quantity || ""}
                                   onChange={(e) => updateSampleItemRow(idx, { quantity: String(e.target.value || "").replace(/[^\d]/g, "") })}
                                 />
-                              ) : key === "description" ? (
-                                <span className="block max-w-[520px] truncate" title={rawText}>
+                              ) : (
+                                <span className={column.key === "description" ? "block max-w-[520px] truncate" : "block truncate"} title={rawText}>
                                   {displayValue}
                                 </span>
-                              ) : (
-                                displayValue
                               )}
                             </TableCell>
                           );
@@ -2710,7 +2626,7 @@ export default function Samples() {
                 <Table className="min-w-[1750px]">
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead className="w-[420px]">{sampleItemNameLabel}</TableHead>
+                      <TableHead className="w-[220px]">Item No</TableHead>
                       <TableHead className="w-[520px]">Description</TableHead>
                       <TableHead className="w-[220px]">Item Code</TableHead>
                       <TableHead className="w-[420px]">Specification</TableHead>
@@ -2731,7 +2647,7 @@ export default function Samples() {
                     ) : (
                       getCalculatedSampleRows(createForm.item_description).map((row, index) => (
                         <TableRow key={`preview-${index}`}>
-                          <TableCell>{row.item_name || getSamplePrimaryIdentifier(row, activeBoqClient) || "-"}</TableCell>
+                          <TableCell>{row.item_no || "-"}</TableCell>
                           <TableCell>{row.description || "-"}</TableCell>
                           <TableCell>{row.item_code || "-"}</TableCell>
                           <TableCell>{row.specification || "-"}</TableCell>
@@ -2741,7 +2657,7 @@ export default function Samples() {
                         <TableCell className="border-l border-border/70 text-center font-medium">{row.flats || "-"}</TableCell>
                         <TableCell className="border-l border-border/70 text-center font-medium">{row.floors || "-"}</TableCell>
                         <TableCell className="border-l border-border/70 text-center font-semibold">
-                          {row.flats && row.floors ? `${row.flats} x ${row.floors} = ${Number(row.flats) * Number(row.floors)}` : "-"}
+                          {row.multiplier || (row.flats && row.floors ? `${row.flats} x ${row.floors} = ${Number(row.flats) * Number(row.floors)}` : "-")}
                         </TableCell>
                         <TableCell className="text-right">{row.total_qty || "-"}</TableCell>
                       </TableRow>
@@ -3033,7 +2949,7 @@ export default function Samples() {
                           </button>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{derived.section || "-"}</TableCell>
-                        <TableCell className="font-medium">{derived.item_no || derived.item_code || "-"}</TableCell>
+                        <TableCell className="font-medium">{derived.item_no || "-"}</TableCell>
                         {activeBoqClient === "lodha" ? (
                           <TableCell className="font-mono text-xs">{derived.hsn || "-"}</TableCell>
                         ) : activeBoqClient === "hiranandani" ? (

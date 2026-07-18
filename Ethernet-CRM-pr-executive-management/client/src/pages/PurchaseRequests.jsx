@@ -207,6 +207,49 @@ const normalizeLookupText = (value) => String(value || "").trim().toLowerCase().
 const getSampleAddFieldValue = (row, fieldKey) =>
   (Array.isArray(row?.add_fields) ? row.add_fields : []).find((field) => String(field?.key || "").trim() === fieldKey)?.value ?? "";
 
+const isLikelyItemCode = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  if (/^\(?\d+(\.\d+){0,3}\)?$/.test(text)) return true;
+  if (/^[A-Z0-9][A-Z0-9._/-]{2,}$/.test(text) && !/\s/.test(text)) return true;
+  return false;
+};
+
+const resolvePrItemNo = (row = {}) => {
+  return String(
+    row?.item_no ||
+      getSampleAddFieldValue(row, "item_no") ||
+      row?.itemNo ||
+      row?.item_name ||
+      row?.itemName ||
+      row?.description ||
+      row?.material_description ||
+      row?.item_code ||
+      row?.boq_item_code ||
+      ""
+  ).trim();
+};
+
+const resolvePrItemName = (row = {}, fallback = "") => {
+  const candidates = [
+    row?.item_name,
+    getSampleAddFieldValue(row, "item_name"),
+    row?.description,
+    row?.material_description,
+    row?.item,
+    row?.name,
+    row?.item_no,
+    row?.itemNo,
+  ];
+
+  for (const candidate of candidates) {
+    const text = String(candidate ?? "").trim();
+    if (text && !isLikelyItemCode(text)) return text;
+  }
+
+  return String(fallback || resolvePrItemNo(row)).trim();
+};
+
 const parseSampleItemsForPrPdf = (sample) => {
   const rawItems = parseMaybeJson(sample?.item_description ?? sample?.items ?? sample?.item_descriptions, []);
   const list = Array.isArray(rawItems) ? rawItems : [];
@@ -272,8 +315,8 @@ const enrichPrItemsWithSampleData = (pr, sample) => {
       ...item,
       sample_id: sampleId || matched.sample_id || "",
       boq_serial_no: matched.boq_serial_no || String(index + 1),
-      item_no: matched.item_name || matched.item_no || item.item_name || item.item_no || "",
-      item_name: matched.item_name || matched.item_no || item.item_name || item.item_no || "",
+      item_no: resolvePrItemNo(matched) || resolvePrItemNo(item),
+      item_name: resolvePrItemName(matched, resolvePrItemName(item, item.item_name || item.item_no || "")),
       description: matched.description || item.description || item.material_description || "",
       make: item.make || "",
     };
@@ -548,8 +591,8 @@ const normalizePr = (item = {}) => {
             sample_flat_count: row?.sample_flat_count ?? row?.flat_count ?? (rowFlatCount > 0 ? rowFlatCount : ""),
             sample_floor_count: row?.sample_floor_count ?? row?.floor_count ?? (rowFloorCount > 0 ? rowFloorCount : ""),
             sample_multiplier: row?.sample_multiplier ?? row?.multiplier ?? (rowMultiplier > 1 ? rowMultiplier : ""),
-            item_no: row?.item_no || getSampleAddFieldValue(row, "item_no") || row?.boq_item_code || row?.item_code || row?.itemName || row?.item_name || "",
-            item_name: row?.item_name || getSampleAddFieldValue(row, "item_name") || row?.item_no || row?.boq_item_code || row?.itemCode || "",
+            item_no: resolvePrItemNo(row),
+            item_name: resolvePrItemName(row, row?.item_name || row?.item_no || ""),
             item_code: row?.item_code || getSampleAddFieldValue(row, "item_code") || row?.code || row?.boq_item_code || row?.item_no || "",
             boq_item_code: row?.boq_item_code || getSampleAddFieldValue(row, "boq_item_code") || row?.boqItemCode || row?.item_code || row?.item_no || "",
             make: row?.make || "",

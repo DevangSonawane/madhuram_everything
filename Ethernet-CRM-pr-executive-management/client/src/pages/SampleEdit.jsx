@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Loader2, Plus, Eye, Search, Minus, Layers, Save, Trash2 } from "lucide-react";
 import InventoryPicker from "@/components/InventoryPicker";
 import { useResolvedProject } from "@/hooks/useResolvedProject";
-import { getSamplePrimaryIdentifier, getSamplePrimaryIdentifierLabel, resolveSampleClient } from "@/lib/sampleDisplay";
+import { getSamplePrimaryIdentifier, resolveSampleClient } from "@/lib/sampleDisplay";
 
 const pickSampleFilePath = (value) => {
   if (!value) return "";
@@ -74,7 +74,7 @@ export default function SampleEdit() {
     sample_file: "",
     flats: "",
     location: { floor: "", flat_no: "", block: "", wing: "", coordinates: "" },
-    item_description: [{ sr_no: "", item_name: "", item_code: "", code: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }],
+    item_description: [{ sr_no: "", item_no: "", item_name: "", item_code: "", code: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }],
     add_fields: []
   });
   const [attachmentOpen, setAttachmentOpen] = useState(false);
@@ -350,9 +350,6 @@ export default function SampleEdit() {
     const itemNo = String(
       row?.item_no ||
         row?.itemNo ||
-        row?.item_code ||
-        row?.itemCode ||
-        row?.code ||
         row?.boq_item_code ||
         row?.boqItemCode ||
         ""
@@ -407,9 +404,9 @@ export default function SampleEdit() {
         _row_type: "boq",
         sr_no: matchIndex >= 0 ? rows[matchIndex]?.sr_no || String(matchIndex + 1) : String(rows.length + 1),
         item_name: existing.item_name || derived.description || normalizeBoqRowName(derived),
-        item_no: normalizeBoqRowName(derived),
-        item_code: derived.item_code || derived.item_no || derived.hsn || derived.sac_code || "",
-        code: derived.item_code || derived.item_no || derived.hsn || derived.sac_code || "",
+        item_no: String(derived.item_no || derived.itemNo || normalizeBoqRowName(derived) || "").trim() || "-",
+        item_code: derived.item_code || derived.item_no || "",
+        code: derived.item_code || derived.item_no || "",
         description: derived.description || "-",
         specification: "",
         brand_name: "",
@@ -435,7 +432,7 @@ export default function SampleEdit() {
           { key: "boq_key", value: key },
           { key: "boq_match_key", value: key },
           { key: "item_no", value: normalizeBoqRowName(derived) },
-          { key: "item_code", value: String(derived.item_code || derived.item_no || derived.hsn || derived.sac_code || "") },
+          { key: "item_code", value: String(derived.item_code || derived.item_no || "") },
           { key: "description", value: String(derived.description || "-") },
           { key: "unit", value: String(derived.unit || "") },
           { key: "selected_qty", value: String(nextBaseQty) },
@@ -527,15 +524,15 @@ export default function SampleEdit() {
   const flatCount = parsePositiveCount(form.flats);
   const floorCount = parsePositiveCount(form.location?.floor);
   const floorFlatMultiplier = flatCount > 0 && floorCount > 0 ? flatCount * floorCount : 0;
-  const sampleItemNameLabel = getSamplePrimaryIdentifierLabel(sampleClient);
+  const sampleItemNoLabel = "Item No";
   const calculatedSampleRows = useMemo(() => {
     return (Array.isArray(form.item_description) ? form.item_description : []).map((row) => {
       const qtyPerFlat = toFiniteNumber(row?.quantity ?? row?.total_qty ?? row?.selected_qty ?? row?.issued_qty ?? row?.boq_issued_qty ?? row?.qty_per_flat ?? row?.qty) || 0;
       const totalQty = qtyPerFlat > 0 && floorFlatMultiplier > 0 ? qtyPerFlat * floorFlatMultiplier : toFiniteNumber(row?.total_qty ?? row?.quantity ?? row?.qty) || "";
-      const displayItemName = row?.item_name || row?.item_no || row?.boq_description || row?.description || getSamplePrimaryIdentifier(row, sampleClient) || "";
+      const displayItemNo = row?.item_no || row?.itemNo || row?.boq_description || row?.description || getSamplePrimaryIdentifier(row, sampleClient) || "";
       return {
         ...row,
-        item_name: displayItemName,
+        item_no: displayItemNo,
         qty_per_flat: qtyPerFlat > 0 ? String(qtyPerFlat) : row?.qty_per_flat || "",
         total_qty: totalQty ? String(totalQty) : row?.total_qty || "",
         flats: String(flatCount || ""),
@@ -986,7 +983,7 @@ export default function SampleEdit() {
                     <Button size="sm" onClick={() => setBoqPickerOpen(true)}>
                       View Items from BOQ
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setForm({ ...form, item_description: [...form.item_description, { sr_no: "", item_name: "", item_code: "", code: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }] })}>
+                    <Button size="sm" variant="outline" onClick={() => setForm({ ...form, item_description: [...form.item_description, { sr_no: "", item_no: "", item_name: "", item_code: "", code: "", brand_name: "", description: "", specification: "", unit: "", quantity: "", value: "", inventory_id: null, issued_qty: null, boq_id: null, boq_qty: null, boq_issued_qty: null }] })}>
                       <Plus className="mr-2 h-4 w-4" /> Add Item
                     </Button>
                   </div>
@@ -997,13 +994,10 @@ export default function SampleEdit() {
                       <Input placeholder="Sr No" value={row.sr_no} onChange={(e) => {
                         const next = [...form.item_description]; next[idx] = { ...next[idx], sr_no: e.target.value }; setForm({ ...form, item_description: next });
                       }} />
-                      <Input placeholder={sampleItemNameLabel} value={row.item_name || row.item_no || row.boq_description || row.description || ""} onChange={(e) => {
+                      <Input placeholder={sampleItemNoLabel} value={row.item_no || row.boq_description || row.description || ""} onChange={(e) => {
                         const next = [...form.item_description];
                         const nextValue = e.target.value;
-                        const nextRow = { ...next[idx], item_name: nextValue };
-                        if (nextRow.boq_id || nextRow.boq_key || nextRow.boq_match_key) {
-                          nextRow.item_no = nextValue;
-                        }
+                        const nextRow = { ...next[idx], item_no: nextValue };
                         next[idx] = nextRow;
                         setForm({ ...form, item_description: next });
                       }} />
@@ -1112,7 +1106,7 @@ export default function SampleEdit() {
                     <Table className="min-w-[1750px]">
                       <TableHeader>
                         <TableRow className="bg-muted/40">
-                          <TableHead className="w-[220px]">{sampleItemNameLabel}</TableHead>
+                          <TableHead className="w-[220px]">Item No</TableHead>
                           <TableHead className="w-[520px]">Description</TableHead>
                           <TableHead className="w-[220px]">Item Code</TableHead>
                           <TableHead className="w-[420px]">Specification</TableHead>
@@ -1133,7 +1127,7 @@ export default function SampleEdit() {
                         ) : (
                           calculatedSampleRows.map((row, index) => (
                             <TableRow key={`preview-${index}`}>
-                              <TableCell>{row.item_name || row.item_no || row.boq_description || row.description || getSamplePrimaryIdentifier(row, sampleClient) || "-"}</TableCell>
+                              <TableCell>{row.item_no || row.itemNo || row.boq_description || row.description || getSamplePrimaryIdentifier(row, sampleClient) || "-"}</TableCell>
                               <TableCell>{row.description || "-"}</TableCell>
                               <TableCell>{row.item_code || "-"}</TableCell>
                               <TableCell>{row.specification || "-"}</TableCell>
@@ -1143,7 +1137,7 @@ export default function SampleEdit() {
                               <TableCell className="border-l border-border/70 text-center font-medium">{row.flats || "-"}</TableCell>
                               <TableCell className="border-l border-border/70 text-center font-medium">{row.floors || "-"}</TableCell>
                               <TableCell className="border-l border-border/70 text-center font-semibold">
-                                {row.flats && row.floors ? `${row.flats} x ${row.floors} = ${Number(row.flats) * Number(row.floors)}` : "-"}
+                                {row.multiplier || (row.flats && row.floors ? `${row.flats} x ${row.floors} = ${Number(row.flats) * Number(row.floors)}` : "-")}
                               </TableCell>
                               <TableCell className="text-right">{row.total_qty || "-"}</TableCell>
                             </TableRow>

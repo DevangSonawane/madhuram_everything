@@ -1826,14 +1826,26 @@ export const api = {
     const result = await handleResponse(response);
     if (!result?.success || !result.data || typeof result.data !== 'object') return result;
 
+    const submittedItems = Array.isArray(data?.items) ? data.items : [];
     const normalizePrItemsForClient = (items) => {
       if (!Array.isArray(items)) return items;
-      return items.map((item) => {
+      return items.map((item, index) => {
         if (!item || typeof item !== 'object') return item;
+        const submitted = submittedItems[index] && typeof submittedItems[index] === 'object' ? submittedItems[index] : {};
+        const submittedItemNo = String(submitted.item_no || submitted.itemName || submitted.item_name || '').trim();
+        const submittedItemName = String(submitted.item_name || submitted.item_no || submitted.itemName || '').trim();
+        const next = { ...item };
+        if (submittedItemNo) {
+          next.item_no = submittedItemNo;
+          next.item_name = submittedItemName || submittedItemNo;
+          next.item_code = submittedItemNo;
+          next.boq_item_code = submittedItemNo;
+          return next;
+        }
+
         const itemNo = String(item.item_no || item.itemName || item.item_name || '').trim();
         const itemCode = String(item.item_code || item.itemCode || item.code || '').trim();
         const boqItemCode = String(item.boq_item_code || item.boqItemCode || '').trim();
-        const next = { ...item };
         if (!itemCode && itemNo) next.item_code = itemNo;
         if (!boqItemCode && itemNo) next.boq_item_code = itemNo;
         return next;
