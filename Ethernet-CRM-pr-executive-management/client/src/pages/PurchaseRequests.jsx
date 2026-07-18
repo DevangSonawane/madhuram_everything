@@ -72,6 +72,7 @@ const createEmptyItem = () => ({
   issued_qty: null,
   boq_id: "",
   boq_qty: "",
+  row_source: "manual",
 });
 
 const createEmptyForm = () => ({
@@ -550,6 +551,7 @@ const normalizePr = (item = {}) => {
             item_no: row?.item_name || row?.item_no || row?.itemName || "",
             item_name: row?.item_name || row?.item_no || row?.itemName || "",
             make: row?.make || "",
+            row_source: row?.boq_id || row?.boqId ? "sample" : "manual",
           };
         })
       : [],
@@ -584,7 +586,9 @@ function PrFormDialog({
       const next = [...prev.items];
       next[index] = { ...next[index], [field]: value };
       if (field === "item_no" || field === "item_name") {
-        next[index] = { ...next[index], item_no: value, item_name: value };
+        next[index] = { ...next[index], item_no: value, item_name: value, row_source: "manual" };
+      } else if (field === "material_description" || field === "unit" || field === "place_of_utilisation" || field === "make") {
+        next[index] = { ...next[index], row_source: "manual" };
       }
       if (field === "req_qty" && next[index]?.inventory_id) {
         next[index] = { ...next[index], issued_qty: value };
@@ -1641,19 +1645,28 @@ export default function PurchaseRequests() {
         const previewQty = Number(item.req_qty || item.sample_qty_per_flat || item.sample_total_qty || 0);
         const inventoryId = parseIntegerOrNull(item.inventory_id);
         const boqId = parseIntegerOrNull(item.boq_id);
-        return {
-          item_no: String(item.item_name || item.item_no || item.itemName || "").trim(),
-          item_name: String(item.item_name || item.item_no || item.itemName || "").trim(),
+        const itemNo = String(item.item_no || item.item_name || item.itemName || "").trim();
+        const isSampleRow = String(item.row_source || "").toLowerCase() === "sample";
+        const normalized = {
+          item_no: itemNo,
+          item_name: itemNo,
+          item_code: itemNo,
+          boq_item_code: itemNo,
           material_description: String(item.material_description || "").trim(),
           unit: String(item.unit || "").trim() || "NOS",
           req_qty: Number(previewQty),
           make: String(item.make || "").trim(),
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
-          inventory_id: inventoryId ?? 0,
-          issued_qty: inventoryId ? (Number.isFinite(Number(item.issued_qty)) && Number(item.issued_qty) > 0 ? Number(item.issued_qty) : Number(previewQty)) : 0,
-          boq_id: boqId ?? 0,
-          boq_qty: Number.isFinite(Number(item.boq_qty)) && Number(item.boq_qty) > 0 ? Number(item.boq_qty) : Number(previewQty),
         };
+        if (inventoryId) {
+          normalized.inventory_id = inventoryId;
+          normalized.issued_qty = Number.isFinite(Number(item.issued_qty)) && Number(item.issued_qty) > 0 ? Number(item.issued_qty) : Number(previewQty);
+        }
+        if (isSampleRow && boqId) {
+          normalized.boq_id = boqId;
+          normalized.boq_qty = Number.isFinite(Number(item.boq_qty)) && Number(item.boq_qty) > 0 ? Number(item.boq_qty) : Number(previewQty);
+        }
+        return normalized;
       })
       .filter((item) => item.material_description && Number.isFinite(item.req_qty) && item.req_qty > 0);
 
@@ -1710,18 +1723,29 @@ export default function PurchaseRequests() {
         mirno: String(form.mirno || "").trim(),
         urgency: form.urgency || "Medium",
         date: form.date || new Date().toISOString().slice(0, 10),
-        items: cleanedItems.map((item) => ({
-          material_description: item.material_description,
-          unit: item.unit,
-          req_qty: item.req_qty,
-          make: item.make,
-          place_of_utilisation: item.place_of_utilisation,
-          inventory_id: item.inventory_id ?? 0,
-          issued_qty: item.issued_qty ?? 0,
-          boq_id: item.boq_id ?? 0,
-          boq_qty: item.boq_qty ?? 0,
-          item_no: item.item_no || "",
-        })),
+        items: cleanedItems.map((item) => {
+          const isSampleRow = String(item.row_source || "").toLowerCase() === "sample";
+          const base = {
+            material_description: item.material_description,
+            unit: item.unit,
+            req_qty: item.req_qty,
+            make: item.make,
+            place_of_utilisation: item.place_of_utilisation,
+            item_no: item.item_no || "",
+            item_name: item.item_no || "",
+            item_code: item.item_no || "",
+            boq_item_code: item.item_no || "",
+          };
+          if (item.inventory_id) {
+            base.inventory_id = item.inventory_id;
+            base.issued_qty = item.issued_qty ?? item.req_qty;
+          }
+          if (isSampleRow && item.boq_id) {
+            base.boq_id = item.boq_id;
+            base.boq_qty = item.boq_qty ?? item.req_qty;
+          }
+          return base;
+        }),
       };
 
       if (editingPrId) {
