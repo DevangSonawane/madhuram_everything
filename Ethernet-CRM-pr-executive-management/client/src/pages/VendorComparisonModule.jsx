@@ -25,7 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useResolvedProject } from "@/hooks/useResolvedProject";
-import { getPrItemDescription, matchAgainstPrItems } from "@/lib/prItemMatcher";
+import { getPrItemDescription, getPrItemNo, matchAgainstPrItems } from "@/lib/prItemMatcher";
 
 const ACCEPTED_UPLOAD_TYPES = ".pdf,.csv,.xlsx,.xls";
 
@@ -180,11 +180,13 @@ const mergeWithPrItems = (excelRows, vendors, prItems) => {
       const prMatch = prMatchResult.matchedPrItem || null;
       if (!prMatch) return null;
       const canonical = getPrItemDescription(prMatch) || row.item_description;
+      const itemNo = getPrItemNo(prMatch) || String(row?.item_no || row?.itemNo || "").trim();
       const unit = String(prMatch?.unit ?? row?.unit ?? "").trim();
 
       return {
         sr_no: row.sr_no,
         hsn_code: row.hsn_code,
+        item_no: itemNo,
         material_description: canonical,
         qty: row.qty,
         unit,
@@ -275,6 +277,7 @@ const buildPricelistFromRows = (comparisonRows, vendorLookupMap = new Map(), app
       const qtyRaw = row?.qty ?? "";
       const qty = qtyRaw == null ? null : qtyRaw;
       const itemDescription = String(row?.material_description ?? row?.item_description ?? "").trim();
+      const itemNo = String(row?.item_no ?? row?.itemNo ?? getPrItemNo(row?.matchedPrItem) ?? "").trim();
       if (!itemDescription) return [];
       const vendorPrices = Array.isArray(row?.vendorPrices) ? row.vendorPrices : [];
       const approvedKey = normalizeVendorKey(approvedVendorName);
@@ -288,6 +291,7 @@ const buildPricelistFromRows = (comparisonRows, vendorLookupMap = new Map(), app
         {
           vendor_id: vendorIdentity.vendor_id,
           vendor_name: vendorIdentity.vendor_name || vendorName,
+          item_no: itemNo,
           item_description: itemDescription,
           total_qty: toNumberOrNull(qty),
           rate: toNumberOrNull(selectedPrice?.rate),
@@ -320,6 +324,7 @@ const buildComparisonFromPricelist = (comparison) => {
     const desc = getDesc(row) || "Unnamed Item";
     const hsn = getHsn(row);
     const unit = getUnit(row);
+    const itemNo = String(row?.item_no ?? row?.itemNo ?? "").trim();
     const qty = toNumberOrNull(row?.total_qty ?? row?.qty ?? row?.quantity) ?? row?.total_qty ?? row?.qty ?? row?.quantity ?? null;
     const rate = toNumberOrNull(row?.rate);
     const amount = toNumberOrNull(row?.amount);
@@ -330,6 +335,7 @@ const buildComparisonFromPricelist = (comparison) => {
     if (!itemMap.has(key)) {
       itemMap.set(key, {
         material_description: desc,
+        item_no: itemNo,
         hsn_code: hsn,
         unit,
         qtys: [],
@@ -337,6 +343,7 @@ const buildComparisonFromPricelist = (comparison) => {
       });
     }
     const entry = itemMap.get(key);
+    if (!entry.item_no && itemNo) entry.item_no = itemNo;
     if (qty !== null && qty !== undefined && qty !== "") entry.qtys.push(qty);
     if (vendorName) entry.byVendor.set(vendorName, { vendorName, rate, amount });
   });
@@ -347,6 +354,7 @@ const buildComparisonFromPricelist = (comparison) => {
     const qty = qtyNumeric.length > 0 ? Math.max(...qtyNumeric) : item.qtys.find((v) => v !== null && v !== undefined) ?? null;
     return {
       sr_no: index + 1,
+      item_no: item.item_no || "",
       hsn_code: item.hsn_code,
       material_description: item.material_description,
       qty,
@@ -373,13 +381,13 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
 
   const totals = calculateTotals(comparisonRows, vendorNames, summary);
 
-  const vendorHeaderRow = ["", "", "", "", ""];
+  const vendorHeaderRow = ["", "", "", "", "", ""];
   vendorNames.forEach((name) => {
     vendorHeaderRow.push(name);
     vendorHeaderRow.push("");
   });
 
-  const columnHeaderRow = ["Sr. No", "HSN Code", "Item Description", "Qty", "UOM"];
+  const columnHeaderRow = ["Sr. No", "Item No", "HSN Code", "Item Description", "Qty", "UOM"];
   vendorNames.forEach(() => {
     columnHeaderRow.push("Rate");
     columnHeaderRow.push("Amount");
@@ -388,6 +396,7 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
   const itemRows = comparisonRows.map((row) => {
     const base = [
       row.sr_no,
+      row.item_no || "",
       row.hsn_code,
       row.material_description,
       row.qty,
@@ -401,22 +410,22 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
     return base;
   });
 
-  const subtotalRow = ["", "", "Subtotal", "", ""];
+  const subtotalRow = ["", "", "", "", "Subtotal", ""];
   totals.subtotals.forEach((v) => {
     subtotalRow.push("");
     subtotalRow.push(v);
   });
-  const discountRow = ["", "", "Discount", "", ""];
+  const discountRow = ["", "", "", "", "Discount", ""];
   totals.discount.forEach((v) => {
     discountRow.push("");
     discountRow.push(v);
   });
-  const gstRow = ["", "", "GST", "", ""];
+  const gstRow = ["", "", "", "", "GST", ""];
   totals.gst.forEach((v) => {
     gstRow.push("");
     gstRow.push(v);
   });
-  const totalRow = ["", "", "Total Value", "", ""];
+  const totalRow = ["", "", "", "", "Total Value", ""];
   totals.total.forEach((v) => {
     totalRow.push("");
     totalRow.push(v);
@@ -441,13 +450,14 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
 
   const mergeRanges = [];
   vendorNames.forEach((_, idx) => {
-    mergeRanges.push({ s: { r: 5, c: 5 + idx * 2 }, e: { r: 5, c: 6 + idx * 2 } });
+    mergeRanges.push({ s: { r: 5, c: 6 + idx * 2 }, e: { r: 5, c: 7 + idx * 2 } });
   });
   ws["!merges"] = mergeRanges;
 
-  const lastCol = 4 + vendors.length * 2;
+  const lastCol = 5 + vendors.length * 2;
   ws["!cols"] = [
     { wch: 8 },
+    { wch: 12 },
     { wch: 12 },
     { wch: 60 },
     { wch: 10 },
@@ -493,10 +503,11 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
   for (let r = 7; r < 7 + itemRows.length; r += 1) {
     applyCellStyle(r, 0, { alignment: centered });
     applyCellStyle(r, 1, { alignment: centered });
-    applyCellStyle(r, 2, { alignment: leftWrap });
-    applyCellStyle(r, 3, { alignment: centered });
+    applyCellStyle(r, 2, { alignment: centered });
+    applyCellStyle(r, 3, { alignment: leftWrap });
     applyCellStyle(r, 4, { alignment: centered });
-    for (let c = 5; c <= lastCol; c += 1) {
+    applyCellStyle(r, 5, { alignment: centered });
+    for (let c = 6; c <= lastCol; c += 1) {
       applyCellStyle(r, c, { alignment: centered });
     }
   }
@@ -586,7 +597,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
     .filter(Boolean);
 
   const itemGroups = groupItemsForDownload(selectedItems);
-  const lastCol = 5 + exportVendors.length * 2;
+  const lastCol = 6 + exportVendors.length * 2;
   const colLetter = (colNumber) => XLSX.utils.encode_col(colNumber - 1);
 
   const fillRange = (rowNumber, startCol, endCol, fill, font = null, alignment = { horizontal: "center", vertical: "middle", wrapText: true }) => {
@@ -666,8 +677,8 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
 
   const vendorRow = 7;
   const headerRow = 8;
-  for (let col = 6; col <= lastCol; col += 2) {
-    const vendorIndex = Math.floor((col - 6) / 2);
+  for (let col = 7; col <= lastCol; col += 2) {
+    const vendorIndex = Math.floor((col - 7) / 2);
     const rateCol = col;
     const amountCol = col + 1;
     const vendorName = exportVendors[vendorIndex] || `Vendor ${vendorIndex + 1}`;
@@ -695,7 +706,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
 
   fillRange(headerRow, 1, lastCol, headerFill, fontArial10WhiteBold);
 
-  ["Sr. No.", "HSN Code", "Item Description", "Qty", "UOM"].forEach((text, index) => {
+  ["Sr. No.", "Item No", "HSN Code", "Item Description", "Qty", "UOM"].forEach((text, index) => {
     const cell = worksheet.getCell(headerRow, index + 1);
     cell.value = text;
     cell.font = fontArial10WhiteBold;
@@ -731,32 +742,34 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
       const rowNumber = currentRow;
       itemRowNumbers.push(rowNumber);
       worksheet.getCell(rowNumber, 1).value = itemSerial;
-      worksheet.getCell(rowNumber, 2).value = item?.hsn_code || item?.hsn || item?.hsnCode || "";
-      worksheet.getCell(rowNumber, 3).value = getPrItemDescription(item) || item?.material_description || item?.description || "";
-      worksheet.getCell(rowNumber, 4).value = item?.req_qty ?? item?.qty ?? item?.quantity ?? "";
-      worksheet.getCell(rowNumber, 5).value = item?.unit ?? item?.uom ?? item?.UOM ?? "";
+      worksheet.getCell(rowNumber, 2).value = getPrItemNo(item) || item?.item_no || item?.itemNo || "";
+      worksheet.getCell(rowNumber, 3).value = item?.hsn_code || item?.hsn || item?.hsnCode || "";
+      worksheet.getCell(rowNumber, 4).value = getPrItemDescription(item) || item?.material_description || item?.description || "";
+      worksheet.getCell(rowNumber, 5).value = item?.req_qty ?? item?.qty ?? item?.quantity ?? "";
+      worksheet.getCell(rowNumber, 6).value = item?.unit ?? item?.uom ?? item?.UOM ?? "";
 
       worksheet.getCell(rowNumber, 1).numFmt = "0";
-      worksheet.getCell(rowNumber, 4).numFmt = "#,##0";
+      worksheet.getCell(rowNumber, 5).numFmt = "#,##0";
 
       worksheet.getCell(rowNumber, 1).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
       worksheet.getCell(rowNumber, 2).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-      worksheet.getCell(rowNumber, 3).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
-      worksheet.getCell(rowNumber, 4).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      worksheet.getCell(rowNumber, 3).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      worksheet.getCell(rowNumber, 4).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
       worksheet.getCell(rowNumber, 5).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      worksheet.getCell(rowNumber, 6).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
 
       for (let col = 1; col <= lastCol; col += 1) {
         styleThinBorderCell(worksheet.getCell(rowNumber, col), {
           font: fontArial10,
           alignment:
-            col === 3
+            col === 4
               ? { horizontal: "left", vertical: "middle", wrapText: true }
               : { horizontal: "center", vertical: "middle", wrapText: true },
         });
       }
 
       for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
-        const rateCol = 6 + vendorIndex * 2;
+        const rateCol = 7 + vendorIndex * 2;
         const amountCol = rateCol + 1;
         const rateCell = worksheet.getCell(rowNumber, rateCol);
         const amountCell = worksheet.getCell(rowNumber, amountCol);
@@ -784,7 +797,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
   worksheet.getCell(subtotalRow, 1).font = fontArial10Bold;
   worksheet.getCell(subtotalRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
   for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
-    const rateCol = 6 + vendorIndex * 2;
+    const rateCol = 7 + vendorIndex * 2;
     const amountCol = rateCol + 1;
     const amountCell = worksheet.getCell(subtotalRow, amountCol);
     worksheet.getCell(subtotalRow, rateCol).value = "";
@@ -806,7 +819,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
   worksheet.getCell(discountRow, 1).font = fontArial10Bold;
   worksheet.getCell(discountRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
   for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
-    const rateCol = 6 + vendorIndex * 2;
+    const rateCol = 7 + vendorIndex * 2;
     const amountCol = rateCol + 1;
     const rateCell = worksheet.getCell(discountRow, rateCol);
     const amountCell = worksheet.getCell(discountRow, amountCol);
@@ -835,7 +848,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
   worksheet.getCell(netRow, 1).font = fontArial10Bold;
   worksheet.getCell(netRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
   for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
-    const rateCol = 6 + vendorIndex * 2;
+    const rateCol = 7 + vendorIndex * 2;
     const amountCol = rateCol + 1;
     const netAmountCell = worksheet.getCell(netRow, amountCol);
     netAmountCell.value = { formula: `${colLetter(amountCol)}${subtotalRow}-${colLetter(amountCol)}${discountRow}` };
@@ -859,7 +872,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
   worksheet.getCell(gstRow, 1).font = fontArial10Bold;
   worksheet.getCell(gstRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
   for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
-    const rateCol = 6 + vendorIndex * 2;
+    const rateCol = 7 + vendorIndex * 2;
     const amountCol = rateCol + 1;
     const rateCell = worksheet.getCell(gstRow, rateCol);
     const amountCell = worksheet.getCell(gstRow, amountCol);
@@ -888,7 +901,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
   worksheet.getCell(totalRow, 1).font = fontArial10Bold;
   worksheet.getCell(totalRow, 1).alignment = { horizontal: "left", vertical: "middle", wrapText: true };
   for (let vendorIndex = 0; vendorIndex < exportVendors.length; vendorIndex += 1) {
-    const rateCol = 6 + vendorIndex * 2;
+    const rateCol = 7 + vendorIndex * 2;
     const amountCol = rateCol + 1;
     const totalCell = worksheet.getCell(totalRow, amountCol);
     totalCell.value = { formula: `${colLetter(amountCol)}${netRow}+${colLetter(amountCol)}${gstRow}` };
@@ -1295,6 +1308,7 @@ export default function VendorComparisonModule() {
         (Array.isArray(section?.items) ? section.items : []).map((item, itemIndex) => ({
           sr_no: item?.srNo ?? itemIndex + 1,
           hsn_code: item?.hsnCode ?? "",
+          item_no: item?.item_no ?? item?.itemNo ?? "",
           item_description: item?.description ?? "",
           qty: item?.totalQty ?? null,
           unit: item?.uom ?? "",
@@ -1889,11 +1903,12 @@ export default function VendorComparisonModule() {
             </div>
 
             <div className="mt-4 overflow-x-auto rounded-md border">
-              <Table className="min-w-[920px]">
+              <Table className="min-w-[1080px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[80px] text-center">Pick</TableHead>
-                    <TableHead className="min-w-[360px]">Item</TableHead>
+                    <TableHead className="w-[140px]">Item No</TableHead>
+                    <TableHead className="min-w-[320px]">Item</TableHead>
                     <TableHead className="w-[180px]">Unit</TableHead>
                     <TableHead className="w-[140px] text-right">Qty</TableHead>
                   </TableRow>
@@ -1901,7 +1916,7 @@ export default function VendorComparisonModule() {
                 <TableBody>
                   {prItems.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
                         No PR items found.
                       </TableCell>
                     </TableRow>
@@ -1917,6 +1932,7 @@ export default function VendorComparisonModule() {
                               onCheckedChange={(value) => togglePrItemSelection(item, index, Boolean(value))}
                             />
                           </TableCell>
+                          <TableCell className="whitespace-nowrap">{getPrItemNo(item) || "-"}</TableCell>
                           <TableCell className="font-medium whitespace-normal break-words">{getPrItemDescription(item) || "-"}</TableCell>
                           <TableCell className="whitespace-nowrap">{item?.unit || "-"}</TableCell>
                           <TableCell className="whitespace-nowrap text-right">{item?.req_qty ?? item?.qty ?? item?.quantity ?? "-"}</TableCell>
@@ -2054,6 +2070,7 @@ export default function VendorComparisonModule() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="whitespace-nowrap">Sr. No</TableHead>
+                    <TableHead className="whitespace-nowrap">Item No</TableHead>
                     <TableHead className="whitespace-nowrap">HSN Code</TableHead>
                     <TableHead className="min-w-[320px]">Item Description</TableHead>
                     <TableHead className="whitespace-nowrap text-right">Qty</TableHead>
@@ -2075,6 +2092,7 @@ export default function VendorComparisonModule() {
                     return (
                     <TableRow key={`comp-row-${row.sr_no}`} className={row.matchStatus === "unmatched" ? "bg-muted/50" : ""}>
                         <TableCell className="whitespace-nowrap">{row.sr_no}</TableCell>
+                        <TableCell className="whitespace-nowrap">{row.item_no || "-"}</TableCell>
                         <TableCell className="whitespace-nowrap">{row.hsn_code || "-"}</TableCell>
                         <TableCell className="min-w-[320px]">
                           <div className="flex flex-wrap items-center gap-2">
@@ -2105,7 +2123,7 @@ export default function VendorComparisonModule() {
                   })}
 
                   <TableRow>
-                    <TableCell colSpan={5} className="font-medium">
+                    <TableCell colSpan={6} className="font-medium">
                       Subtotal
                     </TableCell>
                     {totals.subtotals.map((value, idx) => (
@@ -2116,7 +2134,7 @@ export default function VendorComparisonModule() {
                     ))}
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={5} className="font-medium">Discount</TableCell>
+                    <TableCell colSpan={6} className="font-medium">Discount</TableCell>
                     {totals.discount.map((value, idx) => (
                       <React.Fragment key={`discount-${idx}`}>
                         <TableCell className="text-right">-</TableCell>
@@ -2125,7 +2143,7 @@ export default function VendorComparisonModule() {
                     ))}
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={5} className="font-medium">GST</TableCell>
+                    <TableCell colSpan={6} className="font-medium">GST</TableCell>
                     {totals.gst.map((value, idx) => (
                       <React.Fragment key={`gst-${idx}`}>
                         <TableCell className="text-right">-</TableCell>
@@ -2134,7 +2152,7 @@ export default function VendorComparisonModule() {
                     ))}
                   </TableRow>
                   <TableRow>
-                    <TableCell colSpan={5} className="font-semibold">
+                    <TableCell colSpan={6} className="font-semibold">
                       Total Value
                     </TableCell>
                     {totals.total.map((value, idx) => (

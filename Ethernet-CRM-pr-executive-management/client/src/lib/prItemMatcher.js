@@ -31,6 +31,17 @@ const getPrItemDescription = (item) =>
       ""
   );
 
+const getPrItemNo = (item) =>
+  stripLeadingListMarker(
+      item?.item_name ??
+      item?.itemName ??
+      item?.item_no ??
+      item?.itemNo ??
+      item?.make ??
+      item?.brand_name ??
+      ""
+  );
+
 const getPrCodeCandidates = (item) => {
   const values = [
     item?.hsn_code,
@@ -106,4 +117,4 @@ const matchAgainstPrItems = (parsedItem, prItems) => {
   return { matchStatus: "unmatched", matchedPrItem: null, matchScore: 0, matchType: null };
 };
 
-export { getPrItemDescription, matchAgainstPrItems, normalizeForPrMatch, normalizeForCodeMatch };
+export { getPrItemDescription, getPrItemNo, matchAgainstPrItems, normalizeForPrMatch, normalizeForCodeMatch };

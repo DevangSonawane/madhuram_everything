@@ -61,6 +61,8 @@ import { RowActionsMenu } from "@/components/RowActionsMenu";
 const URGENCY_OPTIONS = ["High", "Medium", "Low"];
 
 const createEmptyItem = () => ({
+  item_no: "",
+  item_name: "",
   material_description: "",
   unit: "NOS",
   req_qty: "",
@@ -201,6 +203,9 @@ const normalizeLocationText = (value) => {
 
 const normalizeLookupText = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 
+const getSampleAddFieldValue = (row, fieldKey) =>
+  (Array.isArray(row?.add_fields) ? row.add_fields : []).find((field) => String(field?.key || "").trim() === fieldKey)?.value ?? "";
+
 const parseSampleItemsForPrPdf = (sample) => {
   const rawItems = parseMaybeJson(sample?.item_description ?? sample?.items ?? sample?.item_descriptions, []);
   const list = Array.isArray(rawItems) ? rawItems : [];
@@ -209,8 +214,34 @@ const parseSampleItemsForPrPdf = (sample) => {
   return list.map((row, index) => ({
     sample_id: sampleId,
     boq_serial_no: String(row?.sr_no ?? row?.srno ?? row?.srNo ?? row?.item_no ?? row?.itemNo ?? index + 1),
-    item_name: String(row?.item_name ?? row?.itemName ?? row?.make ?? row?.brand_name ?? "").trim(),
-    description: String(row?.description ?? row?.material_description ?? row?.item ?? row?.name ?? row?.item_name ?? "").trim(),
+    item_no: String(
+        row?.item_name ??
+        row?.itemName ??
+        getSampleAddFieldValue(row, "item_no") ??
+        getSampleAddFieldValue(row, "itemName") ??
+        getSampleAddFieldValue(row, "item_name") ??
+        row?.item_no ??
+        row?.itemNo ??
+        ""
+    ).trim(),
+    item_name: String(
+      row?.item_name ??
+        row?.itemName ??
+        getSampleAddFieldValue(row, "item_name") ??
+        getSampleAddFieldValue(row, "itemName") ??
+        row?.item_no ??
+        row?.itemNo ??
+        ""
+    ).trim(),
+    description: String(
+      row?.description ??
+        row?.material_description ??
+        getSampleAddFieldValue(row, "description") ??
+        row?.item ??
+        row?.name ??
+        row?.item_name ??
+        ""
+    ).trim(),
     item_code: String(row?.item_code ?? row?.itemCode ?? row?.code ?? row?.item_no ?? "").trim(),
   }));
 };
@@ -240,9 +271,10 @@ const enrichPrItemsWithSampleData = (pr, sample) => {
       ...item,
       sample_id: sampleId || matched.sample_id || "",
       boq_serial_no: matched.boq_serial_no || String(index + 1),
-      item_name: matched.item_name || item.item_name || item.make || "",
+      item_no: matched.item_name || matched.item_no || item.item_name || item.item_no || "",
+      item_name: matched.item_name || matched.item_no || item.item_name || item.item_no || "",
       description: matched.description || item.description || item.material_description || "",
-      make: item.make || matched.item_name || matched.description || "",
+      make: item.make || "",
     };
   });
 };
@@ -515,7 +547,9 @@ const normalizePr = (item = {}) => {
             sample_flat_count: row?.sample_flat_count ?? row?.flat_count ?? (rowFlatCount > 0 ? rowFlatCount : ""),
             sample_floor_count: row?.sample_floor_count ?? row?.floor_count ?? (rowFloorCount > 0 ? rowFloorCount : ""),
             sample_multiplier: row?.sample_multiplier ?? row?.multiplier ?? (rowMultiplier > 1 ? rowMultiplier : ""),
-            make: row?.make || row?.item_name || row?.itemName || "",
+            item_no: row?.item_name || row?.item_no || row?.itemName || "",
+            item_name: row?.item_name || row?.item_no || row?.itemName || "",
+            make: row?.make || "",
           };
         })
       : [],
@@ -549,6 +583,9 @@ function PrFormDialog({
     setForm((prev) => {
       const next = [...prev.items];
       next[index] = { ...next[index], [field]: value };
+      if (field === "item_no" || field === "item_name") {
+        next[index] = { ...next[index], item_no: value, item_name: value };
+      }
       if (field === "req_qty" && next[index]?.inventory_id) {
         next[index] = { ...next[index], issued_qty: value };
       }
@@ -563,7 +600,7 @@ function PrFormDialog({
     if (directQtyPerFlat > 0) return directQtyPerFlat;
 
     const selectedSampleItems = getSelectedSampleItems();
-    const normalizedItemName = String(item?.make || item?.item_name || item?.material_description || "").trim().toLowerCase();
+    const normalizedItemName = String(item?.item_name || item?.item_no || item?.make || item?.material_description || "").trim().toLowerCase();
     const candidateSample =
       Array.isArray(selectedSampleItems) &&
       (selectedSampleItems.find((row) =>
@@ -795,7 +832,7 @@ function PrFormDialog({
                   <TableHead className="w-[140px]">Unit</TableHead>
                   <TableHead className="w-[150px]">Qty / Flat *</TableHead>
                   <TableHead className="w-[140px]">Total Qty</TableHead>
-                  <TableHead className="min-w-[180px]">Item Name</TableHead>
+                  <TableHead className="min-w-[180px]">Item No</TableHead>
                   <TableHead className="min-w-[220px]">Place of Utilisation</TableHead>
                   <TableHead className="w-[64px] text-right">Actions</TableHead>
                 </TableRow>
@@ -852,9 +889,9 @@ function PrFormDialog({
                       </TableCell>
                       <TableCell className="align-top">
                         <Input
-                          value={item.make}
-                          onChange={(e) => setItemField(index, "make", e.target.value)}
-                          placeholder="Item name"
+                          value={item.item_name || item.item_no || item.itemName || ""}
+                          onChange={(e) => setItemField(index, "item_no", e.target.value)}
+                          placeholder="Item no."
                           className="h-9"
                         />
                       </TableCell>
@@ -1166,7 +1203,7 @@ function PrViewDialog({ open, onOpenChange, pr }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[220px]">Item Name</TableHead>
+                  <TableHead className="w-[220px]">Item No</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead>Qty</TableHead>
@@ -1184,7 +1221,7 @@ function PrViewDialog({ open, onOpenChange, pr }) {
                   pr.items.map((item, idx) => (
                     <TableRow key={`${item.pr_item_id || idx}`}>
                       <TableCell className="font-medium">
-                        {item.make || item.item_name || item.itemName || item.Make || extractMakeFromRemark(item.remark) || "-"}
+                        {item.item_no || item.item_name || item.itemName || item.make || item.Make || extractMakeFromRemark(item.remark) || "-"}
                       </TableCell>
                       <TableCell>
                         {inventoryNameMap?.[Number(item?.inventory_id)] || item.material_description || "-"}
@@ -1513,7 +1550,9 @@ export default function PurchaseRequests() {
             material_description: item.material_description || "",
             unit: item.unit || "NOS",
             req_qty: item.req_qty ?? "",
-            make: item.make || item.item_name || item.itemName || "",
+            item_no: item.item_name || item.item_no || item.itemName || "",
+            item_name: item.item_name || item.item_no || item.itemName || "",
+            make: item.make || "",
             place_of_utilisation: item.place_of_utilisation || "",
             inventory_id: item.inventory_id ?? item.inventoryId ?? null,
             issued_qty: item.issued_qty ?? item.issuedQty ?? null,
@@ -1544,7 +1583,27 @@ export default function PurchaseRequests() {
       return;
     }
 
-    setSelectedPr(normalizePr(result.data || {}));
+    const normalizedPr = normalizePr(result.data || {});
+    let displayPr = normalizedPr;
+
+    if (normalizedPr.sample_id) {
+      try {
+        const sampleResult = await api.getSampleById(normalizedPr.sample_id);
+        if (sampleResult?.success) {
+          const samplePayload = sampleResult.data?.data ?? sampleResult.data ?? null;
+          if (samplePayload) {
+            displayPr = {
+              ...normalizedPr,
+              items: enrichPrItemsWithSampleData(normalizedPr, samplePayload),
+            };
+          }
+        }
+      } catch {
+        // Keep the saved PR rows if the sample cannot be loaded.
+      }
+    }
+
+    setSelectedPr(displayPr);
     setViewOpen(true);
   };
 
@@ -1580,23 +1639,20 @@ export default function PurchaseRequests() {
     const cleanedItems = form.items
       .map((item) => {
         const previewQty = Number(item.req_qty || item.sample_qty_per_flat || item.sample_total_qty || 0);
+        const inventoryId = parseIntegerOrNull(item.inventory_id);
+        const boqId = parseIntegerOrNull(item.boq_id);
         return {
+          item_no: String(item.item_name || item.item_no || item.itemName || "").trim(),
+          item_name: String(item.item_name || item.item_no || item.itemName || "").trim(),
           material_description: String(item.material_description || "").trim(),
           unit: String(item.unit || "").trim() || "NOS",
           req_qty: Number(previewQty),
           make: String(item.make || "").trim(),
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
-          boq_id: String(item.boq_id || "").trim() || undefined,
+          inventory_id: inventoryId ?? 0,
+          issued_qty: inventoryId ? (Number.isFinite(Number(item.issued_qty)) && Number(item.issued_qty) > 0 ? Number(item.issued_qty) : Number(previewQty)) : 0,
+          boq_id: boqId ?? 0,
           boq_qty: Number.isFinite(Number(item.boq_qty)) && Number(item.boq_qty) > 0 ? Number(item.boq_qty) : Number(previewQty),
-          ...(parseIntegerOrNull(item.inventory_id)
-            ? {
-                inventory_id: parseIntegerOrNull(item.inventory_id),
-                issued_qty:
-                  Number.isFinite(Number(item.issued_qty)) && Number(item.issued_qty) > 0
-                    ? Number(item.issued_qty)
-                    : Number(previewQty),
-              }
-            : {}),
         };
       })
       .filter((item) => item.material_description && Number.isFinite(item.req_qty) && item.req_qty > 0);
@@ -1644,25 +1700,36 @@ export default function PurchaseRequests() {
 
       const payload = {
         project_id: normalizedProjectId,
-        sample_id: getResolvedSampleId() || null,
-        sampleId: getResolvedSampleId() || null,
+        sample_id: getResolvedSampleId() || "",
         pr_number: String(form.pr_number || "").trim(),
         project_name: String(form.project_name || "").trim(),
         workorder_no: String(form.workorder_no || "").trim(),
         floor_no: String(form.floor_no || "").trim(),
-        floorNo: String(form.floor_no || "").trim(),
         flat_no: String(form.flat_no || "").trim(),
-        flatNo: String(form.flat_no || "").trim(),
         location: String(form.location || "").trim(),
         mirno: String(form.mirno || "").trim(),
         urgency: form.urgency || "Medium",
         date: form.date || new Date().toISOString().slice(0, 10),
-        approved_by: String(form.approved_by || "").trim(),
-        remarks: String(form.remarks || "").trim(),
-        pr_file_path: prFilePath,
-        signature_file_path: signatureFilePath,
-        items: cleanedItems,
+        items: cleanedItems.map((item) => ({
+          material_description: item.material_description,
+          unit: item.unit,
+          req_qty: item.req_qty,
+          make: item.make,
+          place_of_utilisation: item.place_of_utilisation,
+          inventory_id: item.inventory_id ?? 0,
+          issued_qty: item.issued_qty ?? 0,
+          boq_id: item.boq_id ?? 0,
+          boq_qty: item.boq_qty ?? 0,
+          item_no: item.item_no || "",
+        })),
       };
+
+      if (editingPrId) {
+        payload.approved_by = String(form.approved_by || "").trim();
+        payload.remarks = String(form.remarks || "").trim();
+        payload.pr_file_path = prFilePath;
+        payload.signature_file_path = signatureFilePath;
+      }
 
       const response = editingPrId
         ? await api.updatePr(editingPrId, payload)

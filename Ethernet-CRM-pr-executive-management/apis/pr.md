@@ -61,34 +61,32 @@ Error Response:
 3) Create PR
 POST /api/pr
 Description:
-Creates a new PR entry.
+Creates a new PR entry. If an item includes `inventory_id`, the backend auto stock-outs that inventory item.
 Request Body (JSON):
 {
-  "project_id": 5,
-  "sample_id": 10,
-  "project_name": "Project Name",
-  "workorder_no": "12345",
-  "location": "Location",
-  "mirno": "98765",
-  "urgency": "High",
-  "date": "2024-04-01",
-  "approved_by": "Manager",
-  "pr_file_path": "/uploads/pr/file.pdf",
-  "signature_file_path": "/uploads/pr_signatures/signature.jpg",
+  "project_id": 117,
+  "project_name": "PQR",
+  "sample_id": "string",
+  "pr_number": "string",
+  "workorder_no": "string",
+  "location": "string",
+  "mirno": "string",
+  "urgency": "string",
+  "floor_no": "string",
+  "flat_no": "string",
+  "date": "2026-07-18",
   "items": [
     {
-      "material_description": "Material 1",
-      "unit": "NOS",
-      "req_qty": 10,
-      "make": "Make 1",
-      "place_of_utilisation": "Place 1"
-    },
-    {
-      "material_description": "Material 2",
-      "unit": "NOS",
-      "req_qty": 20,
-      "make": "Make 2",
-      "place_of_utilisation": "Place 2"
+      "material_description": "string",
+      "unit": "string",
+      "req_qty": 0,
+      "make": "string",
+      "place_of_utilisation": "string",
+      "inventory_id": 0,
+      "issued_qty": 0,
+      "boq_id": 0,
+      "boq_qty": 0,
+      "item_no": "string"
     }
   ]
 }
@@ -96,33 +94,30 @@ Request Body (JSON):
 Success Response:
 {
   "pr_id": 1,
-  "project_id": 5,
-  "sample_id": 10,
-  "project_name": "Project Name",
-  "workorder_no": "12345",
-  "location": "Location",
-  "mirno": "98765",
-  "urgency": "High",
-  "date": "2024-04-01",
-  "approved_by": "Manager",
-  "pr_file_path": "/uploads/pr/file.pdf",
-  "signature_file_path": "/uploads/pr_signatures/signature.jpg",
+  "project_id": 117,
+  "project_name": "PQR",
+  "sample_id": "string",
+  "pr_number": "string",
+  "workorder_no": "string",
+  "location": "string",
+  "mirno": "string",
+  "urgency": "string",
+  "floor_no": "string",
+  "flat_no": "string",
+  "date": "2026-07-18",
   "items": [
     {
       "pr_item_id": 1,
-      "material_description": "Material 1",
-      "unit": "NOS",
-      "req_qty": 10,
-      "make": "Make 1",
-      "place_of_utilisation": "Place 1"
-    },
-    {
-      "pr_item_id": 2,
-      "material_description": "Material 2",
-      "unit": "NOS",
-      "req_qty": 20,
-      "make": "Make 2",
-      "place_of_utilisation": "Place 2"
+      "material_description": "string",
+      "unit": "string",
+      "req_qty": 0,
+      "make": "string",
+      "place_of_utilisation": "string",
+      "inventory_id": 0,
+      "issued_qty": 0,
+      "boq_id": 0,
+      "boq_qty": 0,
+      "item_no": "string"
     }
   ]
 }
@@ -325,4 +320,3 @@ entity type (pr_file, pr_signature, pr)
 entity name (e.g., PR ID or file name)
 performed by (user ID and name)
 project ID or sample ID as context
-

@@ -22,6 +22,7 @@ import {
 const URGENCY_OPTIONS = ["High", "Medium", "Low"];
 
 const createEmptyItem = () => ({
+  item_no: "",
   item_name: "",
   material_description: "",
   unit: "NOS",
@@ -53,7 +54,7 @@ const getAddFieldValue = (row, fieldKey) =>
 
 const isManualLikeRow = (row = {}) => {
   const description = String(
-    row?.description || row?.material_description || row?.item_name || row?.itemName || row?.item_code || row?.code || ""
+    row?.description || row?.material_description || row?.item_no || row?.itemNo || row?.item_name || row?.itemName || row?.item_code || row?.code || ""
   ).trim();
   if (!description) return false;
 
@@ -189,11 +190,11 @@ export default function PurchaseRequestCreate() {
     const q = String(prItemSearch || "").trim().toLowerCase();
     if (!q) return true;
     const desc = String(item?.material_description ?? "").toLowerCase();
-    const itemName = String(item?.item_name ?? item?.make ?? "").toLowerCase();
+    const itemNo = String(item?.item_name ?? item?.item_no ?? item?.make ?? "").toLowerCase();
     const make = String(item?.make ?? "").toLowerCase();
     const place = String(item?.place_of_utilisation ?? "").toLowerCase();
     const unit = String(item?.unit ?? "").toLowerCase();
-    return desc.includes(q) || itemName.includes(q) || make.includes(q) || place.includes(q) || unit.includes(q);
+    return desc.includes(q) || itemNo.includes(q) || make.includes(q) || place.includes(q) || unit.includes(q);
   };
 
   const prItemSuggestions = useMemo(() => {
@@ -391,11 +392,8 @@ export default function PurchaseRequestCreate() {
     setForm((prev) => {
       const next = [...prev.items];
       next[index] = { ...next[index], [field]: value };
-      if (field === "item_name") {
-        next[index] = { ...next[index], make: value };
-      }
-      if (field === "make") {
-        next[index] = { ...next[index], item_name: value };
+      if (field === "item_no" || field === "item_name") {
+        next[index] = { ...next[index], item_no: value, item_name: value };
       }
       if (field === "req_qty" && next[index]?.inventory_id) {
         next[index] = { ...next[index], issued_qty: value };
@@ -444,15 +442,26 @@ export default function PurchaseRequestCreate() {
       .map((item) => {
         const itemTotalQty = resolveManualRowQty(item, sample);
         const resolvedQty = itemTotalQty > 0 ? itemTotalQty : parseNumberOrZero(item?.qty_per_flat || item?.sample_qty_per_flat || item?.req_qty);
-        const explicitItemName = String(item?.item_name || item?.itemName || "").trim();
+        const explicitItemNo = String(
+          item?.item_name ||
+          item?.itemName ||
+          getAddFieldValue(item, "item_name") ||
+          getAddFieldValue(item, "itemName") ||
+          item?.item_no ||
+          item?.itemNo ||
+          getAddFieldValue(item, "item_no") ||
+          ""
+        ).trim();
+        const explicitMake = String(item?.make || getAddFieldValue(item, "make") || "").trim();
         return {
-          item_name: explicitItemName,
+          item_no: explicitItemNo,
+          item_name: explicitItemNo,
           material_description: String(
             item?.material_description || item?.description || item?.item || item?.name || ""
           ).trim(),
           unit: String(item?.unit || item?.uom || item?.UOM || "NOS").trim() || "NOS",
           req_qty: String(resolvedQty || itemTotalQty || parseNumberOrZero(item?.req_qty || item?.quantity || item?.qty)),
-          make: explicitItemName,
+          make: explicitMake,
           place_of_utilisation: String(item?.place_of_utilisation || item?.place || "").trim(),
           inventory_id: item?.inventory_id ?? item?.inventoryId ?? null,
           issued_qty: item?.issued_qty ?? item?.issuedQty ?? null,
@@ -508,7 +517,16 @@ export default function PurchaseRequestCreate() {
     if (!catalogItem) return;
     setForm((prev) => ({
       ...prev,
-      items: [...prev.items, { ...createEmptyItem(), ...catalogItem }],
+      items: [
+        ...prev.items,
+        {
+          ...createEmptyItem(),
+          ...catalogItem,
+          item_no: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
+          item_name: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
+          make: String(catalogItem?.make || "").trim(),
+        },
+      ],
     }));
   };
 
@@ -653,21 +671,20 @@ export default function PurchaseRequestCreate() {
             (isManualLikeRow(item) ? resolveManualRowQty(item, selectedSample || {}) : 0)
         );
         const inventoryId = parseIntegerOrNull(item.inventory_id);
+        const boqId = parseIntegerOrNull(item.boq_id);
         const payload = {
-          item_name: String(item.item_name || item.make || "").trim(),
+          item_no: String(item.item_name || item.item_no || item.itemName || "").trim(),
+          item_name: String(item.item_name || item.item_no || item.itemName || "").trim(),
           material_description: String(item.material_description || "").trim(),
           unit: String(item.unit || "").trim() || "NOS",
           req_qty: reqQty,
           make: String(item.make || "").trim(),
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
-          boq_id: String(item.boq_id || "").trim() || undefined,
+          inventory_id: inventoryId ?? 0,
+          issued_qty: inventoryId ? (Number.isFinite(Number(item.issued_qty)) && Number(item.issued_qty) > 0 ? Number(item.issued_qty) : reqQty) : 0,
+          boq_id: boqId ?? 0,
           boq_qty: Number.isFinite(reqQty) && reqQty > 0 ? reqQty : parseNumberOrZero(item.boq_qty),
         };
-        if (inventoryId) {
-          payload.inventory_id = inventoryId;
-          const issuedQty = Number(item.issued_qty);
-          payload.issued_qty = Number.isFinite(issuedQty) && issuedQty > 0 ? issuedQty : reqQty;
-        }
         return payload;
       })
       .filter((item) => item.material_description && Number.isFinite(item.req_qty) && item.req_qty > 0);
@@ -686,22 +703,28 @@ export default function PurchaseRequestCreate() {
 
       const payload = {
         project_id: normalizedProjectId,
-        sample_id: getResolvedSampleId() || null,
-        sampleId: getResolvedSampleId() || null,
+        sample_id: getResolvedSampleId() || "",
         pr_number: String(form.pr_number || "").trim(),
         project_name: String(form.project_name || "").trim(),
         workorder_no: String(form.workorder_no || "").trim(),
         floor_no: String(form.floor_no || "").trim(),
-        floorNo: String(form.floor_no || "").trim(),
         flat_no: String(form.flat_no || "").trim(),
-        flatNo: String(form.flat_no || "").trim(),
         location: String(form.location || "").trim(),
         mirno: String(form.mirno || "").trim(),
         urgency: form.urgency || "Medium",
         date: form.date || new Date().toISOString().slice(0, 10),
-        approved_by: String(form.approved_by || "").trim(),
-        remarks: String(form.remarks || "").trim(),
-        items: cleanedItems,
+        items: cleanedItems.map((item) => ({
+          material_description: item.material_description,
+          unit: item.unit,
+          req_qty: item.req_qty,
+          make: item.make,
+          place_of_utilisation: item.place_of_utilisation,
+          inventory_id: item.inventory_id ?? 0,
+          issued_qty: item.issued_qty ?? 0,
+          boq_id: item.boq_id ?? 0,
+          boq_qty: item.boq_qty ?? 0,
+          item_no: item.item_no || "",
+        })),
       };
 
       const result = await api.createPr(payload);
@@ -905,7 +928,7 @@ export default function PurchaseRequestCreate() {
                     {prItemSuggestions.map((sug, idx) => {
                       const title = String(sug?.material_description || "").trim();
                       const subtitleParts = [
-                        sug?.make ? `Item No: ${sug.make}` : "",
+                        (sug?.item_no || sug?.itemName || sug?.make) ? `Item No: ${sug.item_no || sug.itemName || sug.make}` : "",
                         sug?.unit ? `Unit: ${sug.unit}` : "",
                         sug?.place_of_utilisation ? `Place: ${sug.place_of_utilisation}` : "",
                       ].filter(Boolean);
@@ -965,11 +988,11 @@ export default function PurchaseRequestCreate() {
                     matchesPrItemSearch(item) ? (
                         <TableRow key={`item-${index}`}>
                         <TableCell className="align-top">
-                            <Input
-                            value={item.item_name || item.make}
-                            onChange={(e) => setItemField(index, "item_name", e.target.value)}
-                            placeholder="Item no."
-                            className="h-9"
+                        <Input
+                          value={item.item_name || item.item_no || item.make}
+                          onChange={(e) => setItemField(index, "item_no", e.target.value)}
+                          placeholder="Item no."
+                          className="h-9"
                           />
                         </TableCell>
                         <TableCell className="align-top">

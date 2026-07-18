@@ -21,7 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { matchAgainstPrItems } from "@/lib/prItemMatcher";
+import { getPrItemNo, matchAgainstPrItems } from "@/lib/prItemMatcher";
 
 const NAVY = "#1a3a6b";
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-IN", {
@@ -95,8 +95,18 @@ const extractUniquePrItems = (prs) => {
     (Array.isArray(pr?.items) ? pr.items : []).forEach((item) => {
       const material_description = normalizePrDescription(item);
       if (!material_description) return;
+      const itemNo = String(
+        getPrItemNo(item) ||
+          item?.item_no ||
+          item?.itemNo ||
+          item?.item_code ||
+          item?.itemCode ||
+          ""
+      ).trim();
       all.push({
         material_description,
+        item_no: itemNo,
+        item_name: itemNo,
         unit: item?.unit ?? "",
         req_qty: item?.req_qty ?? null,
         make: item?.make ?? "",
@@ -338,7 +348,8 @@ export default function VendorComparisonUpload({ inLayout = false }) {
       items.forEach((item) => {
         total += 1;
         const match = matchAgainstPrItems(item, prItems);
-        const enriched = { ...item, ...match };
+        const prItemNo = match?.matchedPrItem ? getPrItemNo(match.matchedPrItem) : "";
+        const enriched = { ...item, ...match, item_no: prItemNo || String(item?.item_no || item?.itemNo || "").trim() };
         if (match.matchStatus === "matched") {
           matchedItems.push(enriched);
           matchedFlat.push({ ...enriched, sectionLabel: section.sectionLabel, sectionDescription: section.sectionDescription });
@@ -403,6 +414,7 @@ export default function VendorComparisonUpload({ inLayout = false }) {
                 if (!vendorName) return null;
                 return {
                   vendor_name: vendorName,
+                  item_no: String(item?.item_no || item?.itemNo || item?.matchedPrItem?.item_no || item?.matchedPrItem?.itemNo || "").trim(),
                   item_description: itemDescription,
                   total_qty: item?.totalQty ?? null,
                   unit: String(item?.uom || "").trim(),
