@@ -628,6 +628,17 @@ export default function PurchaseRequestCreate() {
           req_qty: reqQty,
           make: String(item.make || "").trim(),
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
+          add_fields: [
+            { key: "item_no", value: itemNo },
+            { key: "item_name", value: itemNo },
+            { key: "item_code", value: itemNo },
+            { key: "boq_item_code", value: itemNo },
+            { key: "material_description", value: String(item.material_description || "").trim() },
+            { key: "unit", value: String(item.unit || "").trim() || "NOS" },
+            { key: "req_qty", value: String(reqQty) },
+            { key: "make", value: String(item.make || "").trim() },
+            { key: "place_of_utilisation", value: String(item.place_of_utilisation || "").trim() },
+          ],
         };
         if (inventoryId) {
           payload.inventory_id = inventoryId;
@@ -676,6 +687,20 @@ export default function PurchaseRequestCreate() {
           boq_id: item.boq_id ?? 0,
           boq_qty: item.boq_qty ?? 0,
           item_no: item.item_no || "",
+          item_name: item.item_no || "",
+          item_code: item.item_no || "",
+          boq_item_code: item.item_no || "",
+          add_fields: [
+            { key: "item_no", value: item.item_no || "" },
+            { key: "item_name", value: item.item_no || "" },
+            { key: "item_code", value: item.item_no || "" },
+            { key: "boq_item_code", value: item.item_no || "" },
+            { key: "material_description", value: item.material_description || "" },
+            { key: "unit", value: item.unit || "NOS" },
+            { key: "req_qty", value: String(item.req_qty ?? "") },
+            { key: "make", value: item.make || "" },
+            { key: "place_of_utilisation", value: item.place_of_utilisation || "" },
+          ],
         })),
       };
 

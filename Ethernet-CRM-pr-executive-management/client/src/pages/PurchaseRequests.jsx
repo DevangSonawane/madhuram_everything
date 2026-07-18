@@ -548,10 +548,10 @@ const normalizePr = (item = {}) => {
             sample_flat_count: row?.sample_flat_count ?? row?.flat_count ?? (rowFlatCount > 0 ? rowFlatCount : ""),
             sample_floor_count: row?.sample_floor_count ?? row?.floor_count ?? (rowFloorCount > 0 ? rowFloorCount : ""),
             sample_multiplier: row?.sample_multiplier ?? row?.multiplier ?? (rowMultiplier > 1 ? rowMultiplier : ""),
-            item_no: row?.item_no || row?.boq_item_code || row?.item_code || row?.itemName || row?.item_name || "",
-            item_name: row?.item_name || row?.item_no || row?.boq_item_code || row?.itemCode || "",
-            item_code: row?.item_code || row?.code || row?.boq_item_code || row?.item_no || "",
-            boq_item_code: row?.boq_item_code || row?.boqItemCode || row?.item_code || row?.item_no || "",
+            item_no: row?.item_no || getSampleAddFieldValue(row, "item_no") || row?.boq_item_code || row?.item_code || row?.itemName || row?.item_name || "",
+            item_name: row?.item_name || getSampleAddFieldValue(row, "item_name") || row?.item_no || row?.boq_item_code || row?.itemCode || "",
+            item_code: row?.item_code || getSampleAddFieldValue(row, "item_code") || row?.code || row?.boq_item_code || row?.item_no || "",
+            boq_item_code: row?.boq_item_code || getSampleAddFieldValue(row, "boq_item_code") || row?.boqItemCode || row?.item_code || row?.item_no || "",
             make: row?.make || "",
             row_source: row?.boq_id || row?.boqId ? "sample" : "manual",
           };
@@ -1567,6 +1567,12 @@ export default function PurchaseRequests() {
             boq_id: item.boq_id ?? item.boqId ?? "",
             boq_qty: item.boq_qty ?? item.boqQty ?? "",
             row_source: item.boq_id || item.boqId ? "sample" : "manual",
+            add_fields: Array.isArray(item.add_fields) ? item.add_fields : [
+              { key: "item_no", value: item.item_no || item.item_name || item.itemName || "" },
+              { key: "item_name", value: item.item_name || item.item_no || item.itemName || "" },
+              { key: "item_code", value: item.item_code || item.code || item.item_no || "" },
+              { key: "boq_item_code", value: item.boq_item_code || item.boqItemCode || item.item_no || "" },
+            ],
             sample_total_qty: item.sample_total_qty ?? item.total_qty ?? "",
             sample_qty_per_flat: item.sample_qty_per_flat ?? item.qty_per_flat ?? "",
             sample_flat_count: item.sample_flat_count ?? item.flat_count ?? "",
@@ -1662,6 +1668,17 @@ export default function PurchaseRequests() {
           req_qty: Number(previewQty),
           make: String(item.make || "").trim(),
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
+          add_fields: [
+            { key: "item_no", value: itemNo },
+            { key: "item_name", value: itemNo },
+            { key: "item_code", value: itemNo },
+            { key: "boq_item_code", value: itemNo },
+            { key: "material_description", value: String(item.material_description || "").trim() },
+            { key: "unit", value: String(item.unit || "").trim() || "NOS" },
+            { key: "req_qty", value: String(previewQty) },
+            { key: "make", value: String(item.make || "").trim() },
+            { key: "place_of_utilisation", value: String(item.place_of_utilisation || "").trim() },
+          ],
         };
         if (inventoryId) {
           normalized.inventory_id = inventoryId;
