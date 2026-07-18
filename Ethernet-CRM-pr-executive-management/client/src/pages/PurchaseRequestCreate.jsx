@@ -33,6 +33,7 @@ const createEmptyItem = () => ({
   issued_qty: null,
   boq_id: "",
   boq_qty: "",
+  row_source: "manual",
 });
 
 const parseIntegerOrNull = (value) => {
@@ -393,7 +394,9 @@ export default function PurchaseRequestCreate() {
       const next = [...prev.items];
       next[index] = { ...next[index], [field]: value };
       if (field === "item_no" || field === "item_name") {
-        next[index] = { ...next[index], item_no: value, item_name: value };
+        next[index] = { ...next[index], item_no: value, item_name: value, row_source: "manual" };
+      } else if (field === "material_description" || field === "unit" || field === "place_of_utilisation" || field === "make") {
+        next[index] = { ...next[index], row_source: "manual" };
       }
       if (field === "req_qty" && next[index]?.inventory_id) {
         next[index] = { ...next[index], issued_qty: value };
@@ -454,6 +457,7 @@ export default function PurchaseRequestCreate() {
         ).trim();
         const explicitMake = String(item?.make || getAddFieldValue(item, "make") || "").trim();
         return {
+          row_source: "sample",
           item_no: explicitItemNo,
           item_name: explicitItemNo,
           material_description: String(
@@ -516,17 +520,18 @@ export default function PurchaseRequestCreate() {
   const addCatalogItemToPr = (catalogItem) => {
     if (!catalogItem) return;
     setForm((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          ...createEmptyItem(),
-          ...catalogItem,
-          item_no: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
-          item_name: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
-          make: String(catalogItem?.make || "").trim(),
-        },
-      ],
+        ...prev,
+        items: [
+          ...prev.items,
+          {
+            ...createEmptyItem(),
+            ...catalogItem,
+            row_source: "sample",
+            item_no: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
+            item_name: String(catalogItem?.item_name || catalogItem?.item_no || catalogItem?.itemName || "").trim(),
+            make: String(catalogItem?.make || "").trim(),
+          },
+        ],
     }));
   };
 
@@ -672,19 +677,27 @@ export default function PurchaseRequestCreate() {
         );
         const inventoryId = parseIntegerOrNull(item.inventory_id);
         const boqId = parseIntegerOrNull(item.boq_id);
+        const itemNo = String(item.item_no || item.item_name || item.itemName || "").trim();
+        const isSampleRow = String(item.row_source || "").toLowerCase() === "sample";
         const payload = {
-          item_no: String(item.item_name || item.item_no || item.itemName || "").trim(),
-          item_name: String(item.item_name || item.item_no || item.itemName || "").trim(),
+          item_no: itemNo,
+          item_name: itemNo,
+          item_code: itemNo,
+          boq_item_code: itemNo,
           material_description: String(item.material_description || "").trim(),
           unit: String(item.unit || "").trim() || "NOS",
           req_qty: reqQty,
           make: String(item.make || "").trim(),
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
-          inventory_id: inventoryId ?? 0,
-          issued_qty: inventoryId ? (Number.isFinite(Number(item.issued_qty)) && Number(item.issued_qty) > 0 ? Number(item.issued_qty) : reqQty) : 0,
-          boq_id: boqId ?? 0,
-          boq_qty: Number.isFinite(reqQty) && reqQty > 0 ? reqQty : parseNumberOrZero(item.boq_qty),
         };
+        if (inventoryId) {
+          payload.inventory_id = inventoryId;
+          payload.issued_qty = Number.isFinite(Number(item.issued_qty)) && Number(item.issued_qty) > 0 ? Number(item.issued_qty) : reqQty;
+        }
+        if (isSampleRow && boqId) {
+          payload.boq_id = boqId;
+          payload.boq_qty = Number.isFinite(reqQty) && reqQty > 0 ? reqQty : parseNumberOrZero(item.boq_qty);
+        }
         return payload;
       })
       .filter((item) => item.material_description && Number.isFinite(item.req_qty) && item.req_qty > 0);
