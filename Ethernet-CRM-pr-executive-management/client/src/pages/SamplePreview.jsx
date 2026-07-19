@@ -1131,7 +1131,9 @@ export default function SamplePreview() {
                           ) : (
                             boqSummaryRows.map((row) => (
                             <TableRow key={row.key} className="align-top">
-                                <TableCell className="font-medium">{isHiranandani || isLodha ? (row.itemName || row.itemNo || row.itemCode || "-") : (row.itemCode || "-")}</TableCell>
+                                <TableCell className="font-medium">
+                                  {isHiranandani || isLodha ? (row.itemNo || row.itemCode || row.itemName || "-") : (row.itemCode || "-")}
+                                </TableCell>
                                 <TableCell className="font-medium text-primary">{row.boqCode || "-"}</TableCell>
                                 <TableCell className="max-w-[280px] text-muted-foreground">
                                   {row.itemDescription || "-"}
