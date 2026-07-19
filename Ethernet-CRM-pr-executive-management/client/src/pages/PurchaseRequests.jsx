@@ -1654,7 +1654,7 @@ export default function PurchaseRequests() {
       try {
         const sampleResult = await api.getSampleById(normalizedPr.sample_id);
         if (sampleResult?.success) {
-          const samplePayload = sampleResult.data?.data ?? sampleResult.data ?? null;
+          const samplePayload = sampleResult.data?.sample ?? sampleResult.data?.data ?? sampleResult.data ?? null;
           if (samplePayload) {
             displayPr = {
               ...normalizedPr,
@@ -2268,7 +2268,9 @@ export default function PurchaseRequests() {
 
       const tableStartY = frameY + titleH + headerH;
       const sampleData = pr.sample_id ? await api.getSampleById(pr.sample_id).catch(() => null) : null;
-      const samplePayload = sampleData?.success ? sampleData.data : sampleData?.data || sampleData || null;
+      const samplePayload = sampleData?.success
+        ? (sampleData.data?.sample ?? sampleData.data?.data ?? sampleData.data ?? null)
+        : (sampleData?.data?.sample ?? sampleData?.data?.data ?? sampleData?.data ?? sampleData ?? null);
       const items = enrichPrItemsWithSampleData(pr, samplePayload);
       const minRows = 15;
       const tableRows = Array.from({ length: Math.max(items.length, minRows) }, (_, idx) => {

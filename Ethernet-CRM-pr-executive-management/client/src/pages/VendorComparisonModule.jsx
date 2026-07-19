@@ -1165,7 +1165,7 @@ export default function VendorComparisonModule() {
           try {
             const sampleResult = await api.getSampleById(pr.sample_id);
             if (sampleResult?.success) {
-              samplePayload = sampleResult.data?.data ?? sampleResult.data ?? null;
+              samplePayload = sampleResult.data?.sample ?? sampleResult.data?.data ?? sampleResult.data ?? null;
             }
           } catch {
             samplePayload = null;
