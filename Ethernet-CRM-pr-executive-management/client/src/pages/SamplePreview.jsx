@@ -882,8 +882,10 @@ export default function SamplePreview() {
 
   const boqSummaryRows = (Array.isArray(sample?.item_description) ? sample.item_description : displayItems).map((row, index) => {
     const usage = row?.boq_usage || {};
+    const itemNoValue = String(getPreferredBoqItemNo(row) || "").trim();
+    const itemCodeValue = String(getPreferredBoqCode(row) || "").trim();
     const boqCode =
-      getPreferredBoqCode(row) ||
+      itemCodeValue ||
       row?.boq_id ||
       row?.boqId ||
       "-";
@@ -897,7 +899,7 @@ export default function SamplePreview() {
       row?.name ||
       "-";
     const itemName =
-      getPreferredBoqItemNo(row) ||
+      itemNoValue ||
       row?.item_name ||
       row?.itemName ||
       row?.name ||
@@ -905,7 +907,7 @@ export default function SamplePreview() {
       row?.description ||
       getSamplePrimaryIdentifier(row, sampleClient) ||
       "-";
-    const itemNo = getPreferredBoqItemNo(row) || itemName;
+    const itemNo = itemNoValue || "-";
     const itemDescription =
       row?.description ||
       row?.item_description ||
@@ -1132,7 +1134,7 @@ export default function SamplePreview() {
                             boqSummaryRows.map((row) => (
                             <TableRow key={row.key} className="align-top">
                                 <TableCell className="font-medium">
-                                  {isHiranandani || isLodha ? (row.itemNo || row.itemCode || row.itemName || "-") : (row.itemCode || "-")}
+                                  {isHiranandani || isLodha ? (row.itemNo || "-") : (row.itemCode || "-")}
                                 </TableCell>
                                 <TableCell className="font-medium text-primary">{row.boqCode || "-"}</TableCell>
                                 <TableCell className="max-w-[280px] text-muted-foreground">
