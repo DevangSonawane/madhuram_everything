@@ -135,39 +135,37 @@ export default function SampleEdit() {
         fieldVal("boq_match_key") ||
         fieldVal("boqMatchKey")
     );
-    const itemNo = isBoqRow
-      ? (fieldVal("item_no") ??
-        fieldVal("itemNo") ??
-        raw?.item_no ??
+    const itemNo = String(
+      raw?.item_no ??
         raw?.itemNo ??
-        fieldVal("code") ??
         raw?.code ??
-        fieldVal("item_code") ??
-        fieldVal("itemCode") ??
         raw?.item_code ??
         raw?.itemCode ??
+        fieldVal("item_no") ??
+        fieldVal("itemNo") ??
+        fieldVal("code") ??
+        fieldVal("item_code") ??
+        fieldVal("itemCode") ??
         raw?.boq_item_code ??
         raw?.boqItemCode ??
-        "")
-      : (fieldVal("item_no") ??
-        fieldVal("itemNo") ??
-        raw?.item_no ??
-        raw?.itemNo ??
-        "");
-    const itemCode =
-      raw?.hsn ??
-      raw?.hsnCode ??
-      raw?.sac_code ??
-      raw?.sacCode ??
-      fieldVal("item_code") ??
-      fieldVal("itemCode") ??
+        ""
+    ).trim();
+    const itemCode = String(
       raw?.item_code ??
-      raw?.itemCode ??
-      raw?.boq_item_code ??
-      raw?.boqItemCode ??
-      fieldVal("code") ??
-      raw?.code ??
-      "";
+        raw?.itemCode ??
+        raw?.hsn ??
+        raw?.hsnCode ??
+        raw?.sac_code ??
+        raw?.sacCode ??
+        fieldVal("item_code") ??
+        fieldVal("itemCode") ??
+        fieldVal("hsn") ??
+        fieldVal("sac_code") ??
+        raw?.boq_item_code ??
+        raw?.boqItemCode ??
+        raw?.code ??
+        ""
+    ).trim();
     const boqDescription =
       raw?.boq_description ??
       raw?.boqDescription ??
@@ -417,8 +415,8 @@ export default function SampleEdit() {
       const nextTotalQty = multiplier > 0 ? nextBaseQty * multiplier : nextBaseQty;
       const nextValue = "";
       const nextQty = String(nextTotalQty);
-      const boqItemNo = String(derived.code || derived.item_no || derived.itemCode || derived.item_code || derived.itemNo || normalizeBoqRowName(derived) || "").trim();
-      const boqItemCode = String(derived.hsn || derived.sac_code || derived.item_code || "").trim();
+    const boqItemNo = String(derived.item_no || derived.code || derived.itemCode || derived.item_code || derived.itemNo || normalizeBoqRowName(derived) || "").trim();
+    const boqItemCode = String(derived.item_code || derived.hsn || derived.sac_code || "").trim();
       const nextRow = {
         _row_type: "boq",
         sr_no: matchIndex >= 0 ? rows[matchIndex]?.sr_no || String(matchIndex + 1) : String(rows.length + 1),
@@ -740,9 +738,9 @@ export default function SampleEdit() {
         ...row,
         sr_no: row?.sr_no ?? "",
         item_name: row?.item_name ?? row?.itemName ?? "",
-        item_no: row?.item_no ?? row?.itemNo ?? row?.item_code ?? row?.itemCode ?? row?.code ?? row?.item_name ?? row?.itemName ?? "",
-        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? row?.hsn ?? row?.sac_code ?? "",
-        code: row?.code ?? row?.item_code ?? row?.itemCode ?? row?.hsn ?? row?.sac_code ?? "",
+        item_no: row?.item_no ?? row?.itemNo ?? row?.code ?? row?.item_code ?? row?.itemCode ?? row?.item_name ?? row?.itemName ?? "",
+        item_code: row?.item_code ?? row?.itemCode ?? row?.hsn ?? row?.hsnCode ?? row?.sac_code ?? row?.sacCode ?? row?.code ?? "",
+        code: row?.code ?? row?.item_no ?? row?.itemNo ?? row?.item_code ?? row?.itemCode ?? row?.hsn ?? row?.sac_code ?? "",
         brand_name: row?.brand_name ?? row?.brandName ?? "",
         description: row?.description ?? "",
         specification: row?.specification ?? row?.spec ?? "",

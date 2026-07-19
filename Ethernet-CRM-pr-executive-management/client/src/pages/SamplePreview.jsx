@@ -862,17 +862,28 @@ export default function SamplePreview() {
     return map;
   })();
 
+  const getPreferredField = (source, keys) => {
+    for (const key of keys) {
+      const topLevelValue = source?.[key];
+      if (String(topLevelValue ?? "").trim() !== "") return topLevelValue;
+      const addFieldValue = getRowFieldValue(source, key);
+      if (String(addFieldValue ?? "").trim() !== "") return addFieldValue;
+    }
+    return "";
+  };
+  const getPreferredBoqItemNo = (source) =>
+    source?.item_no ||
+    source?.itemNo ||
+    getRowFieldValue(source, "item_no") ||
+    getRowFieldValue(source, "itemNo") ||
+    "";
+  const getPreferredBoqCode = (source) =>
+    getPreferredField(source, ["boq_item_code", "boqItemCode", "item_code", "itemCode", "code"]);
+
   const boqSummaryRows = (Array.isArray(sample?.item_description) ? sample.item_description : displayItems).map((row, index) => {
     const usage = row?.boq_usage || {};
     const boqCode =
-      row?.boq_item_code ||
-      row?.boqItemCode ||
-      row?.item_code ||
-      row?.itemCode ||
-      row?.code ||
-      row?.hsn ||
-      row?.item_no ||
-      row?.itemNo ||
+      getPreferredBoqCode(row) ||
       row?.boq_id ||
       row?.boqId ||
       "-";
@@ -886,10 +897,7 @@ export default function SamplePreview() {
       row?.name ||
       "-";
     const itemName =
-      row?.item_no ||
-      row?.itemNo ||
-      getRowFieldValue(row, "item_no") ||
-      getRowFieldValue(row, "itemNo") ||
+      getPreferredBoqItemNo(row) ||
       row?.item_name ||
       row?.itemName ||
       row?.name ||
@@ -897,12 +905,7 @@ export default function SamplePreview() {
       row?.description ||
       getSamplePrimaryIdentifier(row, sampleClient) ||
       "-";
-    const itemNo =
-      row?.item_no ||
-      row?.itemNo ||
-      getRowFieldValue(row, "item_no") ||
-      getRowFieldValue(row, "itemNo") ||
-      itemName;
+    const itemNo = getPreferredBoqItemNo(row) || itemName;
     const itemDescription =
       row?.description ||
       row?.item_description ||

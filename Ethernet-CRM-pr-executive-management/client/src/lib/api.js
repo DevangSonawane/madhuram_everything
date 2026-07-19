@@ -2570,6 +2570,15 @@ export const api = {
         fieldVal('boq_item_code') ??
         fieldVal('boqItemCode') ??
         '';
+      const itemNoRaw =
+        fieldVal('item_no') ??
+        fieldVal('itemNo') ??
+        item.item_no ??
+        item.itemNo ??
+        item.code ??
+        item.item_code ??
+        item.itemCode ??
+        '';
       const valueRaw =
         item.value ??
         fieldVal('value') ??
@@ -2638,6 +2647,9 @@ export const api = {
       const itemCode = String(itemCodeRaw || '').trim();
       if (itemCode) normalized.item_code = itemCode;
       if (itemCode) normalized.code = itemCode;
+
+      const itemNo = String(itemNoRaw || '').trim();
+      if (itemNo) normalized.item_no = itemNo;
 
       const rate = toNumberOrNull(item.rate ?? rateRaw);
       if (rate != null) normalized.rate = rate;

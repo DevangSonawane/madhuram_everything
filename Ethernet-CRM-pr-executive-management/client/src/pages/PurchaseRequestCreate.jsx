@@ -87,6 +87,22 @@ const resolveSamplePrItemLabel = (item = {}) => {
   ).trim();
 };
 
+const resolveSamplePrItemNo = (item = {}) => {
+  const candidates = [
+    getAddFieldValue(item, "item_no"),
+    getAddFieldValue(item, "itemNo"),
+    item?.item_no,
+    item?.itemNo,
+  ];
+
+  for (const candidate of candidates) {
+    const text = String(candidate ?? "").trim();
+    if (text) return text;
+  }
+
+  return resolveSamplePrItemLabel(item);
+};
+
 const isManualLikeRow = (row = {}) => {
   const description = String(
     row?.description || row?.material_description || row?.item_no || row?.itemNo || row?.item_name || row?.itemName || row?.item_code || row?.code || ""
@@ -418,12 +434,13 @@ export default function PurchaseRequestCreate() {
       .map((item) => {
         const itemTotalQty = resolveManualRowQty(item, sample);
         const resolvedQty = itemTotalQty > 0 ? itemTotalQty : parseNumberOrZero(item?.qty_per_flat || item?.sample_qty_per_flat || item?.req_qty);
-        const explicitItemNo = resolveSamplePrItemLabel(item);
+        const explicitItemNo = resolveSamplePrItemNo(item);
+        const explicitItemName = resolveSamplePrItemLabel(item);
         const explicitMake = String(item?.make || getAddFieldValue(item, "make") || "").trim();
         return {
           row_source: "sample",
           item_no: explicitItemNo,
-          item_name: explicitItemNo,
+          item_name: explicitItemName,
           material_description: String(
             item?.material_description || item?.description || item?.item || item?.name || ""
           ).trim(),
@@ -483,7 +500,8 @@ export default function PurchaseRequestCreate() {
 
   const addCatalogItemToPr = (catalogItem) => {
     if (!catalogItem) return;
-    const resolvedItemNo = resolveSamplePrItemLabel(catalogItem);
+    const resolvedItemNo = resolveSamplePrItemNo(catalogItem);
+    const resolvedItemName = resolveSamplePrItemLabel(catalogItem);
     setForm((prev) => ({
         ...prev,
         items: [
@@ -493,7 +511,7 @@ export default function PurchaseRequestCreate() {
             ...catalogItem,
             row_source: "sample",
             item_no: resolvedItemNo,
-            item_name: resolvedItemNo,
+            item_name: resolvedItemName,
             make: String(catalogItem?.make || "").trim(),
           },
         ],
@@ -642,13 +660,25 @@ export default function PurchaseRequestCreate() {
         );
         const inventoryId = parseIntegerOrNull(item.inventory_id);
         const boqId = parseIntegerOrNull(item.boq_id);
-        const itemNo = String(item.item_no || item.item_name || item.itemName || "").trim();
+        const itemNo = String(
+          item.item_no ||
+            item.itemNo ||
+            item.item_code ||
+            item.itemCode ||
+            item.code ||
+            item.boq_item_code ||
+            item.boqItemCode ||
+            ""
+        ).trim();
+        const itemName = String(item.item_name || item.itemName || item.material_description || itemNo || "").trim();
+        const itemCode = String(item.item_code || item.itemCode || item.code || item.boq_item_code || item.boqItemCode || "").trim();
+        const boqItemCode = String(item.boq_item_code || item.boqItemCode || itemCode || "").trim();
         const isSampleRow = String(item.row_source || "").toLowerCase() === "sample";
         const payload = {
           item_no: itemNo,
-          item_name: itemNo,
-          item_code: itemNo,
-          boq_item_code: itemNo,
+          item_name: itemName,
+          item_code: itemCode,
+          boq_item_code: boqItemCode,
           material_description: String(item.material_description || "").trim(),
           unit: String(item.unit || "").trim() || "NOS",
           req_qty: reqQty,
@@ -656,9 +686,9 @@ export default function PurchaseRequestCreate() {
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
           add_fields: [
             { key: "item_no", value: itemNo },
-            { key: "item_name", value: itemNo },
-            { key: "item_code", value: itemNo },
-            { key: "boq_item_code", value: itemNo },
+            { key: "item_name", value: itemName },
+            { key: "item_code", value: itemCode },
+            { key: "boq_item_code", value: boqItemCode },
             { key: "material_description", value: String(item.material_description || "").trim() },
             { key: "unit", value: String(item.unit || "").trim() || "NOS" },
             { key: "req_qty", value: String(reqQty) },
@@ -713,14 +743,14 @@ export default function PurchaseRequestCreate() {
           boq_id: item.boq_id ?? 0,
           boq_qty: item.boq_qty ?? 0,
           item_no: item.item_no || "",
-          item_name: item.item_no || "",
-          item_code: item.item_no || "",
-          boq_item_code: item.item_no || "",
+          item_name: item.item_name || item.material_description || item.item_no || "",
+          item_code: item.item_code || item.boq_item_code || item.item_no || "",
+          boq_item_code: item.boq_item_code || item.item_code || item.item_no || "",
           add_fields: [
             { key: "item_no", value: item.item_no || "" },
-            { key: "item_name", value: item.item_no || "" },
-            { key: "item_code", value: item.item_no || "" },
-            { key: "boq_item_code", value: item.item_no || "" },
+            { key: "item_name", value: item.item_name || item.material_description || item.item_no || "" },
+            { key: "item_code", value: item.item_code || item.boq_item_code || item.item_no || "" },
+            { key: "boq_item_code", value: item.boq_item_code || item.item_code || item.item_no || "" },
             { key: "material_description", value: item.material_description || "" },
             { key: "unit", value: item.unit || "NOS" },
             { key: "req_qty", value: String(item.req_qty ?? "") },
@@ -992,7 +1022,7 @@ export default function PurchaseRequestCreate() {
                         <TableRow key={`item-${index}`}>
                         <TableCell className="align-top">
                         <Input
-                          value={item.item_no || item.item_name || item.itemName || item.make}
+                          value={item.item_no || ""}
                           onChange={(e) => setItemField(index, "item_no", e.target.value)}
                           placeholder="Item no."
                           className="h-9"

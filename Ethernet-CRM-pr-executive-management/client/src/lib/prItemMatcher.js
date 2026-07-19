@@ -33,12 +33,10 @@ const getPrItemDescription = (item) =>
 
 const getPrItemNo = (item) =>
   stripLeadingListMarker(
-      item?.item_name ??
-      item?.itemName ??
-      item?.item_no ??
+    item?.item_no ??
       item?.itemNo ??
-      item?.make ??
-      item?.brand_name ??
+      item?.add_fields?.find?.((field) => String(field?.key || "").trim() === "item_no")?.value ??
+      item?.add_fields?.find?.((field) => String(field?.key || "").trim() === "itemNo")?.value ??
       ""
   );
 

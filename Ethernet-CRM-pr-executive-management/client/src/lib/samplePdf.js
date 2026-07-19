@@ -195,10 +195,10 @@ const normalizeSampleItems = (sample, client = "") => {
           row?.name ||
           "",
         item_no:
-          getFieldValue(row, "item_no") ||
-          getFieldValue(row, "itemNo") ||
           row?.item_no ||
           row?.itemNo ||
+          getFieldValue(row, "item_no") ||
+          getFieldValue(row, "itemNo") ||
           row?.item_code ||
           row?.itemCode ||
           row?.code ||

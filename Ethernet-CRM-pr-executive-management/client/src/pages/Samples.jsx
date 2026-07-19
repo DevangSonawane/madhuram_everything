@@ -466,16 +466,17 @@ export default function Samples() {
         row = setSampleItemFieldValue(row, "specification", String(sourceSpec));
         row = setSampleItemFieldValue(row, "spec", String(sourceSpec));
       }
-      row.item_no = String(
-        getSampleItemFieldValue(row, "item_no") ||
-          row.item_no ||
+      const topLevelItemNo = String(
+        row.item_no ||
           row.itemNo ||
-          getSampleItemFieldValue(row, "itemNo") ||
           row.code ||
           row.item_code ||
           row.itemCode ||
+          getSampleItemFieldValue(row, "item_no") ||
+          getSampleItemFieldValue(row, "itemNo") ||
           "-"
       ).trim() || "-";
+      row.item_no = topLevelItemNo;
       row.item_name = String(
         row.item_name ||
           row.itemName ||
@@ -487,14 +488,16 @@ export default function Samples() {
       row = setSampleItemFieldValue(row, "item_name", row.item_name);
       row = setSampleItemFieldValue(row, "item_no", row.item_no);
       row.item_code = String(
-        getSampleItemFieldValue(row, "hsn") ||
-          row.hsn ||
-          getSampleItemFieldValue(row, "sac_code") ||
-          row.sac_code ||
-          getSampleItemFieldValue(row, "item_code") ||
-          row.item_code ||
+        row.item_code ||
           row.itemCode ||
-          row.code ||
+          row.hsn ||
+          row.hsnCode ||
+          row.sac_code ||
+          row.sacCode ||
+          getSampleItemFieldValue(row, "item_code") ||
+          getSampleItemFieldValue(row, "itemCode") ||
+          getSampleItemFieldValue(row, "hsn") ||
+          getSampleItemFieldValue(row, "sac_code") ||
           ""
       ).trim();
       row.quantity = item.total_qty ? String(item.total_qty) : "";
@@ -503,12 +506,12 @@ export default function Samples() {
       const rowBoqKey = String(row.boq_key || getSampleItemFieldValue(row, "boq_key") || boqId || "").trim();
       row.boq_key = rowBoqKey;
       row.code = String(
-        getSampleItemFieldValue(row, "code") ||
-          row.code ||
           row.item_no ||
           row.itemNo ||
+          row.code ||
           row.item_code ||
           row.itemCode ||
+          getSampleItemFieldValue(row, "code") ||
           ""
       ).trim();
       if (boqQty) {
@@ -1188,8 +1191,8 @@ export default function Samples() {
     const selectedBaseAmount = rateNum && qtyToAdd ? rateNum * qtyToAdd : 0;
     const boqId = String(derived.id || "").trim();
     const boqMatchKey = getBoqExactMatchKey(boqItem) || (boqId ? `id${boqId}` : `key${String(key).trim()}`);
-    const boqItemNo = String(derived.code || derived.item_no || derived.item_code || "").trim();
-    const boqItemCode = String(derived.hsn || derived.sac_code || derived.item_code || "").trim();
+    const boqItemNo = String(derived.item_no || derived.code || derived.item_code || "").trim();
+    const boqItemCode = String(derived.item_code || derived.hsn || derived.sac_code || "").trim();
     const itemName = String(derived.item_name || derived.itemName || derived.description || "").trim();
     const itemNo = boqItemNo || "-";
     const nextRow = {
@@ -1290,13 +1293,13 @@ export default function Samples() {
             ""
         ).trim(),
         item_no: String(
+          existing.item_no ||
+          existing.itemNo ||
           getSampleItemFieldValue(existing, "item_no") ||
-            existing.item_no ||
-            existing.itemNo ||
-            getSampleItemFieldValue(existing, "code") ||
-            existing.code ||
-            boqItemNo ||
-            "-"
+          getSampleItemFieldValue(existing, "code") ||
+          existing.code ||
+          boqItemNo ||
+          "-"
         ),
         hsn: String(existing.hsn || getSampleItemFieldValue(existing, "hsn") || derived.hsn || ""),
         sac_code: String(existing.sac_code || getSampleItemFieldValue(existing, "sac_code") || derived.sac_code || ""),
