@@ -93,7 +93,19 @@ const buildItemPayloads = (items) => {
   if (!Array.isArray(items)) return [];
   return items
     .map((item, index) => {
-      const boqItemCode = String(item.boq_item_code || item.boqItemCode || item.item_code || item.itemCode || item.code || item.itemName || item.item_name || item.description || "").trim();
+      const boqItemCode = String(
+        item.boq_item_code ||
+          item.boqItemCode ||
+          item.item_no ||
+          item.itemNo ||
+          item.item_code ||
+          item.itemCode ||
+          item.code ||
+          item.itemName ||
+          item.item_name ||
+          item.description ||
+          ""
+      ).trim();
       const itemName = String(item.item_name || item.itemName || item.material_description || item.description || boqItemCode || "").trim();
       const description = String(item.description || item.material_description || itemName || boqItemCode).trim();
       const payload = {
@@ -1087,7 +1099,16 @@ export default function PurchaseOrders() {
       const computedAmount =
         Number.isFinite(Number(qty)) && Number.isFinite(Number(rate)) ? String(Number(qty) * Number(rate)) : "";
       const itemDescription = String(item?.item_description ?? item?.description ?? item?.item_name ?? "").trim();
-      const boqItemCode = String(item?.boq_item_code ?? item?.boqItemCode ?? item?.item_code ?? item?.itemCode ?? item?.code ?? itemDescription).trim();
+      const boqItemCode = String(
+        item?.boq_item_code ??
+          item?.boqItemCode ??
+          item?.item_no ??
+          item?.itemNo ??
+          item?.item_code ??
+          item?.itemCode ??
+          item?.code ??
+          itemDescription
+      ).trim();
       const uom = keepRawText(item?.unit) || keepRawText(item?.uom) || keepRawText(item?.UOM) || "";
       const hsn = String(item?.hsn ?? item?.hsn_code ?? item?.hsnCode ?? "").trim();
       const vendorName = String(item?.vendor_name ?? item?.vendorName ?? item?.vendor ?? "").trim();
@@ -1290,12 +1311,12 @@ export default function PurchaseOrders() {
     return rows
       .map((row, index) => {
         const boqId = String(fieldVal(row, "boq_id") || "").trim();
-        const itemNo = String(fieldVal(row, "item_no") || "").trim();
+        const lookupItemNo = String(fieldVal(row, "item_no") || "").trim();
         const itemCode = String(fieldVal(row, "item_code") || fieldVal(row, "itemCode") || "").trim();
         const boqMatch = (() => {
           if (!boqLookup) return null;
           if (boqId) return boqLookup.byId.get(boqId) || null;
-          if (itemNo) return boqLookup.byItemNo.get(itemNo) || null;
+          if (lookupItemNo) return boqLookup.byItemNo.get(lookupItemNo) || null;
           if (itemCode) return boqLookup.byItemCode.get(itemCode) || null;
           return null;
         })();
@@ -1304,6 +1325,7 @@ export default function PurchaseOrders() {
         const description =
           String(row?.description ?? "").trim() ||
           String(fieldVal(row, "description") || "").trim();
+        const itemNo = String(row?.item_no ?? row?.itemNo ?? fieldVal(row, "item_no") ?? fieldVal(row, "itemNo") ?? "").trim();
         const uom =
           keepRawText(row?.unit) ||
           keepRawText(row?.uom) ||
@@ -1365,6 +1387,7 @@ export default function PurchaseOrders() {
           remarks: "",
           boq_id: boqMatch?.boq_id ?? boqMatch?.id ?? row?.boq_id ?? row?.boqId ?? "",
           boq_qty: row?.boq_qty ?? row?.boqQty ?? qty,
+          boq_item_code: itemNo || boqMatch?.item_no || boqMatch?.itemNo || boqMatch?.item_code || boqMatch?.itemCode || "",
         };
       })
       .filter(Boolean);
@@ -1411,7 +1434,15 @@ export default function PurchaseOrders() {
       }
       const unwrapped = unwrapSampleResponse(res.data, nextSampleId);
       const mapped = mapSampleItemsToPoItems(unwrapped || {}, { boqLookup });
-      setPoData((prev) => recalculatePoAmounts({ ...prev, sampleId: nextSampleId, items: mapped, source: "Manual" }));
+      setPoData((prev) => {
+        const nextItems = Array.isArray(prev.items) && prev.items.length > 0 ? prev.items : mapped;
+        return recalculatePoAmounts({
+          ...prev,
+          sampleId: nextSampleId,
+          items: nextItems,
+          source: "Manual",
+        });
+      });
     } catch (error) {
       toast({ title: "Error", description: error?.message || "Failed to load sample items.", variant: "destructive" });
     }

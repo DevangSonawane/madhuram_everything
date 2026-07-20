@@ -127,6 +127,36 @@ const isSummaryLabel = (text) => {
   );
 };
 
+const findHeaderIndex = (headerRow, labels = []) => {
+  const targets = Array.isArray(labels) ? labels.map((label) => normalizeForMatch(label)).filter(Boolean) : [];
+  if (targets.length === 0) return -1;
+  const row = Array.isArray(headerRow) ? headerRow : [];
+  for (let i = 0; i < row.length; i += 1) {
+    const cell = normalizeForMatch(row[i] || "");
+    if (!cell) continue;
+    if (targets.includes(cell)) return i;
+  }
+  return -1;
+};
+
+const buildItemColumnMap = (headerRow) => {
+  const srCol = findHeaderIndex(headerRow, ["sr no", "sr no.", "sr. no", "srno"]);
+  const itemNoCol = findHeaderIndex(headerRow, ["item no", "item no.", "item no", "item number"]);
+  const hsnCol = findHeaderIndex(headerRow, ["hsn code", "hsn"]);
+  const descCol = findHeaderIndex(headerRow, ["item description", "description", "material description"]);
+  const qtyCol = findHeaderIndex(headerRow, ["qty", "quantity", "total qty"]);
+  const uomCol = findHeaderIndex(headerRow, ["uom", "unit"]);
+
+  return {
+    srCol: srCol >= 0 ? srCol : 0,
+    itemNoCol: itemNoCol >= 0 ? itemNoCol : 1,
+    hsnCol: hsnCol >= 0 ? hsnCol : 2,
+    descCol: descCol >= 0 ? descCol : 3,
+    qtyCol: qtyCol >= 0 ? qtyCol : 4,
+    uomCol: uomCol >= 0 ? uomCol : 5,
+  };
+};
+
 const findExactLabelRow = (rows, label, startRow = 0, endRow = rows.length - 1) => {
   const target = normalizeForMatch(label);
   for (let i = startRow; i <= endRow; i += 1) {
@@ -648,16 +678,17 @@ const parseSummaryForBlock = (rows, blockStart, blockEnd, vendors, blockIndex) =
   return { summary, issues };
 };
 
-const parseItemsForBlock = (rows, blockStart, blockEnd, headerRowIdx, vendors) => {
+const parseItemsForBlock = (rows, blockStart, blockEnd, headerRowIdx, vendors, columnMap = {}) => {
   const sections = [];
   let currentSection = null;
   let lastItem = null;
+  const { srCol = 0, itemNoCol = 1, hsnCol = 2, descCol = 3, qtyCol = 4, uomCol = 5 } = columnMap || {};
 
   for (let r = headerRowIdx + 1; r <= blockEnd; r += 1) {
     const row = rows[r] || [];
-    const srRaw = toTrimmed(row[0]);
+    const srRaw = toTrimmed(row[srCol]);
     const rowLabel = normalizeForMatch(rowText(row, 5));
-    const desc = toTrimmed(row[2] || row[1] || "");
+    const desc = toTrimmed(row[descCol] || row[itemNoCol] || row[hsnCol] || "");
 
     if (rowLabel && (rowLabel.includes("subtotal") || rowLabel.includes("discount") || rowLabel.includes("gst") || rowLabel.includes("total value"))) {
       break;
@@ -693,10 +724,10 @@ const parseItemsForBlock = (rows, blockStart, blockEnd, headerRowIdx, vendors) =
 
       const item = {
         srNo: Number(srRaw),
-        hsnCode: toTrimmed(row[1]),
+        hsnCode: toTrimmed(row[hsnCol]),
         description: desc,
-        totalQty: toNumberOrNull(row[3]),
-        uom: toTrimmed(row[4]),
+        totalQty: toNumberOrNull(row[qtyCol]),
+        uom: toTrimmed(row[uomCol]),
         vendorData,
       };
       currentSection.items.push(item);
@@ -704,7 +735,7 @@ const parseItemsForBlock = (rows, blockStart, blockEnd, headerRowIdx, vendors) =
       continue;
     }
 
-    const continuationText = toTrimmed(row[2] || row[1] || "");
+    const continuationText = toTrimmed(row[descCol] || row[itemNoCol] || row[hsnCol] || "");
     if (continuationText && lastItem && !isSummaryLabel(continuationText) && !isSectionLabel(srRaw)) {
       lastItem.description = toTrimmed(`${lastItem.description || ""} ${continuationText}`);
     }
@@ -716,8 +747,10 @@ const parseItemsForBlock = (rows, blockStart, blockEnd, headerRowIdx, vendors) =
 const parseBlock = (rows, blockStart, blockEnd, blockIndex) => {
   const meta = extractMeta(rows, blockStart);
   const headerRowIdx = findHeaderRowIndex(rows, blockStart, blockEnd);
+  const headerRow = rows[headerRowIdx] || [];
+  const columnMap = buildItemColumnMap(headerRow);
   const { vendors, subProjectName } = parseVendorColumns(rows, blockStart, headerRowIdx, blockEnd);
-  const sections = parseItemsForBlock(rows, blockStart, blockEnd, headerRowIdx, vendors);
+  const sections = parseItemsForBlock(rows, blockStart, blockEnd, headerRowIdx, vendors, columnMap);
   const { summary, issues } = parseSummaryForBlock(rows, blockStart, blockEnd, vendors, blockIndex);
 
   return {

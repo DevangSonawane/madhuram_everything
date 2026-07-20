@@ -87,6 +87,19 @@ const safeExcelSheetName = (value) => {
   return raw.replace(/[\\/?*\[\]:]/g, " ").slice(0, 31) || "Purchase Order";
 };
 
+const resolveBoqItemCode = (item = {}) =>
+  normalizeExcelText(
+    item?.item_no ??
+      item?.itemNo ??
+      item?.boq_item_code ??
+      item?.boqItemCode ??
+      item?.item_code ??
+      item?.itemCode ??
+      item?.code ??
+      "",
+    "-"
+  );
+
 const setCellStyle = (ws, addr, style) => {
   if (!ws[addr]) return;
   ws[addr].s = {
@@ -108,6 +121,8 @@ const buildPurchaseOrderExcelSheet = (po) => {
   const items = Array.isArray(po.items) ? po.items : [];
   const notes = normalizeLines(po.notes);
   const terms = normalizeLines(po.termsAndConditions);
+  const itemColumns = 9;
+  const emptyItemRow = () => Array.from({ length: itemColumns }, () => "");
 
   const rows = [];
   const merges = [];
@@ -119,14 +134,17 @@ const buildPurchaseOrderExcelSheet = (po) => {
   };
 
   const pushMergedRow = (value, startCol = 0, endCol = 7) => {
-    const rowNumber = push([value, "", "", "", "", "", "", ""]);
+    const rowNumber = push([value, ...emptyItemRow().slice(1)]);
     merges.push(mergeRange(startCol, rowNumber - 1, endCol, rowNumber - 1));
     return rowNumber;
   };
 
   const pushMetaRow = (label, value) => {
-    const rowNumber = push([label, value, "", "", "", "", "", ""]);
-    merges.push(mergeRange(1, rowNumber - 1, 7, rowNumber - 1));
+    const row = emptyItemRow();
+    row[0] = label;
+    row[1] = value;
+    const rowNumber = push(row);
+    merges.push(mergeRange(1, rowNumber - 1, itemColumns - 1, rowNumber - 1));
     return rowNumber;
   };
 
@@ -187,12 +205,13 @@ const buildPurchaseOrderExcelSheet = (po) => {
   push([]);
 
   const itemsSectionRow = pushMergedRow("ITEMS");
-  const headerRow = push(["S. No.", "Description", "HSN", "Qty", "UOM", "Rate", "Amount", "Remark"]);
+  const headerRow = push(["S. No.", "BOQ Item Code", "Description", "HSN", "Qty", "UOM", "Rate", "Amount", "Remark"]);
   const itemDataStartRow = rows.length + 1;
 
   items.forEach((item, index) => {
     push([
       index + 1,
+      resolveBoqItemCode(item),
       normalizeExcelText(item?.description, "-"),
       normalizeExcelText(item?.hsnCode || item?.hsn, "-"),
       formatExcelAmount(item?.qty),
@@ -372,19 +391,20 @@ export const downloadPurchaseOrderExcel = async (poInput, { fileName } = {}) => 
     setCellStyle(ws, `B${row}`, metaValueStyle);
   }
   setCellStyle(ws, `A${itemDataStartRow - 2}`, sectionStyle);
-  for (const col of ["A", "B", "C", "D", "E", "F", "G", "H"]) {
+  for (const col of ["A", "B", "C", "D", "E", "F", "G", "H", "I"]) {
     setCellStyle(ws, `${col}${itemDataStartRow - 1}`, headerStyle);
   }
 
   for (let row = itemDataStartRow; row <= itemDataEndRow; row += 1) {
     setCellStyle(ws, `A${row}`, { ...bodyStyle, alignment: { horizontal: "center", vertical: "top", wrapText: true } });
     setCellStyle(ws, `B${row}`, bodyStyle);
-    setCellStyle(ws, `C${row}`, { ...bodyStyle, alignment: { horizontal: "center", vertical: "top", wrapText: true } });
-    setCellStyle(ws, `D${row}`, numberBodyStyle);
-    setCellStyle(ws, `E${row}`, { ...bodyStyle, alignment: { horizontal: "center", vertical: "top", wrapText: true } });
-    setCellStyle(ws, `F${row}`, numberBodyStyle);
+    setCellStyle(ws, `C${row}`, bodyStyle);
+    setCellStyle(ws, `D${row}`, { ...bodyStyle, alignment: { horizontal: "center", vertical: "top", wrapText: true } });
+    setCellStyle(ws, `E${row}`, numberBodyStyle);
+    setCellStyle(ws, `F${row}`, { ...bodyStyle, alignment: { horizontal: "center", vertical: "top", wrapText: true } });
     setCellStyle(ws, `G${row}`, numberBodyStyle);
-    setCellStyle(ws, `H${row}`, bodyStyle);
+    setCellStyle(ws, `H${row}`, numberBodyStyle);
+    setCellStyle(ws, `I${row}`, bodyStyle);
   }
 
   setCellStyle(ws, `A${summarySectionRow}`, sectionStyle);
@@ -406,7 +426,7 @@ export const downloadPurchaseOrderExcel = async (poInput, { fileName } = {}) => 
   ws["!autofilter"] = {
     ref: XLSX.utils.encode_range({
       s: { c: 0, r: itemDataStartRow - 2 },
-      e: { c: 7, r: Math.max(itemDataStartRow - 1, itemDataEndRow) },
+      e: { c: 8, r: Math.max(itemDataStartRow - 1, itemDataEndRow) },
     }),
   };
 
@@ -434,7 +454,7 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
 
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 12;
+  const margin = 8;
   const x = margin;
   const y = margin;
   const w = pageW - margin * 2;
@@ -541,12 +561,12 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
     const imgW = w;
     const imgH = (headerImg.naturalHeight / headerImg.naturalWidth) * imgW;
     doc.addImage(headerDataUrl, "PNG", x, y, imgW, imgH, undefined, "FAST");
-    metaTopY = y + imgH + 4;
+    metaTopY = y + imgH + 2;
   } catch {
     doc.setFont("times", "bold");
     doc.setFontSize(12);
-    doc.text("PURCHASE ORDER", x + w / 2, y + 12, { align: "center" });
-    metaTopY = y + 18;
+    doc.text("PURCHASE ORDER", x + w / 2, y + 10, { align: "center" });
+    metaTopY = y + 14;
   }
 
   const leftBlockW = w * 0.64;
@@ -642,13 +662,13 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
     const current = item || {};
     return [
       String(current.srNo || current.srno || index + 1),
-      asText(current.hsnCode || current.hsn || "", ""),
+      resolveBoqItemCode(current),
       asText(current.description || "", ""),
+      asText(current.hsnCode || current.hsn || "", ""),
       asText(current.qty || current.quantity || "", ""),
       asText(current.uom || current.UOM || "", ""),
       toAmount(current.rate || current.Rate || ""),
       toAmount(current.amount || current.Amount || ""),
-      asText(current.remarks || current.remark || "", ""),
     ];
   });
 
@@ -657,7 +677,7 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
     margin: { left: x, right: x },
     tableWidth: w,
     theme: "grid",
-    head: [["Sr. No.", "HSN Code", "Item Description", "Qty", "UOM", "Rate", "Amount", "Remarks"]],
+    head: [["Sr. No.", "BOQ Item Code", "Item Description", "HSN Code", "Qty", "UOM", "Rate", "Amount"]],
     body: rows,
     styles: {
       font: "times",
@@ -679,13 +699,13 @@ export const downloadPurchaseOrderPdf = async (poInput, { fileName } = {}) => {
     },
     columnStyles: {
       0: { cellWidth: 11, halign: "center" },
-      1: { cellWidth: 16 },
-      2: { cellWidth: 82 },
-      3: { cellWidth: 11, halign: "center" },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 76 },
+      3: { cellWidth: 16 },
       4: { cellWidth: 11, halign: "center" },
-      5: { cellWidth: 17, halign: "right" },
+      5: { cellWidth: 11, halign: "center" },
       6: { cellWidth: 17, halign: "right" },
-      7: { cellWidth: 19 },
+      7: { cellWidth: 17, halign: "right" },
     },
     pageBreak: "auto",
     rowPageBreak: "auto",
