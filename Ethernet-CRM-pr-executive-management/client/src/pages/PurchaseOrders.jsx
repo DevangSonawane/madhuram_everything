@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useProject } from "@/contexts/useProject";
 import { api } from "@/lib/api";
 import { downloadPurchaseOrderPdf } from "@/lib/poPdf";
-import { matchAgainstPrItems } from "@/lib/prItemMatcher";
 import { EMPTY_PO, normalizePoData, sanitizeNumberInput, sanitizePhoneInput } from "@/pages/poShared";
 import { RowActionsMenu } from "@/components/RowActionsMenu";
 
@@ -206,11 +205,7 @@ export default function PurchaseOrders() {
   const [loadingSamples, setLoadingSamples] = useState(false);
   const [vcOptions, setVcOptions] = useState([]);
   const [loadingVcOptions, setLoadingVcOptions] = useState(false);
-  const [prOptions, setPrOptions] = useState([]);
-  const [loadingPrOptions, setLoadingPrOptions] = useState(false);
-  const [loadingPrItems, setLoadingPrItems] = useState(false);
   const [loadingVcItems, setLoadingVcItems] = useState(false);
-  const [selectedPrId, setSelectedPrId] = useState("");
   const [selectedVcId, setSelectedVcId] = useState("");
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailPo, setEmailPo] = useState(null);
@@ -226,7 +221,15 @@ export default function PurchaseOrders() {
   const [emailLogs, setEmailLogs] = useState([]);
   const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
   const [poDownloadingId, setPoDownloadingId] = useState(null);
-  const [approvedVendorPrMap, setApprovedVendorPrMap] = useState(() => new Map());
+  const sampleOptionsScopeRef = useRef(null);
+  const vcOptionsScopeRef = useRef(null);
+  const poListScopeRef = useRef(null);
+
+  const projectScopeId = useMemo(() => {
+    const resolvedId = String(selectedProject?.project_id ?? selectedProject?.id ?? "").trim();
+    if (resolvedId) return resolvedId;
+    return String(routeProjectId || "").trim();
+  }, [routeProjectId, selectedProject?.id, selectedProject?.project_id]);
 
   useEffect(() => {
     let active = true;
@@ -264,9 +267,61 @@ export default function PurchaseOrders() {
   const selectedVcMissing = Boolean(
     selectedVcId && !vcOptions.some((vc) => String(vc?.id ?? vc?.comparison_id ?? vc?.vendor_comparison_id ?? vc?.comparisonId ?? "") === selectedVcId)
   );
-  const selectedPrMissing = Boolean(
-    selectedPrId && !prOptions.some((pr) => String(pr.pr_id || pr.id) === selectedPrId)
-  );
+  const loadSampleOptions = React.useCallback(async ({ force = false } = {}) => {
+    const scopeKey = projectScopeId || "";
+    if (!scopeKey) return;
+    if (!force && sampleOptionsScopeRef.current === scopeKey) return;
+
+    setLoadingSamples(true);
+    try {
+      const response = await api.getSamplesByProject(scopeKey);
+      if (!response.success || !Array.isArray(response.data)) {
+        setSampleOptions([]);
+        sampleOptionsScopeRef.current = scopeKey;
+        return;
+      }
+      const byId = new Map();
+      response.data.forEach((sample) => {
+        const id = sample?.sample_id ?? sample?.id;
+        if (id == null || id === "") return;
+        byId.set(String(id), sample);
+      });
+      setSampleOptions(Array.from(byId.values()));
+      sampleOptionsScopeRef.current = scopeKey;
+    } catch {
+      setSampleOptions([]);
+    } finally {
+      setLoadingSamples(false);
+    }
+  }, [projectScopeId]);
+
+  const loadVcOptions = React.useCallback(async ({ force = false } = {}) => {
+    const scopeKey = projectScopeId || "";
+    if (!scopeKey) return;
+    if (!force && vcOptionsScopeRef.current === scopeKey) return;
+
+    setLoadingVcOptions(true);
+    try {
+      const response = await api.listVendorComparisons({ project_id: Number(scopeKey) });
+      if (!response.success || !Array.isArray(response.data)) {
+        setVcOptions([]);
+        vcOptionsScopeRef.current = scopeKey;
+        return;
+      }
+      const byId = new Map();
+      response.data.forEach((vc) => {
+        const id = vc?.id ?? vc?.comparison_id ?? vc?.vendor_comparison_id ?? vc?.comparisonId;
+        if (id == null || id === "") return;
+        byId.set(String(id), vc);
+      });
+      setVcOptions(Array.from(byId.values()));
+      vcOptionsScopeRef.current = scopeKey;
+    } catch {
+      setVcOptions([]);
+    } finally {
+      setLoadingVcOptions(false);
+    }
+  }, [projectScopeId]);
 
   const getVendorId = (vendor) => String(vendor?.vendor_id ?? vendor?.id ?? "");
 
@@ -433,16 +488,20 @@ export default function PurchaseOrders() {
   };
 
   useEffect(() => {
-    if (!projectId) {
+    if (!projectScopeId) {
+      poListScopeRef.current = null;
       setLoadingPos(false);
       setRecentPos([]);
       return;
     }
 
+    if (poListScopeRef.current === projectScopeId) return;
+    poListScopeRef.current = projectScopeId;
+
     const fetchPos = async () => {
       setLoadingPos(true);
       try {
-        const result = await api.getPosByProject(projectId);
+        const result = await api.getPosByProject(projectScopeId);
         if (result.success && Array.isArray(result.data)) {
           const mapped = result.data.map((record) => {
             const normalized = normalizePoData(record);
@@ -477,190 +536,7 @@ export default function PurchaseOrders() {
     };
 
     fetchPos();
-  }, [projectId, toast]);
-
-  useEffect(() => {
-    let mounted = true;
-    const loadSamples = async () => {
-      setLoadingSamples(true);
-      try {
-        const response = projectId ? await api.getSamplesByProject(projectId) : await api.getSamples();
-        if (!mounted) return;
-        if (!response.success || !Array.isArray(response.data)) {
-          setSampleOptions([]);
-          return;
-        }
-        const byId = new Map();
-        response.data.forEach((sample) => {
-          const id = sample?.sample_id ?? sample?.id;
-          if (id == null || id === "") return;
-          byId.set(String(id), sample);
-        });
-        setSampleOptions(Array.from(byId.values()));
-      } catch {
-        if (mounted) setSampleOptions([]);
-      } finally {
-        if (mounted) setLoadingSamples(false);
-      }
-    };
-
-    loadSamples();
-    return () => {
-      mounted = false;
-    };
-  }, [projectId]);
-
-  useEffect(() => {
-    let mounted = true;
-    const loadPrs = async () => {
-      setLoadingPrOptions(true);
-      try {
-        const response = projectId ? await api.getPrsByProject(projectId) : await api.getPrs();
-        if (!mounted) return;
-        if (!response.success || !Array.isArray(response.data)) {
-          setPrOptions([]);
-          return;
-        }
-        const byId = new Map();
-        response.data.forEach((pr) => {
-          const id = pr?.pr_id ?? pr?.id;
-          if (id == null || id === "") return;
-          byId.set(String(id), pr);
-        });
-        setPrOptions(Array.from(byId.values()));
-      } catch {
-        if (mounted) setPrOptions([]);
-      } finally {
-        if (mounted) setLoadingPrOptions(false);
-      }
-    };
-
-    loadPrs();
-    return () => {
-      mounted = false;
-    };
-  }, [projectId]);
-
-  useEffect(() => {
-    let mounted = true;
-    const loadVcOptions = async () => {
-      setLoadingVcOptions(true);
-      try {
-        const response = projectId ? await api.listVendorComparisons({ project_id: projectId }) : await api.listVendorComparisons();
-        if (!mounted) return;
-        if (!response.success || !Array.isArray(response.data)) {
-          setVcOptions([]);
-          return;
-        }
-        const byId = new Map();
-        response.data.forEach((vc) => {
-          const id = vc?.id ?? vc?.comparison_id ?? vc?.vendor_comparison_id ?? vc?.comparisonId;
-          if (id == null || id === "") return;
-          byId.set(String(id), vc);
-        });
-        setVcOptions(Array.from(byId.values()));
-      } catch {
-        if (mounted) setVcOptions([]);
-      } finally {
-        if (mounted) setLoadingVcOptions(false);
-      }
-    };
-
-    loadVcOptions();
-    return () => {
-      mounted = false;
-    };
-  }, [projectId]);
-
-  useEffect(() => {
-    let mounted = true;
-    const loadApprovedVendorPrMap = async () => {
-      if (!projectId) {
-        if (mounted) setApprovedVendorPrMap(new Map());
-        return;
-      }
-
-      try {
-        const result = await api.listVendorComparisons({ project_id: projectId });
-        const list = Array.isArray(result?.data)
-          ? result.data
-          : Array.isArray(result?.data?.data)
-            ? result.data.data
-            : Array.isArray(result?.data?.rows)
-              ? result.data.rows
-              : [];
-
-        const score = (row) => {
-          const updated = row?.updated_at ?? row?.updatedAt ?? row?.created_at ?? row?.createdAt ?? null;
-          const t = updated ? new Date(updated).getTime() : 0;
-          return Number.isFinite(t) ? t : 0;
-        };
-
-        const toNumberOrNull = (value) => {
-          if (value === undefined || value === null || value === "") return null;
-          const parsed = Number(String(value).replace(/,/g, "").trim());
-          return Number.isNaN(parsed) ? null : parsed;
-        };
-
-        const computeTotal = (pricelist) => {
-          const rows = Array.isArray(pricelist) ? pricelist : [];
-          return rows.reduce((acc, item) => {
-            const amount = toNumberOrNull(item?.amount);
-            if (amount !== null) return acc + amount;
-            const qty = toNumberOrNull(item?.total_qty ?? item?.qty ?? item?.quantity);
-            const rate = toNumberOrNull(item?.rate);
-            if (qty === null || rate === null) return acc;
-            return acc + qty * rate;
-          }, 0);
-        };
-
-        const byPrNo = new Map();
-        list.forEach((row) => {
-          const prNo = row?.pr_no;
-          if (prNo == null || prNo === "") return;
-          const pricelist = (() => {
-            const raw =
-              row?.pricelist ??
-              row?.price_list ??
-              row?.priceList ??
-              row?.items ??
-              [];
-            return Array.isArray(raw) ? raw : [];
-          })();
-          if (pricelist.length === 0) return;
-
-          const vendors = Array.from(
-            new Set(
-              pricelist
-                .map((item) => String(item?.vendor_name ?? item?.vendorName ?? item?.vendor ?? "").trim())
-                .filter(Boolean)
-            )
-          );
-          if (vendors.length !== 1) return;
-          const vendorName = vendors[0] || "";
-          if (!vendorName) return;
-
-          const prNoKey = String(prNo);
-          const next = { vendorName, total: computeTotal(pricelist), _score: score(row) };
-          const prev = byPrNo.get(prNoKey);
-          if (!prev || next._score >= prev._score) byPrNo.set(prNoKey, next);
-        });
-
-        const map = new Map();
-        byPrNo.forEach((value, key) => {
-          map.set(key, { vendorName: value.vendorName, total: value.total });
-        });
-        if (mounted) setApprovedVendorPrMap(map);
-      } catch {
-        if (mounted) setApprovedVendorPrMap(new Map());
-      }
-    };
-
-    loadApprovedVendorPrMap();
-    return () => {
-      mounted = false;
-    };
-  }, [projectId]);
+  }, [projectScopeId, toast]);
 
   const hasPreview = useMemo(() => {
     return poData.vendor?.name || poData.orderNo || poData.poDate || poData.totalAmount;
@@ -934,83 +810,6 @@ export default function PurchaseOrders() {
     });
   };
 
-  const mapPrItemsToPoItems = (items, { inventoryDetailsById = new Map() } = {}) => {
-    if (!Array.isArray(items)) return [];
-    return items.map((item, index) => {
-      const inventoryId = item?.inventory_id ?? item?.inventoryId ?? null;
-      const inv = inventoryId != null ? inventoryDetailsById.get(String(inventoryId)) : null;
-      const make = String(item?.make || "").trim();
-      const place = String(item?.place_of_utilisation || "").trim();
-      const remarks = [make ? `Make: ${make}` : "", place ? `Place: ${place}` : ""]
-        .filter(Boolean)
-        .join(" | ");
-      const qtyRaw = item?.req_qty ?? item?.qty ?? item?.quantity ?? "";
-      const qtyNum = Number(String(qtyRaw ?? "").replace(/,/g, "").trim());
-      const qty = qtyRaw == null ? "" : String(qtyRaw);
-
-      const hsn =
-        String(item?.hsn ?? item?.hsnCode ?? item?.hsn_code ?? "").trim() ||
-        String(inv?.hsn ?? inv?.hsn_code ?? inv?.hsn_sac_code ?? "").trim() ||
-        "";
-
-      const uom =
-        keepRawText(item?.unit) ||
-        keepRawText(item?.uom) ||
-        keepRawText(item?.UOM) ||
-        keepRawText(inv?.unit) ||
-        keepRawText(inv?.units) ||
-        keepRawText(inv?.uom) ||
-        keepRawText(inv?.UOM) ||
-        "";
-
-      const rateRaw =
-        item?.rate ??
-        item?.Rate ??
-        inv?.price ??
-        inv?.rate ??
-        inv?.unit_price ??
-        inv?.unitPrice ??
-        "";
-      const rateNum = Number(String(rateRaw ?? "").replace(/,/g, "").trim());
-      const rate = rateRaw == null || rateRaw === "" ? "" : String(rateRaw);
-
-      const computedAmount =
-        Number.isFinite(qtyNum) && qtyNum > 0 && Number.isFinite(rateNum) && rateNum >= 0
-          ? String(qtyNum * rateNum)
-          : "";
-      const itemName = String(
-        item?.item_name ??
-          item?.itemName ??
-          item?.material_description ??
-          item?.item_description ??
-          item?.description ??
-          ""
-      ).trim();
-      const boqItemCode = String(
-        item?.boq_item_code ??
-          item?.boqItemCode ??
-          item?.item_code ??
-          item?.itemCode ??
-          item?.code ??
-          itemName
-      ).trim();
-      return {
-        srNo: String(index + 1),
-        hsnCode: hsn,
-        item_name: itemName || boqItemCode,
-        description: String(item?.material_description || item?.item_description || item?.description || itemName || boqItemCode || "").trim(),
-        qty,
-        uom,
-        rate,
-        amount: computedAmount,
-        remarks,
-        boq_id: item?.boq_id ?? item?.boqId ?? "",
-        boq_qty: item?.boq_qty ?? item?.boqQty ?? qty,
-        boq_item_code: boqItemCode || itemName,
-      };
-    });
-  };
-
   const parseArrayLike = (value, fallback = []) => {
     if (Array.isArray(value)) return value;
     if (typeof value === "string") {
@@ -1028,9 +827,6 @@ export default function PurchaseOrders() {
     }
     return fallback;
   };
-
-  const getComparisonId = (comparison) =>
-    comparison?.id ?? comparison?.comparison_id ?? comparison?.vendor_comparison_id ?? comparison?.comparisonId ?? null;
 
   const getPricelistRows = (comparison) =>
     parseArrayLike(
@@ -1088,7 +884,7 @@ export default function PurchaseOrders() {
       .join(" | ");
   };
 
-  const mapVendorComparisonItemsToPoItems = (comparison, { inventoryDetailsById = new Map(), fallbackVendorName = "" } = {}) => {
+  const mapVendorComparisonItemsToPoItems = (comparison, { fallbackVendorName = "" } = {}) => {
     const rows = getApprovedPricelistRows(comparison, { fallbackVendorName });
     return rows.map((item, index) => {
       const qtyRaw = item?.total_qty ?? item?.qty ?? item?.quantity ?? "";
@@ -1125,142 +921,6 @@ export default function PurchaseOrders() {
         boq_item_code: boqItemCode || itemDescription,
       };
     });
-  };
-
-  const fetchApprovedVendorItemsForPr = async ({ prNo, prId }, projectIdValue, prItems = []) => {
-    if ((!prNo && !prId) || !projectIdValue) return { items: [], approvedVendorName: "" };
-    try {
-      const makeByDescription = new Map();
-      const boqItemCodeByDescription = new Map();
-      (Array.isArray(prItems) ? prItems : []).forEach((prItem) => {
-        const desc = String(prItem?.material_description ?? prItem?.description ?? "").trim();
-        if (!desc) return;
-        const key = desc.toLowerCase().replace(/\s+/g, " ").trim();
-        const make = String(prItem?.make ?? "").trim();
-        const boqItemCode = String(prItem?.boq_item_code ?? prItem?.boqItemCode ?? prItem?.item_name ?? prItem?.itemName ?? "").trim();
-        if (!make) return;
-        if (!makeByDescription.has(key)) makeByDescription.set(key, make);
-        if (boqItemCode && !boqItemCodeByDescription.has(key)) boqItemCodeByDescription.set(key, boqItemCode);
-      });
-
-      const unwrapList = (res) => {
-        if (!res?.success) return [];
-        const raw = res.data;
-        if (Array.isArray(raw)) return raw;
-        if (Array.isArray(raw?.data)) return raw.data;
-        if (Array.isArray(raw?.rows)) return raw.rows;
-        if (Array.isArray(raw?.comparisons)) return raw.comparisons;
-        return [];
-      };
-
-      const prNoValue = prNo ?? "";
-      const prIdValue = prId ?? "";
-
-      let list = [];
-      if (prNoValue !== "" && prNoValue != null) {
-        const res = await api.listVendorComparisons({ project_id: projectIdValue, pr_no: prNoValue });
-        list = unwrapList(res);
-      }
-      if (list.length === 0 && prIdValue !== "" && prIdValue != null) {
-        const res = await api.listVendorComparisons({ project_id: projectIdValue, pr_no: prIdValue });
-        list = unwrapList(res);
-      }
-      if (list.length === 0) {
-        const res = await api.listVendorComparisons({ project_id: projectIdValue });
-        list = unwrapList(res);
-      }
-
-      // Backend may ignore pr_no filter; do client-side match as fallback.
-      const prNoCandidates = [prNo, prId].filter((v) => v != null && v !== "").map((v) => String(v));
-      const matching = list.filter((row) => {
-        const rowPrNo = String(row?.pr_no ?? row?.prNo ?? "");
-        return prNoCandidates.includes(rowPrNo);
-      });
-      const candidates = matching.length > 0 ? matching : list;
-
-      const sortedCandidates = [...candidates].sort((a, b) => {
-        const aTime = new Date(a?.updated_at ?? a?.updatedAt ?? a?.created_at ?? a?.createdAt ?? 0).getTime();
-        const bTime = new Date(b?.updated_at ?? b?.updatedAt ?? b?.created_at ?? b?.createdAt ?? 0).getTime();
-        const aScore = Number.isFinite(aTime) ? aTime : 0;
-        const bScore = Number.isFinite(bTime) ? bTime : 0;
-        return bScore - aScore;
-      });
-
-      let approvedComparison = null;
-      let approvedVendorName = "";
-      let approvedItems = [];
-
-      for (const row of sortedCandidates) {
-        let pricelist = getPricelistRows(row);
-        if (!Array.isArray(pricelist) || pricelist.length === 0) {
-          const comparisonId = getComparisonId(row);
-          if (comparisonId != null && comparisonId !== "") {
-            try {
-              const detail = await api.getVendorComparisonById(comparisonId);
-              if (detail?.success) pricelist = getPricelistRows(detail.data || {});
-            } catch {
-              // ignore
-            }
-          }
-        }
-        if (!Array.isArray(pricelist) || pricelist.length === 0) continue;
-        const uniqueVendors = getUniqueVendors(pricelist);
-        approvedVendorName = getApprovedVendorName(row) || (uniqueVendors.length === 1 ? uniqueVendors[0] : "");
-        if (!approvedVendorName) continue;
-        approvedItems = pricelist.filter((item) => getVendorName(item) === approvedVendorName);
-        if (approvedItems.length === 0) continue;
-        approvedComparison = row;
-        break;
-      }
-
-      if (!approvedComparison) return { items: [], approvedVendorName: "" };
-
-      const items = approvedItems.map((item, index) => {
-        const itemDescriptionRaw = String(item?.item_description || item?.description || "").trim();
-        const makeKey = itemDescriptionRaw.toLowerCase().replace(/\s+/g, " ").trim();
-        const make = makeByDescription.get(makeKey) || "";
-        const boqItemCode = boqItemCodeByDescription.get(makeKey) || "";
-        const prMatch = matchAgainstPrItems(item, prItems);
-        const matchedPrItem = prMatch?.matchedPrItem || null;
-        const matchedPrName = String(
-          matchedPrItem?.item_name ??
-            matchedPrItem?.itemName ??
-            matchedPrItem?.material_description ??
-            matchedPrItem?.item_description ??
-            matchedPrItem?.description ??
-            ""
-        ).trim();
-        const matchedPrCode = String(
-          matchedPrItem?.boq_item_code ??
-            matchedPrItem?.boqItemCode ??
-            matchedPrItem?.item_code ??
-            matchedPrItem?.itemCode ??
-            matchedPrItem?.code ??
-            ""
-        ).trim();
-        const qtyRaw = item?.total_qty ?? item?.qty ?? item?.quantity ?? "";
-        const rateRaw = item?.rate ?? "";
-        const amountRaw = item?.amount ?? "";
-        const remarks = [make ? `Make: ${make}` : ""].filter(Boolean).join(" | ");
-        return {
-          srNo: String(index + 1),
-          hsnCode: String(item?.hsn ?? item?.hsn_code ?? item?.hsnCode ?? "").trim() || "",
-          item_name: matchedPrName || boqItemCode || itemDescriptionRaw,
-          description: String(item?.item_description || item?.description || matchedPrName || boqItemCode || itemDescriptionRaw || "").trim(),
-          qty: qtyRaw == null ? "" : String(qtyRaw),
-          uom: keepRawText(item?.unit) || keepRawText(item?.uom) || keepRawText(item?.UOM) || "",
-          rate: rateRaw == null || rateRaw === "" ? "" : String(rateRaw),
-          amount: amountRaw == null || amountRaw === "" ? "" : String(amountRaw),
-          remarks,
-          boq_id: item?.boq_id ?? item?.boqId ?? "",
-          boq_qty: item?.boq_qty ?? item?.boqQty ?? (qtyRaw == null ? "" : String(qtyRaw)),
-          boq_item_code: matchedPrCode || boqItemCode || matchedPrName || itemDescriptionRaw,
-        };
-      });
-      return { items, approvedVendorName };
-    } catch {
-      return { items: [], approvedVendorName: "" };
-    }
   };
 
   const parseArrayField = (value, fallback = []) => {
@@ -1448,90 +1108,13 @@ export default function PurchaseOrders() {
     }
   };
 
-  const applySelectedPrToPo = async (selectedPr) => {
-    if (!selectedPr) return;
-    const rawItems = Array.isArray(selectedPr.items) ? selectedPr.items : [];
-    const inventoryIds = Array.from(
-      new Set(
-        rawItems
-          .map((it) => it?.inventory_id ?? it?.inventoryId)
-          .filter((id) => id != null && String(id).trim() !== "")
-          .map((id) => String(id))
-      )
-    );
-
-    const inventoryDetailsById = new Map();
-    if (inventoryIds.length > 0) {
-      const results = await Promise.all(
-        inventoryIds.map(async (id) => {
-          try {
-            const res = await api.getInventoryChain(id);
-            const item = res?.success ? (res?.data?.item || {}) : {};
-            return [id, item];
-          } catch {
-            return [id, null];
-          }
-        })
-      );
-      results.forEach(([id, item]) => {
-        if (item) inventoryDetailsById.set(String(id), item);
-      });
-    }
-
-    const mappedItems = mapPrItemsToPoItems(rawItems, { inventoryDetailsById });
-    setPoData((prev) =>
-      recalculatePoAmounts({
-        ...prev,
-        sampleId: selectedPr.sample_id != null && selectedPr.sample_id !== "" ? String(selectedPr.sample_id) : prev.sampleId,
-        items: mappedItems,
-        source: "Manual",
-      })
-    );
-  };
-
   const applySelectedVcToPo = async (selectedVc) => {
     if (!selectedVc) return;
 
     const vcPrNo = String(selectedVc?.pr_no ?? selectedVc?.pr_number ?? selectedVc?.prNo ?? "").trim();
-    const approvedVendorNameFromMap = vcPrNo ? String(approvedVendorPrMap.get(vcPrNo)?.vendorName || "").trim() : "";
-    const approvedVendorName = getApprovedVendorName(selectedVc) || approvedVendorNameFromMap;
+    const approvedVendorName = getApprovedVendorName(selectedVc);
     const rawItems = getApprovedPricelistRows(selectedVc, { fallbackVendorName: approvedVendorName });
-    const matchedPr = vcPrNo
-      ? prOptions.find((pr) => {
-          const prId = String(pr?.pr_id ?? pr?.id ?? "").trim();
-          const prNo = String(pr?.pr_no ?? pr?.pr_number ?? pr?.prNo ?? "").trim();
-          return prId === vcPrNo || prNo === vcPrNo;
-        }) || null
-      : null;
-    const inventoryIds = Array.from(
-      new Set(
-        rawItems
-          .map((it) => it?.inventory_id ?? it?.inventoryId)
-          .filter((id) => id != null && String(id).trim() !== "")
-          .map((id) => String(id))
-      )
-    );
-
-    const inventoryDetailsById = new Map();
-    if (inventoryIds.length > 0) {
-      const results = await Promise.all(
-        inventoryIds.map(async (id) => {
-          try {
-            const res = await api.getInventoryChain(id);
-            const item = res?.success ? (res?.data?.item || {}) : {};
-            return [id, item];
-          } catch {
-            return [id, null];
-          }
-        })
-      );
-      results.forEach(([id, item]) => {
-        if (item) inventoryDetailsById.set(String(id), item);
-      });
-    }
-
     const mappedItems = mapVendorComparisonItemsToPoItems(selectedVc, {
-      inventoryDetailsById,
       fallbackVendorName: approvedVendorName,
     });
     const vendorName = approvedVendorName || getUniqueVendors(rawItems)[0] || "";
@@ -1540,16 +1123,15 @@ export default function PurchaseOrders() {
       recalculatePoAmounts({
         ...prev,
         vendorComparisonId: vcId ? String(vcId) : prev.vendorComparisonId,
-        indentNo: matchedPr?.pr_number || matchedPr?.pr_no || matchedPr?.prNo || vcPrNo || prev.indentNo || "",
+        indentNo: vcPrNo || prev.indentNo || "",
         vendor: {
           ...prev.vendor,
           name: vendorName || prev.vendor?.name || "",
         },
         items: mappedItems,
-      source: "Manual",
+        source: "Manual",
       })
     );
-    setSelectedPrId(matchedPr ? String(matchedPr?.pr_id ?? matchedPr?.id ?? "") : "");
   };
 
   const handleVcSelect = async (value) => {
@@ -1560,7 +1142,6 @@ export default function PurchaseOrders() {
     }
 
     setSelectedVcId(value);
-    setSelectedPrId("");
     setLoadingVcItems(true);
     try {
       let vcData = vcOptions.find((vc) => String(vc?.id ?? vc?.comparison_id ?? vc?.vendor_comparison_id ?? vc?.comparisonId ?? "") === String(value));
@@ -1587,69 +1168,6 @@ export default function PurchaseOrders() {
       toast({ title: "Error", description: error?.message || "Failed to load vendor comparison items.", variant: "destructive" });
     } finally {
       setLoadingVcItems(false);
-    }
-  };
-
-  const handlePrNumberSelect = async (value) => {
-    if (value === NONE_VALUE) {
-      setSelectedPrId("");
-      return;
-    }
-
-    setSelectedPrId(value);
-    setSelectedVcId("");
-    setPoData((prev) => ({ ...prev, vendorComparisonId: "", source: "Manual" }));
-    const selectedPr = prOptions.find((pr) => String(pr.pr_id || pr.id) === String(value));
-    const fallbackPrNo = selectedPr?.pr_no ?? selectedPr?.pr_number ?? null;
-
-    setLoadingPrItems(true);
-    try {
-      let prData = selectedPr;
-      if (!(prData && Array.isArray(prData.items) && prData.items.length > 0)) {
-        const response = await api.getPrById(value);
-        if (!response.success) {
-          toast({ title: "Error", description: response.error || "Failed to load PR items.", variant: "destructive" });
-          return;
-        }
-        prData = response.data || {};
-      }
-
-      await applySelectedPrToPo(prData);
-
-      const prItems = Array.isArray(prData?.items) ? prData.items : [];
-      const prNo =
-        prData?.pr_no ??
-        prData?.pr_number ??
-        prData?.prNo ??
-        fallbackPrNo ??
-        null;
-      const { items: approvedItems, approvedVendorName } = await fetchApprovedVendorItemsForPr(
-        { prNo, prId: value },
-        projectId,
-        prItems
-      );
-      if (approvedItems.length > 0) {
-        setPoData((prev) =>
-          recalculatePoAmounts(
-            {
-              ...prev,
-              vendor: {
-                ...prev.vendor,
-                name: approvedVendorName || prev.vendor?.name || "",
-              },
-              items: approvedItems,
-              source: "Manual",
-            }
-          )
-        );
-        toast({ title: "Approved vendor items loaded", description: approvedVendorName ? `Vendor: ${approvedVendorName}` : undefined });
-      } else {
-        toast({ title: "No approved vendor found, using PR items" });
-      }
-    } catch (error) {
-      toast({ title: "Error", description: error?.message || "Failed to load PR items.", variant: "destructive" });
-    } finally {
-      setLoadingPrItems(false);
     }
   };
 
@@ -1754,7 +1272,6 @@ export default function PurchaseOrders() {
 
   const handleClear = () => {
     setPoData(EMPTY_PO);
-    setSelectedPrId("");
     setSelectedVcId("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -2160,6 +1677,9 @@ export default function PurchaseOrders() {
                 <Select
                   value={poData.sampleId || NONE_VALUE}
                   onValueChange={handleSampleSelect}
+                  onOpenChange={(open) => {
+                    if (open) loadSampleOptions();
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={loadingSamples ? "Loading samples..." : "Select sample (required)"} />
@@ -2186,6 +1706,9 @@ export default function PurchaseOrders() {
                   value={selectedVcId || NONE_VALUE}
                   onValueChange={handleVcSelect}
                   disabled={!projectId || loadingVcOptions || loadingVcItems}
+                  onOpenChange={(open) => {
+                    if (open) loadVcOptions();
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={loadingVcOptions ? "Loading VC..." : "Select VC"} />

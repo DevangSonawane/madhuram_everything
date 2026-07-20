@@ -179,17 +179,27 @@ export default function PurchaseRequestCreate() {
   const [sampleOptions, setSampleOptions] = useState([]);
   const [loadingSamples, setLoadingSamples] = useState(false);
   const [loadingSampleItems, setLoadingSampleItems] = useState(false);
-  const [projectOptions, setProjectOptions] = useState([]);
-  const [loadingProjects, setLoadingProjects] = useState(false);
   const [prItemSearch, setPrItemSearch] = useState("");
   const [sampleCatalogItems, setSampleCatalogItems] = useState([]);
   const [prItemSearchOpen, setPrItemSearchOpen] = useState(false);
   const [selectedSampleId, setSelectedSampleId] = useState("");
+  const sampleOptionsScopeRef = React.useRef(null);
+  const sampleLoadRequestRef = React.useRef(0);
 
   const defaultProjectId = useMemo(
     () => parseIntegerOrNull(projectId) || parseIntegerOrNull(selectedProject?.project_id || selectedProject?.id),
     [projectId, selectedProject]
   );
+
+  const projectOptions = useMemo(() => {
+    const byId = new Map();
+    (Array.isArray(projects) ? projects : []).forEach((project) => {
+      const id = project?.project_id ?? project?.id;
+      if (id == null || id === "") return;
+      byId.set(String(id), project);
+    });
+    return Array.from(byId.values());
+  }, [projects]);
 
   const [form, setForm] = useState({
     project_id: defaultProjectId ? String(defaultProjectId) : "",
@@ -261,18 +271,6 @@ export default function PurchaseRequestCreate() {
   );
 
   useEffect(() => {
-    setLoadingProjects(true);
-    const byId = new Map();
-    (Array.isArray(projects) ? projects : []).forEach((project) => {
-      const id = project?.project_id ?? project?.id;
-      if (id == null || id === "") return;
-      byId.set(String(id), project);
-    });
-    setProjectOptions(Array.from(byId.values()));
-    setLoadingProjects(false);
-  }, [projects]);
-
-  useEffect(() => {
     const currentProjectId = String(form.project_id || "").trim();
     if (!currentProjectId) return;
 
@@ -313,49 +311,22 @@ export default function PurchaseRequestCreate() {
     });
   }, [form.project_id, form.project_name, projectOptions, selectedProject]);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadProjectMeta = async () => {
-      const pid = parseIntegerOrNull(form.project_id);
-      if (!pid) return;
-
-      // Only fetch if we still don't have these derived fields.
-      if (String(form.workorder_no || "").trim() && String(form.location || "").trim()) return;
-
-      try {
-        const res = await api.getProjectById(pid);
-        if (!mounted) return;
-        if (!res?.success) return;
-        const p = res.data?.project || res.data?.data || res.data;
-        if (!p) return;
-        const wo = String(p?.wo_number || "").trim();
-        const loc = String(p?.location || "").trim();
-        setForm((prev) => ({
-          ...prev,
-          workorder_no: String(prev.workorder_no || "").trim() ? prev.workorder_no : wo,
-          location: String(prev.location || "").trim() ? prev.location : loc,
-        }));
-      } catch {
-        // Keep the current form values if project metadata cannot be loaded.
+  const loadSamples = React.useCallback(
+    async ({ force = false } = {}) => {
+      const currentScope = effectiveProjectId ?? null;
+      if (!force && sampleOptionsScopeRef.current === currentScope) {
+        return;
       }
-    };
-    loadProjectMeta();
-    return () => {
-      mounted = false;
-    };
-  }, [form.project_id, form.workorder_no, form.location]);
 
-  useEffect(() => {
-    let mounted = true;
-
-    const loadSamples = async () => {
+      const requestId = sampleLoadRequestRef.current + 1;
+      sampleLoadRequestRef.current = requestId;
       setLoadingSamples(true);
       try {
         const result = effectiveProjectId
           ? await api.getSamplesByProject(effectiveProjectId)
           : await api.getSamples();
 
-        if (!mounted) return;
+        if (sampleLoadRequestRef.current !== requestId) return;
         if (!result.success || !Array.isArray(result.data)) {
           setSampleOptions([]);
           return;
@@ -368,18 +339,15 @@ export default function PurchaseRequestCreate() {
           byId.set(String(id), sample);
         });
         setSampleOptions(Array.from(byId.values()));
+        sampleOptionsScopeRef.current = currentScope;
       } catch {
-        if (mounted) setSampleOptions([]);
+        if (sampleLoadRequestRef.current === requestId) setSampleOptions([]);
       } finally {
-        if (mounted) setLoadingSamples(false);
+        if (sampleLoadRequestRef.current === requestId) setLoadingSamples(false);
       }
-    };
-
-    loadSamples();
-    return () => {
-      mounted = false;
-    };
-  }, [effectiveProjectId]);
+    },
+    [effectiveProjectId]
+  );
 
   const setField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -537,6 +505,7 @@ export default function PurchaseRequestCreate() {
       return;
     }
 
+    await loadSamples();
     setField("sample_id", value);
     setSelectedSampleId(String(value));
 
@@ -581,14 +550,21 @@ export default function PurchaseRequestCreate() {
 
   const handleProjectChange = (value) => {
     if (value === "none") {
-      setForm((prev) => ({ ...prev, project_id: "", project_name: "" }));
+      sampleOptionsScopeRef.current = null;
+      setSampleOptions([]);
+      setSelectedSampleId("");
+      setForm((prev) => ({ ...prev, project_id: "", project_name: "", sample_id: "" }));
       return;
     }
     const selected = projectOptions.find((project) => String(project.project_id || project.id) === String(value));
+    sampleOptionsScopeRef.current = null;
+    setSampleOptions([]);
+    setSelectedSampleId("");
     setForm((prev) => ({
       ...prev,
       project_id: String(value),
       project_name: selected?.project_name || selected?.name || prev.project_name,
+      sample_id: "",
       location: prev.location || String(selected?.location || "").trim(),
       workorder_no: String(selected?.wo_number || "").trim() || prev.workorder_no,
     }));
@@ -785,7 +761,7 @@ export default function PurchaseRequestCreate() {
             <Label>Project ID *</Label>
             <Select value={form.project_id || "none"} onValueChange={handleProjectChange}>
               <SelectTrigger>
-                <SelectValue placeholder={loadingProjects ? "Loading projects..." : "Select Project ID"} />
+                <SelectValue placeholder="Select Project ID" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">None</SelectItem>
@@ -826,7 +802,14 @@ export default function PurchaseRequestCreate() {
               }}
               placeholder="Enter sample id"
             />
-            <Select value={form.sample_id || "none"} onValueChange={handleSampleChange} disabled={loadingSamples}>
+            <Select
+              value={form.sample_id || "none"}
+              onValueChange={handleSampleChange}
+              onOpenChange={(open) => {
+                if (open) loadSamples();
+              }}
+              disabled={loadingSamples}
+            >
               <SelectTrigger>
                 <SelectValue placeholder={loadingSamples ? "Loading samples..." : "Pick from samples"} />
               </SelectTrigger>

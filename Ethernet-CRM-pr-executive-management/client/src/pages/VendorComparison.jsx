@@ -155,15 +155,20 @@ export default function VendorComparison({ inLayout = false }) {
   const [searchText, setSearchText] = useState("");
   const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const [groups, setGroups] = useState([]);
-  const [resultCount, setResultCount] = useState(0);
-  const [groupCount, setGroupCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [lastUpdated, setLastUpdated] = useState(null);
   const [approvingById, setApprovingById] = useState({});
   const [deletingById, setDeletingById] = useState({});
   const [expandedId, setExpandedId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const listScopeRef = React.useRef(null);
+
+  const effectiveProjectId = useMemo(() => {
+    const resolvedId = String(resolvedProject.projectId || "").trim();
+    if (resolvedId) return resolvedId;
+    return String(projectId || "").trim();
+  }, [projectId, resolvedProject.projectId]);
+  const listScopeKey = effectiveProjectId || "";
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -173,30 +178,25 @@ export default function VendorComparison({ inLayout = false }) {
     return () => clearTimeout(timeoutId);
   }, [searchText]);
 
-  const fetchComparisons = useCallback(
-    async () => {
+  const fetchComparisons = useCallback(async () => {
       setLoading(true);
       setError("");
 
       try {
         const params = {};
-        const fallbackProjectId = projectId ? Number(projectId) : null;
-        if (resolvedProject.projectId) params.project_id = Number(resolvedProject.projectId);
-        else if (Number.isFinite(fallbackProjectId) && fallbackProjectId) params.project_id = fallbackProjectId;
+        const numericProjectId = Number(effectiveProjectId);
+        if (Number.isFinite(numericProjectId) && numericProjectId > 0) {
+          params.project_id = numericProjectId;
+        }
         const result = await api.listVendorComparisons(params);
         if (!result?.success) {
           setError(result?.error || "Unable to load comparison data.");
           setGroups([]);
-          setResultCount(0);
-          setGroupCount(0);
           return;
         }
 
         const list = normalizeList(result.data);
         setGroups(list);
-        setResultCount(list.length);
-        setGroupCount(list.length);
-        setLastUpdated(new Date());
 
         // Some list responses omit pricelist; hydrate a small batch so approval ticks can render.
         const toHydrate = list
@@ -235,18 +235,28 @@ export default function VendorComparison({ inLayout = false }) {
       } catch {
         setError("Unable to load comparison data.");
         setGroups([]);
-        setResultCount(0);
-        setGroupCount(0);
       } finally {
         setLoading(false);
       }
     },
-    [projectId, resolvedProject.projectId]
+    [effectiveProjectId]
   );
 
   useEffect(() => {
+    if (!listScopeKey) {
+      listScopeRef.current = null;
+      setGroups([]);
+      setLoading(false);
+      return;
+    }
+
+    if (listScopeRef.current === listScopeKey) {
+      return;
+    }
+
+    listScopeRef.current = listScopeKey;
     fetchComparisons();
-  }, [fetchComparisons]);
+  }, [fetchComparisons, listScopeKey]);
 
   const sortedGroups = useMemo(() => {
     const term = String(debouncedSearchText || "").toLowerCase();
@@ -417,8 +427,6 @@ export default function VendorComparison({ inLayout = false }) {
 
       setExpandedId((prev) => (String(prev) === String(id) ? null : prev));
       setGroups((prev) => (Array.isArray(prev) ? prev.filter((row) => String(getComparisonId(row)) !== String(id)) : []));
-      setResultCount((prev) => Math.max(0, prev - 1));
-      setGroupCount((prev) => Math.max(0, prev - 1));
       toast({
         title: "Deleted",
         description: `Vendor comparison ${label} deleted.`,

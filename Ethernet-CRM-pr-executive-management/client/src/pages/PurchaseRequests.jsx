@@ -1399,6 +1399,7 @@ export default function PurchaseRequests() {
   const [selectedSampleId, setSelectedSampleId] = useState("");
   const [sampleOptions, setSampleOptions] = useState([]);
   const [loadingSamples, setLoadingSamples] = useState(false);
+  const sampleOptionsProjectRef = React.useRef(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailPr, setEmailPr] = useState(null);
   const [emailSending, setEmailSending] = useState(false);
@@ -1412,13 +1413,13 @@ export default function PurchaseRequests() {
   const [autoEmailAttachments, setAutoEmailAttachments] = useState([]);
   const [isFileDragActive, setIsFileDragActive] = useState(false);
   const [emailRemarks, setEmailRemarks] = useState("");
-  const [emailLogs, setEmailLogs] = useState([]);
-  const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
+  const prListScopeRef = React.useRef(null);
 
   const effectiveProjectId = useMemo(
     () => parseIntegerOrNull(projectId) || parseIntegerOrNull(selectedProject?.project_id || selectedProject?.id),
     [projectId, selectedProject]
   );
+  const prListScopeKey = effectiveProjectId != null ? String(effectiveProjectId) : "";
 
   const getResolvedSampleId = () => String(form.sample_id || selectedSampleId || "").trim();
 
@@ -1433,7 +1434,7 @@ export default function PurchaseRequests() {
     return getSampleDisplay(pr.sample_id);
   };
 
-  const loadPrs = async ({ mode = "auto", sampleId } = {}) => {
+  const loadPrs = React.useCallback(async ({ mode = "auto", sampleId } = {}) => {
     try {
       setLoading(true);
 
@@ -1468,11 +1469,23 @@ export default function PurchaseRequests() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [effectiveProjectId, toast]);
 
   useEffect(() => {
+    if (!prListScopeKey) {
+      prListScopeRef.current = null;
+      setPrs([]);
+      setLoading(false);
+      return;
+    }
+
+    if (prListScopeRef.current === prListScopeKey) {
+      return;
+    }
+
+    prListScopeRef.current = prListScopeKey;
     loadPrs();
-  }, [projectId, effectiveProjectId]);
+  }, [prListScopeKey, loadPrs]);
 
   const handleLinkInventory = async (pr) => {
     if (!pr?.pr_id) return;
@@ -1504,6 +1517,16 @@ export default function PurchaseRequests() {
   };
 
   useEffect(() => {
+    if (!formOpen) {
+      sampleOptionsProjectRef.current = null;
+      return;
+    }
+
+    const currentScope = effectiveProjectId ?? null;
+    if (sampleOptionsProjectRef.current === currentScope) {
+      return;
+    }
+
     let mounted = true;
 
     const loadSampleOptions = async () => {
@@ -1516,6 +1539,7 @@ export default function PurchaseRequests() {
         if (!mounted) return;
         if (!result.success || !Array.isArray(result.data)) {
           setSampleOptions([]);
+          sampleOptionsProjectRef.current = currentScope;
           return;
         }
 
@@ -1526,8 +1550,12 @@ export default function PurchaseRequests() {
           byId.set(String(id), sample);
         });
         setSampleOptions(Array.from(byId.values()));
+        sampleOptionsProjectRef.current = currentScope;
       } catch {
-        if (mounted) setSampleOptions([]);
+        if (mounted) {
+          setSampleOptions([]);
+          sampleOptionsProjectRef.current = currentScope;
+        }
       } finally {
         if (mounted) setLoadingSamples(false);
       }
@@ -1537,7 +1565,7 @@ export default function PurchaseRequests() {
     return () => {
       mounted = false;
     };
-  }, [effectiveProjectId]);
+  }, [formOpen, effectiveProjectId]);
 
   const totalItems = useMemo(
     () => prs.reduce((sum, pr) => sum + (Array.isArray(pr.items) ? pr.items.length : 0), 0),
@@ -1909,7 +1937,6 @@ export default function PurchaseRequests() {
     setAutoEmailAttachments([]);
     setIsFileDragActive(false);
     setEmailRemarks("");
-    setEmailLogs([]);
 
     if (pr?.signature_file_path) {
       try {
@@ -1924,21 +1951,6 @@ export default function PurchaseRequests() {
       }
     }
 
-    if (pr?.pr_id || pr?.id) {
-      try {
-        setLoadingEmailLogs(true);
-        const logResult = await api.getPrEmailLogs(pr.pr_id || pr.id);
-        if (logResult.success && Array.isArray(logResult.data)) {
-          setEmailLogs(logResult.data);
-        } else {
-          setEmailLogs([]);
-        }
-      } catch {
-        setEmailLogs([]);
-      } finally {
-        setLoadingEmailLogs(false);
-      }
-    }
   };
 
   useEffect(() => {
@@ -2087,7 +2099,6 @@ export default function PurchaseRequests() {
       setPoOfficerEmail("");
       setEmailAttachments([]);
       setEmailRemarks("");
-      setEmailLogs([]);
       toast({
         title: "Email sent",
         description: `PO sent to ${to}.`,
@@ -2728,7 +2739,6 @@ export default function PurchaseRequests() {
             setAutoEmailAttachments([]);
             setIsFileDragActive(false);
             setEmailRemarks("");
-            setEmailLogs([]);
           }
         }}
       >

@@ -20,6 +20,13 @@ const formatDisplayDate = (value) => {
   return date.toLocaleDateString("en-GB");
 };
 
+const challansFetchCache = {
+  projectId: null,
+  dcs: null,
+  usedChallanNos: null,
+  promise: null,
+};
+
 export default function Challans() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dcs, setDcs] = useState([]);
@@ -32,6 +39,13 @@ export default function Challans() {
   const { selectedProject } = useProject();
   const { user } = useAuth();
   const projectId = selectedProject?.project_id ?? selectedProject?.id ?? null;
+  const isMountedRef = React.useRef(false);
+
+  const commitState = (nextDcs, nextUsedChallanNos) => {
+    if (!isMountedRef.current) return;
+    setDcs(nextDcs);
+    setUsedChallanNos(nextUsedChallanNos);
+  };
 
   const parseDynamicField = (value) => {
     if (!value) return [];
@@ -60,40 +74,81 @@ export default function Challans() {
     }
   };
 
-  const loadChallans = useCallback(async () => {
+  const loadChallans = useCallback(async ({ force = false } = {}) => {
     if (!projectId) {
-      setDcs([]);
-      setUsedChallanNos(new Set());
+      challansFetchCache.projectId = null;
+      challansFetchCache.dcs = [];
+      challansFetchCache.usedChallanNos = new Set();
+      commitState([], new Set());
       return;
     }
 
-    setLoading(true);
-    try {
-      const [dcsRes, mirRes] = await Promise.all([
-        api.getDcsByProject(projectId),
-        api.getMirsByProject(projectId),
-      ]);
-      const dcsRows = dcsRes.success && Array.isArray(dcsRes.data) ? dcsRes.data : [];
-      const mirRows = mirRes.success && Array.isArray(mirRes.data) ? mirRes.data : [];
-      const used = new Set();
-      mirRows.forEach((row) => {
-        const dynamicField = parseDynamicField(row?.dynamic_field);
-        const dynamicChallanNo = getDynamicValue(dynamicField, "challan_no");
-        const challanNo = row?.challan_no || dynamicChallanNo;
-        if (challanNo) used.add(String(challanNo).trim());
-      });
-      setDcs(dcsRows);
-      setUsedChallanNos(used);
-    } catch {
-      setDcs([]);
-      setUsedChallanNos(new Set());
-    } finally {
-      setLoading(false);
+    if (!force) {
+      if (challansFetchCache.projectId === projectId && Array.isArray(challansFetchCache.dcs) && challansFetchCache.usedChallanNos instanceof Set) {
+        commitState(challansFetchCache.dcs, challansFetchCache.usedChallanNos);
+        setLoading(false);
+        return;
+      }
+      if (challansFetchCache.projectId === projectId && challansFetchCache.promise) {
+        setLoading(true);
+        const cached = await challansFetchCache.promise;
+        if (cached) {
+          commitState(cached.dcs, cached.usedChallanNos);
+        } else {
+          commitState([], new Set());
+        }
+        setLoading(false);
+        return;
+      }
     }
+
+    const request = (async () => {
+      try {
+        setLoading(true);
+        const [dcsRes, mirRes] = await Promise.all([
+          api.getDcsByProject(projectId),
+          api.getMirsByProject(projectId),
+        ]);
+        const dcsRows = dcsRes.success && Array.isArray(dcsRes.data) ? dcsRes.data : [];
+        const mirRows = mirRes.success && Array.isArray(mirRes.data) ? mirRes.data : [];
+        const used = new Set();
+        mirRows.forEach((row) => {
+          const dynamicField = parseDynamicField(row?.dynamic_field);
+          const dynamicChallanNo = getDynamicValue(dynamicField, "challan_no");
+          const challanNo = row?.challan_no || dynamicChallanNo;
+          if (challanNo) used.add(String(challanNo).trim());
+        });
+
+        challansFetchCache.projectId = projectId;
+        challansFetchCache.dcs = dcsRows;
+        challansFetchCache.usedChallanNos = used;
+        commitState(dcsRows, used);
+        return { dcs: dcsRows, usedChallanNos: used };
+      } catch {
+        challansFetchCache.projectId = projectId;
+        challansFetchCache.dcs = [];
+        challansFetchCache.usedChallanNos = new Set();
+        commitState([], new Set());
+        return { dcs: [], usedChallanNos: new Set() };
+      } finally {
+        setLoading(false);
+        if (challansFetchCache.promise === request) {
+          challansFetchCache.promise = null;
+        }
+      }
+    })();
+
+    challansFetchCache.projectId = projectId;
+    challansFetchCache.promise = request;
+    return request;
   }, [projectId]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadChallans();
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [loadChallans]);
 
   const pendingCount = useMemo(() => dcs.filter((x) => x.status === "incomplete").length, [dcs]);
@@ -134,7 +189,7 @@ export default function Challans() {
         description: `Challan ${deleteTarget?.challan_number || dcId} was deleted successfully.`,
       });
       setDeleteTarget(null);
-      await loadChallans();
+      await loadChallans({ force: true });
     } catch {
       toast({
         title: "Failed to delete delivery challan",

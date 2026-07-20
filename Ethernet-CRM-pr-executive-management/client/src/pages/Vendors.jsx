@@ -60,6 +60,11 @@ const statusStyles = {
 };
 const toTitleCase = (value = "") => (value ? value.charAt(0).toUpperCase() + value.slice(1) : "");
 
+const vendorsFetchCache = {
+  data: null,
+  promise: null,
+};
+
 const getEmptyForm = () => ({
   vendor_name: "",
   vendor_company_name: "",
@@ -85,17 +90,51 @@ export default function Vendors({ inLayout = false }) {
   const [vendorToDelete, setVendorToDelete] = useState(null);
   const [deletingVendorId, setDeletingVendorId] = useState(null);
   const [form, setForm] = useState(getEmptyForm());
+  const isMountedRef = React.useRef(false);
 
-  const fetchVendors = useCallback(async () => {
-    try {
-      setLoading(true);
-      const result = await api.getVendors();
+  const commitLoading = (value) => {
+    if (isMountedRef.current) {
+      setLoading(value);
+    }
+  };
 
-      if (result.success) {
-        setVendors(Array.isArray(result.data) ? result.data : []);
-      } else {
+  const commitVendors = (nextVendors) => {
+    if (!isMountedRef.current) return false;
+    setVendors(nextVendors);
+    return true;
+  };
+
+  const fetchVendors = useCallback(async ({ force = false } = {}) => {
+    if (!force) {
+      if (Array.isArray(vendorsFetchCache.data)) {
+        commitVendors(vendorsFetchCache.data);
+        commitLoading(false);
+        return vendorsFetchCache.data;
+      }
+      if (vendorsFetchCache.promise) {
+        commitLoading(true);
+        const cached = await vendorsFetchCache.promise;
+        commitVendors(Array.isArray(cached) ? cached : []);
+        commitLoading(false);
+        return cached;
+      }
+    }
+
+    const request = (async () => {
+      try {
+        commitLoading(true);
+        const result = await api.getVendors();
+
+        if (result.success) {
+          const nextVendors = Array.isArray(result.data) ? result.data : [];
+          vendorsFetchCache.data = nextVendors;
+          commitVendors(nextVendors);
+          return nextVendors;
+        }
+
         const localRows = vendorFlowStore.listVendors();
-        setVendors(localRows);
+        vendorsFetchCache.data = localRows;
+        commitVendors(localRows);
         if ((localRows || []).length === 0) {
           toast({
             title: "Failed to load vendors",
@@ -108,24 +147,37 @@ export default function Vendors({ inLayout = false }) {
             description: "Backend vendor API is unavailable. Showing local draft data.",
           });
         }
+        return localRows;
+      } catch {
+        const localRows = vendorFlowStore.listVendors();
+        vendorsFetchCache.data = localRows;
+        commitVendors(localRows);
+        if ((localRows || []).length === 0) {
+          toast({
+            title: "Failed to load vendors",
+            description: "Could not fetch vendor list.",
+            variant: "destructive",
+          });
+        }
+        return localRows;
+      } finally {
+        commitLoading(false);
+        if (vendorsFetchCache.promise === request) {
+          vendorsFetchCache.promise = null;
+        }
       }
-    } catch {
-      const localRows = vendorFlowStore.listVendors();
-      setVendors(localRows);
-      if ((localRows || []).length === 0) {
-        toast({
-          title: "Failed to load vendors",
-          description: "Could not fetch vendor list.",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    vendorsFetchCache.promise = request;
+    return request;
   }, [toast]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     fetchVendors();
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [fetchVendors]);
 
   const filteredVendors = useMemo(() => {
@@ -263,7 +315,7 @@ export default function Vendors({ inLayout = false }) {
       setEditingVendorId(null);
       setEditingVendor(null);
       setForm(getEmptyForm());
-      await fetchVendors();
+      await fetchVendors({ force: true });
     } catch {
       toast({
         title: editingVendorId ? "Failed to update vendor" : "Failed to create vendor",
@@ -306,7 +358,7 @@ export default function Vendors({ inLayout = false }) {
           : `${vendorToDelete.vendor_name || "Vendor"} removed successfully.`,
       });
       setVendorToDelete(null);
-      await fetchVendors();
+      await fetchVendors({ force: true });
     } catch {
       toast({
         title: "Failed to delete vendor",
