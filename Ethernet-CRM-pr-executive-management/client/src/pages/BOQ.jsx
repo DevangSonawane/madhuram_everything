@@ -272,6 +272,14 @@ function formatDetailValue(value) {
   return String(value);
 }
 
+function truncateWords(value, maxWords = 40) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const words = text.split(/\s+/);
+  if (words.length <= maxWords) return text;
+  return `${words.slice(0, maxWords).join(" ")}...`;
+}
+
 function matchesActiveClient(item, activeClient) {
   const client = String(item?.client || "").toLowerCase();
   if (client && client === activeClient) return true;
@@ -452,44 +460,7 @@ export default function BOQ() {
       const orderedRows = [...filteredRows].sort(compareBoqDisplayOrder);
 
       if (orderedRows.length > 0) {
-        const rowsWithUsage = await Promise.all(
-          orderedRows.map(async (item) => {
-            try {
-              const detailRes = await api.getBOQById(item.id);
-              if (!detailRes?.success || !detailRes.data) return item;
-
-              const detail = detailRes.data;
-              const usedFromSamples = sumUsedSampleQty(detail.used_in_samples);
-              const usedFromApi = toFiniteNumber(detail.used_quantity);
-              const quantity = toFiniteNumber(detail.quantity ?? item.quantity) ?? item.quantity ?? 0;
-
-              if (Array.isArray(detail.used_in_samples)) {
-                const used = usedFromSamples;
-                return {
-                  ...item,
-                  ...normalizeBoqItem(detail),
-                  used_quantity: used,
-                  remaining_quantity: quantity - used,
-                };
-              }
-
-              if (usedFromApi != null) {
-                return {
-                  ...item,
-                  ...normalizeBoqItem(detail),
-                  used_quantity: usedFromApi,
-                  remaining_quantity: toFiniteNumber(detail.remaining_quantity),
-                };
-              }
-
-              return { ...item, ...normalizeBoqItem(detail) };
-            } catch {
-              return item;
-            }
-          }),
-        );
-
-        setItems(rowsWithUsage);
+        setItems(orderedRows);
         setSelectedIds(new Set());
       } else {
         setItems([]);
@@ -1013,6 +984,7 @@ export default function BOQ() {
     const raw = String(key || "").trim();
     if (!raw) return "";
     if (raw.toLowerCase() === "category" || raw.toLowerCase() === "categories") return "Section";
+    if (raw.toLowerCase() === "item_code") return "HSN Code";
     const withSpaces = raw
       .replace(/[_-]+/g, " ")
       .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -1247,7 +1219,10 @@ export default function BOQ() {
                 {loading ? (
                   <TableRow>
                     <TableCell colSpan={12} className="h-24 text-center text-muted-foreground">
-                      Loading BOQ items…
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Loading BOQ items…</span>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : paginatedItems.length === 0 ? (
@@ -1277,7 +1252,7 @@ export default function BOQ() {
                           <>
                             <TableCell className="font-mono text-xs whitespace-nowrap">{item.code}</TableCell>
                             <TableCell className="font-medium max-w-[560px] whitespace-normal break-words">
-                              {item.description}
+                              {truncateWords(item.description, 40)}
                             </TableCell>
                             <TableCell className="text-sm font-medium text-muted-foreground">{item.category}</TableCell>
                             <TableCell className="font-mono text-xs">{item.sac_code || item.item_code || ''}</TableCell>
@@ -1291,7 +1266,7 @@ export default function BOQ() {
                         ) : (
                           <>
                             <TableCell className="font-medium max-w-[560px] whitespace-normal break-words">
-                              {item.description}
+                              {truncateWords(item.description, 40)}
                             </TableCell>
                             <TableCell className="text-sm font-medium text-muted-foreground">{item.category}</TableCell>
                             <TableCell className="font-mono text-xs whitespace-nowrap">{item.code}</TableCell>
@@ -1401,7 +1376,12 @@ export default function BOQ() {
           </div>
 
           <div className="space-y-4 md:hidden">
-            {paginatedItems.length === 0 ? (
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 rounded-lg border p-6 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Loading BOQ items…</span>
+              </div>
+            ) : paginatedItems.length === 0 ? (
               <div className="p-4 text-center text-muted-foreground">
                 {searchTerm ? "No items found matching your search." : "No BOQ items. Import a PDF or add items manually."}
               </div>
@@ -1415,7 +1395,7 @@ export default function BOQ() {
                 <div className="flex justify-between items-start gap-3">
                   <div className="space-y-1 min-w-0">
                     <div className="text-xs font-semibold text-muted-foreground">{item.category}</div>
-                    <div className="font-medium break-words">{item.description}</div>
+                    <div className="font-medium break-words">{truncateWords(item.description, 40)}</div>
                     <div className="text-xs font-mono text-muted-foreground break-all">
                       {activeClient ? `Item No: ${item.code || "-"}` : `Item Code: ${item.code || "-"}`}
                     </div>
@@ -1960,7 +1940,7 @@ export default function BOQ() {
                           <>
                             <TableCell className="font-mono text-xs">{it.code}</TableCell>
                             <TableCell className="max-w-[560px] whitespace-normal break-words">
-                              {it.description}
+                              {truncateWords(it.description, 40)}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
                               <Badge variant="outline">{it.category}</Badge>
@@ -1974,7 +1954,7 @@ export default function BOQ() {
                         ) : (
                           <>
                             <TableCell className="max-w-[560px] whitespace-normal break-words">
-                              {it.description}
+                              {truncateWords(it.description, 40)}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
                               <Badge variant="outline">{it.category}</Badge>

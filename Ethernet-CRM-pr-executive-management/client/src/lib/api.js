@@ -49,6 +49,9 @@ const unwrapListResponse = (payload, { maxDepth = 4, keys = ['data', 'rows', 're
   return null;
 };
 
+let usersCache = null;
+let usersRequestPromise = null;
+
 const toTrimmedString = (value) => {
   if (value == null) return '';
   return String(value).trim();
@@ -397,11 +400,30 @@ export const api = {
   },
 
   // Users
-  getUsers: async () => {
-    const response = await fetch(`${BASE_URL}/api/auth/users`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
+  getUsers: async ({ force = false } = {}) => {
+    if (!force && usersCache) {
+      return usersCache;
+    }
+    if (!force && usersRequestPromise) {
+      return usersRequestPromise;
+    }
+
+    usersRequestPromise = (async () => {
+      const response = await fetch(`${BASE_URL}/api/auth/users`, {
+        headers: getAuthHeaders(),
+      });
+      const result = await handleResponse(response);
+      if (result?.success) {
+        usersCache = result;
+      }
+      return result;
+    })();
+
+    try {
+      return await usersRequestPromise;
+    } finally {
+      usersRequestPromise = null;
+    }
   },
 
   getUserById: async (id) => {
@@ -2470,6 +2492,12 @@ export const api = {
         fieldVal('boq_item_code') ??
         fieldVal('hsn') ??
         '';
+      const itemNoRaw =
+        item.item_no ??
+        item.itemNo ??
+        fieldVal('item_no') ??
+        fieldVal('itemNo') ??
+        '';
 
       const itemNameRaw =
         item.item_name ??
@@ -2569,15 +2597,6 @@ export const api = {
         item.boqItemCode ??
         fieldVal('boq_item_code') ??
         fieldVal('boqItemCode') ??
-        '';
-      const itemNoRaw =
-        fieldVal('item_no') ??
-        fieldVal('itemNo') ??
-        item.item_no ??
-        item.itemNo ??
-        item.code ??
-        item.item_code ??
-        item.itemCode ??
         '';
       const valueRaw =
         item.value ??
@@ -2764,33 +2783,15 @@ export const api = {
   },
 
   createSample: async (data) => {
-    const post = async (path, payload) => {
-      const response = await fetch(`${BASE_URL}${path}`, {
-        method: 'POST',
-        headers: {
-          ...getAuthHeaders(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      return handleResponse(response);
-    };
-    const candidates = [
-      '/api/sample/create-sample',
-      '/api/sample/create',
-      '/api/sample',
-    ];
-    let lastError = null;
-    for (const path of candidates) {
-      const payload = api._normalizeSamplePayload(data, { stringifyJsonFields: false });
-      const res = await post(path, payload);
-      if (res.success) return res;
-      lastError = res;
-
-      if (res.status === 401 || res.status === 403) return res;
-      if (res.status === 404) continue;
-    }
-    return lastError || { success: false, error: 'Create path not found', status: 404 };
+    const response = await fetch(`${BASE_URL}/api/sample/create-sample`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
   },
 
   // Vendors

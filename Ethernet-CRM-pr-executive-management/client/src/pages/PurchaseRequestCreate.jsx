@@ -89,10 +89,10 @@ const resolveSamplePrItemLabel = (item = {}) => {
 
 const resolveSamplePrItemNo = (item = {}) => {
   const candidates = [
-    getAddFieldValue(item, "item_no"),
-    getAddFieldValue(item, "itemNo"),
     item?.item_no,
     item?.itemNo,
+    getAddFieldValue(item, "item_no"),
+    getAddFieldValue(item, "itemNo"),
   ];
 
   for (const candidate of candidates) {
@@ -100,7 +100,7 @@ const resolveSamplePrItemNo = (item = {}) => {
     if (text) return text;
   }
 
-  return resolveSamplePrItemLabel(item);
+  return "";
 };
 
 const isManualLikeRow = (row = {}) => {
@@ -238,7 +238,14 @@ export default function PurchaseRequestCreate() {
     const all = Array.from(unique.values());
     if (!q) return all.slice(0, 10);
     return all
-      .filter((it) => matchesPrItemSearch(it))
+      .filter((it) => {
+        const desc = String(it?.material_description ?? "").toLowerCase();
+        const itemNo = String(it?.item_name ?? it?.item_no ?? it?.make ?? "").toLowerCase();
+        const make = String(it?.make ?? "").toLowerCase();
+        const place = String(it?.place_of_utilisation ?? "").toLowerCase();
+        const unit = String(it?.unit ?? "").toLowerCase();
+        return desc.includes(q) || itemNo.includes(q) || make.includes(q) || place.includes(q) || unit.includes(q);
+      })
       .slice(0, 10);
   }, [sampleCatalogItems, prItemSearch]);
 
@@ -434,8 +441,8 @@ export default function PurchaseRequestCreate() {
       .map((item) => {
         const itemTotalQty = resolveManualRowQty(item, sample);
         const resolvedQty = itemTotalQty > 0 ? itemTotalQty : parseNumberOrZero(item?.qty_per_flat || item?.sample_qty_per_flat || item?.req_qty);
-        const explicitItemNo = resolveSamplePrItemNo(item);
-        const explicitItemName = resolveSamplePrItemLabel(item);
+        const explicitItemNo = resolveSamplePrItemNo(item) || resolveSamplePrItemLabel(item);
+        const explicitItemName = resolveSamplePrItemLabel(item) || explicitItemNo;
         const explicitMake = String(item?.make || getAddFieldValue(item, "make") || "").trim();
         return {
           row_source: "sample",
@@ -451,6 +458,11 @@ export default function PurchaseRequestCreate() {
           inventory_id: item?.inventory_id ?? item?.inventoryId ?? null,
           issued_qty: item?.issued_qty ?? item?.issuedQty ?? null,
           boq_id: item?.boq_id ?? item?.boqId ?? "",
+          boq_item_code: item?.boq_item_code ?? item?.boqItemCode ?? explicitItemNo,
+          boq_description: item?.boq_description ?? item?.boqDescription ?? "",
+          boq_remaining_quantity: item?.boq_remaining_quantity ?? item?.boqRemainingQuantity ?? "",
+          boq_total_usage_count: item?.boq_total_usage_count ?? item?.boqTotalUsageCount ?? "",
+          boq_usage: item?.boq_usage ?? item?.boqUsage ?? null,
           boq_qty: item?.boq_qty ?? item?.boqQty ?? (resolvedQty || itemTotalQty || parseNumberOrZero(item?.qty) || ""),
           sample_total_qty: itemTotalQty || resolvedQty || "",
           sample_qty_per_flat: resolvedQty || itemTotalQty || "",
@@ -500,8 +512,8 @@ export default function PurchaseRequestCreate() {
 
   const addCatalogItemToPr = (catalogItem) => {
     if (!catalogItem) return;
-    const resolvedItemNo = resolveSamplePrItemNo(catalogItem);
-    const resolvedItemName = resolveSamplePrItemLabel(catalogItem);
+    const resolvedItemNo = resolveSamplePrItemNo(catalogItem) || resolveSamplePrItemLabel(catalogItem);
+    const resolvedItemName = resolveSamplePrItemLabel(catalogItem) || resolvedItemNo;
     setForm((prev) => ({
         ...prev,
         items: [
@@ -527,27 +539,6 @@ export default function PurchaseRequestCreate() {
 
     setField("sample_id", value);
     setSelectedSampleId(String(value));
-
-    const selectedSample = sampleOptions.find((sample) => String(sample.sample_id || sample.id) === String(value));
-    if (selectedSample && parseArrayField(selectedSample.item_description).length > 0) {
-      // Prefill location + project id from the selected sample.
-      setForm((prev) => {
-        const nextProjectId = selectedSample?.project_id ?? selectedSample?.projectId ?? prev.project_id;
-        const resolvedProject =
-          projectOptions.find((p) => String(p?.project_id ?? p?.id ?? "") === String(nextProjectId)) || null;
-        return {
-          ...prev,
-          project_id: nextProjectId != null && nextProjectId !== "" ? String(nextProjectId) : prev.project_id,
-          project_name: resolvedProject?.project_name || resolvedProject?.name || prev.project_name,
-          location: prev.location || String(selectedSample?.site_name || "").trim(),
-          workorder_no: String(prev.workorder_no || "").trim()
-            ? prev.workorder_no
-            : String(resolvedProject?.wo_number || "").trim(),
-        };
-      });
-      applySelectedSampleToForm(selectedSample);
-      return;
-    }
 
     setLoadingSampleItems(true);
     try {
@@ -660,25 +651,14 @@ export default function PurchaseRequestCreate() {
         );
         const inventoryId = parseIntegerOrNull(item.inventory_id);
         const boqId = parseIntegerOrNull(item.boq_id);
-        const itemNo = String(
-          item.item_no ||
-            item.itemNo ||
-            item.item_code ||
-            item.itemCode ||
-            item.code ||
-            item.boq_item_code ||
-            item.boqItemCode ||
-            ""
-        ).trim();
-        const itemName = String(item.item_name || item.itemName || item.material_description || itemNo || "").trim();
-        const itemCode = String(item.item_code || item.itemCode || item.code || item.boq_item_code || item.boqItemCode || "").trim();
-        const boqItemCode = String(item.boq_item_code || item.boqItemCode || itemCode || "").trim();
+        const itemNo = String(item.item_no || item.item_name || item.itemName || "").trim();
+        const itemName = String(item.item_name || item.material_description || item.description || itemNo || "").trim();
         const isSampleRow = String(item.row_source || "").toLowerCase() === "sample";
         const payload = {
           item_no: itemNo,
           item_name: itemName,
-          item_code: itemCode,
-          boq_item_code: boqItemCode,
+          item_code: itemNo,
+          boq_item_code: itemNo,
           material_description: String(item.material_description || "").trim(),
           unit: String(item.unit || "").trim() || "NOS",
           req_qty: reqQty,
@@ -687,8 +667,8 @@ export default function PurchaseRequestCreate() {
           add_fields: [
             { key: "item_no", value: itemNo },
             { key: "item_name", value: itemName },
-            { key: "item_code", value: itemCode },
-            { key: "boq_item_code", value: boqItemCode },
+            { key: "item_code", value: itemNo },
+            { key: "boq_item_code", value: itemNo },
             { key: "material_description", value: String(item.material_description || "").trim() },
             { key: "unit", value: String(item.unit || "").trim() || "NOS" },
             { key: "req_qty", value: String(reqQty) },
@@ -743,14 +723,14 @@ export default function PurchaseRequestCreate() {
           boq_id: item.boq_id ?? 0,
           boq_qty: item.boq_qty ?? 0,
           item_no: item.item_no || "",
-          item_name: item.item_name || item.material_description || item.item_no || "",
-          item_code: item.item_code || item.boq_item_code || item.item_no || "",
-          boq_item_code: item.boq_item_code || item.item_code || item.item_no || "",
+          item_name: item.item_no || "",
+          item_code: item.item_no || "",
+          boq_item_code: item.item_no || "",
           add_fields: [
             { key: "item_no", value: item.item_no || "" },
             { key: "item_name", value: item.item_name || item.material_description || item.item_no || "" },
-            { key: "item_code", value: item.item_code || item.boq_item_code || item.item_no || "" },
-            { key: "boq_item_code", value: item.boq_item_code || item.item_code || item.item_no || "" },
+            { key: "item_code", value: item.item_no || "" },
+            { key: "boq_item_code", value: item.item_no || "" },
             { key: "material_description", value: item.material_description || "" },
             { key: "unit", value: item.unit || "NOS" },
             { key: "req_qty", value: String(item.req_qty ?? "") },
@@ -1022,7 +1002,7 @@ export default function PurchaseRequestCreate() {
                         <TableRow key={`item-${index}`}>
                         <TableCell className="align-top">
                         <Input
-                          value={item.item_no || ""}
+                          value={item.item_no || item.item_name || item.itemName || item.make}
                           onChange={(e) => setItemField(index, "item_no", e.target.value)}
                           placeholder="Item no."
                           className="h-9"

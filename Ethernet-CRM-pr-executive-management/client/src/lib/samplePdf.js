@@ -195,25 +195,18 @@ const normalizeSampleItems = (sample, client = "") => {
           row?.name ||
           "",
         item_no:
-          row?.item_no ||
-          row?.itemNo ||
           getFieldValue(row, "item_no") ||
           getFieldValue(row, "itemNo") ||
-          row?.item_code ||
-          row?.itemCode ||
-          row?.code ||
-          row?.sr_no ||
-          row?.srNo ||
+          row?.item_no ||
+          row?.itemNo ||
           "",
         item_code:
           getFieldValue(row, "item_code") ||
           getFieldValue(row, "itemCode") ||
           getFieldValue(row, "code") ||
-          getFieldValue(row, "item_no") ||
           row?.item_code ||
           row?.itemCode ||
           row?.code ||
-          row?.item_no ||
           "",
         boq_item_code:
           getFieldValue(row, "boq_item_code") ||
@@ -243,23 +236,16 @@ const normalizeSampleItems = (sample, client = "") => {
     item_no:
       row?.item_no ??
       row?.itemNo ??
-      row?.item_code ??
-      row?.itemCode ??
-      row?.code ??
       getFieldValue(row, "item_no") ??
       getFieldValue(row, "itemNo") ??
-      row?.sr_no ??
-      row?.srNo ??
       "",
     item_code:
       row?.item_code ??
       row?.itemCode ??
       row?.code ??
-      row?.item_no ??
       getFieldValue(row, "item_code") ??
       getFieldValue(row, "itemCode") ??
       getFieldValue(row, "code") ??
-      getFieldValue(row, "item_no") ??
       "",
     boq_item_code:
       row?.boq_item_code ??
@@ -443,7 +429,7 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
       }
       return itemName || description || itemCode || itemNo || "-";
     }
-    return itemNo || itemName || description || itemCode || "-";
+    return itemNo || "-";
   };
 
   renderFrame();
@@ -476,10 +462,10 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
     theme: "grid",
     head: [
       sampleClient === "hiranandani"
-        ? ["Sr No", "Item No", "Description", "BOQ Item Code", "Specification", "Brand", "Unit", "Quantity"]
+        ? ["Sr No", "BOQ Item No", "Description", "HSN Code", "Specification", "Brand", "Unit", "Quantity"]
         : sampleClient === "lodha"
-          ? ["Sr No", "Item No", "BOQ Item Code", "Description", "Specification", "Brand", "Unit", "Quantity"]
-          : ["Sr No", "Item Code", "Item Name", "Description", "BOQ Item Code", "Specification", "Brand", "Unit", "Quantity"],
+          ? ["Sr No", "BOQ Item No", "HSN Code", "Description", "Specification", "Brand", "Unit", "Quantity"]
+          : ["Sr No", "Item Code", "Item Name", "Description", "HSN Code", "Specification", "Brand", "Unit", "Quantity"],
     ],
     body: items.map((item) =>
       sampleClient === "hiranandani"

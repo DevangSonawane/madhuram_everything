@@ -122,78 +122,6 @@ const getPrIdValue = (pr = {}, fallback = null) => toPositiveInteger(pr?.pr_id ?
 
 const getPrNumberValue = (pr = {}) => toPositiveInteger(pr?.pr_no ?? pr?.pr_number ?? pr?.prNo ?? null);
 
-const getRowFieldValue = (row, fieldKey) =>
-  (Array.isArray(row?.add_fields) ? row.add_fields : []).find((field) => String(field?.key || "").trim() === fieldKey)?.value ?? "";
-
-const getSampleItemNo = (row = {}) =>
-  String(row?.item_no || row?.itemNo || getRowFieldValue(row, "item_no") || getRowFieldValue(row, "itemNo") || "").trim();
-
-const getSampleBoqItemNo = (row = {}) =>
-  String(
-    row?.boq_id ||
-      row?.boqId ||
-      getRowFieldValue(row, "boq_id") ||
-      getRowFieldValue(row, "boqId") ||
-      row?.boq_key ||
-      row?.boqKey ||
-      getRowFieldValue(row, "boq_key") ||
-      getRowFieldValue(row, "boqKey") ||
-      ""
-  ).trim();
-
-const getSampleItemDescription = (row = {}) =>
-  String(
-    row?.item_name ||
-      row?.itemName ||
-      row?.item_description ||
-      row?.itemDescription ||
-      row?.description ||
-      row?.material_description ||
-      ""
-  ).trim();
-
-const normalizeComparisonText = (value) =>
-  String(value ?? "")
-    .replace(/\u00A0/g, " ")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-const buildSampleItemLookup = (sample = null) => {
-  const rawItems = parseArrayLike(sample?.item_description ?? sample?.items ?? sample?.item_descriptions, []);
-  const items = Array.isArray(rawItems) ? rawItems : [];
-  return items.map((item, index) => ({
-    index,
-    item_no: getSampleItemNo(item),
-    description: getSampleItemDescription(item),
-    unit: String(item?.unit ?? item?.uom ?? item?.UOM ?? "").trim(),
-    raw: item,
-  }));
-};
-
-const resolvePrItemNoFromSample = (prItem = {}, sampleLookup = [], index = 0) => {
-  const prItemNo = getPrItemNo(prItem);
-  if (prItemNo) return prItemNo;
-
-  const prDescription = normalizeComparisonText(
-    prItem?.material_description || prItem?.item_name || prItem?.itemName || prItem?.description || prItem?.item || prItem?.name || ""
-  );
-  const prUnit = normalizeComparisonText(prItem?.unit || "");
-  const prKey = normalizeComparisonText(prItem?.item_no || prItem?.itemNo || "");
-
-  const matched =
-    sampleLookup.find((row) => {
-      if (prDescription && row.description && prDescription === normalizeComparisonText(row.description)) return true;
-      if (prDescription && row.description && prDescription.includes(normalizeComparisonText(row.description))) return true;
-      if (prDescription && row.description && normalizeComparisonText(row.description).includes(prDescription)) return true;
-      if (prKey && row.item_no && prKey === normalizeComparisonText(row.item_no)) return true;
-      if (prUnit && row.unit && prUnit === normalizeComparisonText(row.unit)) return true;
-      return false;
-    }) || sampleLookup[index] || null;
-
-  return getSampleItemNo(matched?.raw || matched || prItem) || "";
-};
-
 const buildVendorDraft = (vendorName, vendor = null) => ({
   source_name: vendorName,
   vendor_name: String(vendor?.vendor_name || vendorName || "").trim(),
@@ -275,15 +203,6 @@ const mergeWithPrItems = (excelRows, vendors, prItems) => {
     .filter(Boolean);
 
   return comparisonRows;
-};
-
-const enrichPrItemsWithSample = (prItems = [], sample = null) => {
-  const sampleLookup = buildSampleItemLookup(sample);
-  const rows = Array.isArray(prItems) ? prItems : [];
-  return rows.map((item, index) => ({
-    ...item,
-    item_no: getPrItemNo(item) || resolvePrItemNoFromSample(item, sampleLookup, index),
-  }));
 };
 
 const calculateTotals = (comparisonRows, vendors, summary = null, { discountRate = 0, gstRate = 0.18 } = {}) => {
@@ -1160,18 +1079,7 @@ export default function VendorComparisonModule() {
         }
         const pr = result?.data || null;
         fullPrRef.current = pr;
-        let samplePayload = null;
-        if (pr?.sample_id) {
-          try {
-            const sampleResult = await api.getSampleById(pr.sample_id);
-            if (sampleResult?.success) {
-              samplePayload = sampleResult.data?.sample ?? sampleResult.data?.data ?? sampleResult.data ?? null;
-            }
-          } catch {
-            samplePayload = null;
-          }
-        }
-        const items = samplePayload ? enrichPrItemsWithSample(normalizeArray(pr?.items), samplePayload) : normalizeArray(pr?.items);
+        const items = normalizeArray(pr?.items);
         if (!cancelled) {
           setPrItems(items);
           setSelectedPrItemKeys(items.map((item, index) => getPrItemKey(item, index)));

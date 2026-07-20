@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { loginStart, loginSuccess, loginFailure, logout as logoutAction } from '../redux/slices/authSlice';
 import { api } from '@/lib/api';
@@ -8,8 +8,8 @@ import AuthContext from './authContextBase';
 export const AuthProvider = ({ children }) => {
   const dispatch = useDispatch();
   const { user, isAuthenticated, loading, error } = useSelector((state) => state.auth);
-  const refreshTimerRef = useRef(null);
   const refreshInFlightRef = useRef(false);
+  const lastAccessFetchUserIdRef = useRef(null);
   const authToken = user?.token || user?.access_token || user?.accessToken || user?.jwt || user?.id_token;
 
   useEffect(() => {
@@ -20,10 +20,11 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user, dispatch]);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async ({ force = false } = {}) => {
     if (!authToken) return;
     const userId = user.user_id || user.id || user.uid;
     if (!userId || refreshInFlightRef.current) return;
+    if (!force && lastAccessFetchUserIdRef.current === String(userId)) return;
     refreshInFlightRef.current = true;
     try {
       const [userResult, accessResult] = await Promise.all([
@@ -39,42 +40,28 @@ export const AuthProvider = ({ children }) => {
           accessResult?.success ? accessResult.data : null
         );
         dispatch(loginSuccess(nextUser));
+        lastAccessFetchUserIdRef.current = String(userId);
       }
     } catch {
       // Silent fail; keep current user state.
     } finally {
       refreshInFlightRef.current = false;
     }
-  };
+  }, [authToken, user, dispatch]);
 
   useEffect(() => {
     if (!authToken) {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
+      lastAccessFetchUserIdRef.current = null;
       return;
     }
 
-    refreshUser();
-    refreshTimerRef.current = setInterval(refreshUser, 10000);
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        refreshUser();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authToken, user?.user_id, user?.id, user?.uid]);
+    const hasAccessControl =
+      user?.role === 'admin' ||
+      (user?.access_control?.pages && user?.access_control?.functions);
+    if (!hasAccessControl) {
+      refreshUser();
+    }
+  }, [authToken, user?.user_id, user?.id, user?.uid, user?.role, user?.access_control, refreshUser]);
 
   // We rely on Redux initial state for checking localStorage on mount
   // But if we wanted to sync or re-validate token on mount, we could do it here.
@@ -110,6 +97,7 @@ export const AuthProvider = ({ children }) => {
               accessResult.data
             );
             dispatch(loginSuccess(userData));
+            lastAccessFetchUserIdRef.current = String(userId);
           }
         }
         return true;

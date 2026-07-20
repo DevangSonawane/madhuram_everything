@@ -135,37 +135,31 @@ export default function SampleEdit() {
         fieldVal("boq_match_key") ||
         fieldVal("boqMatchKey")
     );
-    const itemNo = String(
-      raw?.item_no ??
-        raw?.itemNo ??
-        raw?.code ??
+    const itemNo = isBoqRow
+      ? (fieldVal("item_code") ??
+        fieldVal("itemCode") ??
+        fieldVal("code") ??
         raw?.item_code ??
         raw?.itemCode ??
-        fieldVal("item_no") ??
-        fieldVal("itemNo") ??
-        fieldVal("code") ??
-        fieldVal("item_code") ??
-        fieldVal("itemCode") ??
-        raw?.boq_item_code ??
-        raw?.boqItemCode ??
-        ""
-    ).trim();
-    const itemCode = String(
-      raw?.item_code ??
-        raw?.itemCode ??
-        raw?.hsn ??
-        raw?.hsnCode ??
-        raw?.sac_code ??
-        raw?.sacCode ??
-        fieldVal("item_code") ??
-        fieldVal("itemCode") ??
-        fieldVal("hsn") ??
-        fieldVal("sac_code") ??
-        raw?.boq_item_code ??
-        raw?.boqItemCode ??
         raw?.code ??
-        ""
-    ).trim();
+        raw?.boq_item_code ??
+        raw?.boqItemCode ??
+        "")
+      : (fieldVal("item_no") ??
+        fieldVal("itemNo") ??
+        raw?.item_no ??
+        raw?.itemNo ??
+        "");
+    const itemCode =
+      fieldVal("item_code") ??
+      fieldVal("itemCode") ??
+      fieldVal("code") ??
+      raw?.item_code ??
+      raw?.itemCode ??
+      raw?.code ??
+      raw?.boq_item_code ??
+      raw?.boqItemCode ??
+      "";
     const boqDescription =
       raw?.boq_description ??
       raw?.boqDescription ??
@@ -415,15 +409,13 @@ export default function SampleEdit() {
       const nextTotalQty = multiplier > 0 ? nextBaseQty * multiplier : nextBaseQty;
       const nextValue = "";
       const nextQty = String(nextTotalQty);
-    const boqItemNo = String(derived.item_no || derived.code || derived.itemCode || derived.item_code || derived.itemNo || normalizeBoqRowName(derived) || "").trim();
-    const boqItemCode = String(derived.item_code || derived.hsn || derived.sac_code || "").trim();
       const nextRow = {
         _row_type: "boq",
         sr_no: matchIndex >= 0 ? rows[matchIndex]?.sr_no || String(matchIndex + 1) : String(rows.length + 1),
         item_name: existing.item_name || derived.description || normalizeBoqRowName(derived),
-        item_no: boqItemNo || "-",
-        item_code: boqItemCode,
-        code: boqItemNo,
+        item_no: String(derived.item_code || derived.itemCode || derived.code || derived.item_no || derived.itemNo || normalizeBoqRowName(derived) || "").trim() || "-",
+        item_code: derived.item_code || derived.item_no || "",
+        code: derived.item_code || derived.item_no || "",
         description: derived.description || "-",
         specification: "",
         brand_name: "",
@@ -448,8 +440,8 @@ export default function SampleEdit() {
           { key: "boq_id", value: String(derived.id || "") },
           { key: "boq_key", value: key },
           { key: "boq_match_key", value: key },
-          { key: "item_no", value: boqItemNo },
-          { key: "item_code", value: boqItemCode },
+          { key: "item_no", value: String(derived.item_code || derived.itemCode || derived.code || derived.item_no || derived.itemNo || normalizeBoqRowName(derived) || "") },
+          { key: "item_code", value: String(derived.item_code || derived.item_no || "") },
           { key: "description", value: String(derived.description || "-") },
           { key: "unit", value: String(derived.unit || "") },
           { key: "selected_qty", value: String(nextBaseQty) },
@@ -738,9 +730,9 @@ export default function SampleEdit() {
         ...row,
         sr_no: row?.sr_no ?? "",
         item_name: row?.item_name ?? row?.itemName ?? "",
-        item_no: row?.item_no ?? row?.itemNo ?? row?.code ?? row?.item_code ?? row?.itemCode ?? row?.item_name ?? row?.itemName ?? "",
-        item_code: row?.item_code ?? row?.itemCode ?? row?.hsn ?? row?.hsnCode ?? row?.sac_code ?? row?.sacCode ?? row?.code ?? "",
-        code: row?.code ?? row?.item_no ?? row?.itemNo ?? row?.item_code ?? row?.itemCode ?? row?.hsn ?? row?.sac_code ?? "",
+        item_no: row?.item_no ?? row?.itemNo ?? row?.item_code ?? row?.itemCode ?? row?.code ?? row?.item_name ?? row?.itemName ?? "",
+        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? row?.item_no ?? row?.itemNo ?? "",
+        code: row?.code ?? row?.item_code ?? row?.itemCode ?? row?.item_no ?? row?.itemNo ?? "",
         brand_name: row?.brand_name ?? row?.brandName ?? "",
         description: row?.description ?? "",
         specification: row?.specification ?? row?.spec ?? "",

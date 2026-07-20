@@ -216,26 +216,16 @@ const isLikelyItemCode = (value) => {
 };
 
 const resolvePrItemNo = (row = {}) => {
-  const directItemNo = String(row?.item_no || row?.itemNo || "").trim();
-  if (directItemNo) return directItemNo;
-
   return String(
-    getSampleAddFieldValue(row, "item_no") ||
-      getSampleAddFieldValue(row, "itemNo") ||
-      row?.code ||
-      row?.item_code ||
-      row?.itemCode ||
-      row?.boq_item_code ||
-      row?.boqItemCode ||
-      getSampleAddFieldValue(row, "code") ||
-      getSampleAddFieldValue(row, "item_code") ||
-      getSampleAddFieldValue(row, "itemCode") ||
-      getSampleAddFieldValue(row, "boq_item_code") ||
-      getSampleAddFieldValue(row, "boqItemCode") ||
+    row?.item_no ||
+      getSampleAddFieldValue(row, "item_no") ||
+      row?.itemNo ||
       row?.item_name ||
       row?.itemName ||
       row?.description ||
       row?.material_description ||
+      row?.item_code ||
+      row?.boq_item_code ||
       ""
   ).trim();
 };
@@ -268,7 +258,17 @@ const parseSampleItemsForPrPdf = (sample) => {
   return list.map((row, index) => ({
     sample_id: sampleId,
     boq_serial_no: String(row?.sr_no ?? row?.srno ?? row?.srNo ?? row?.item_no ?? row?.itemNo ?? index + 1),
-    item_no: resolvePrItemNo(row),
+    item_no: String(
+      row?.item_no ??
+        row?.itemNo ??
+        getSampleAddFieldValue(row, "item_no") ??
+        getSampleAddFieldValue(row, "itemNo") ??
+        getSampleAddFieldValue(row, "item_code") ??
+        getSampleAddFieldValue(row, "itemCode") ??
+        row?.item_code ??
+        row?.itemCode ??
+        ""
+    ).trim(),
     item_name: String(
       row?.item_name ??
         row?.itemName ??
@@ -278,8 +278,6 @@ const parseSampleItemsForPrPdf = (sample) => {
         row?.material_description ??
         row?.item ??
         row?.name ??
-        row?.item_no ??
-        row?.itemNo ??
         ""
     ).trim(),
     description: String(
@@ -301,7 +299,6 @@ const enrichPrItemsWithSampleData = (pr, sample) => {
   const sampleId = String(pr?.sample_id || sample?.sample_id || sample?.id || "").trim();
 
   return items.map((item, index) => {
-    const directItemNo = String(item?.item_no || item?.itemNo || "").trim();
     const descKey = normalizeLookupText(
       item?.make || item?.item_name || item?.itemName || item?.material_description || item?.description || item?.item || item?.name || ""
     );
@@ -321,7 +318,7 @@ const enrichPrItemsWithSampleData = (pr, sample) => {
       ...item,
       sample_id: sampleId || matched.sample_id || "",
       boq_serial_no: matched.boq_serial_no || String(index + 1),
-      item_no: directItemNo || resolvePrItemNo(matched) || resolvePrItemNo(item),
+      item_no: resolvePrItemNo(matched) || resolvePrItemNo(item),
       item_name: resolvePrItemName(matched, resolvePrItemName(item, item.item_name || item.item_no || "")),
       description: matched.description || item.description || item.material_description || "",
       make: item.make || "",
@@ -1605,10 +1602,10 @@ export default function PurchaseRequests() {
             material_description: item.material_description || "",
             unit: item.unit || "NOS",
             req_qty: item.req_qty ?? "",
-            item_no: item.item_no || item.itemNo || item.code || item.item_code || item.itemCode || item.boq_item_code || item.boqItemCode || item.item_name || item.itemName || "",
-            item_name: item.item_name || item.itemName || item.material_description || item.item_no || "",
-            item_code: item.item_code || item.itemCode || item.code || item.boq_item_code || item.boqItemCode || "",
-            boq_item_code: item.boq_item_code || item.boqItemCode || item.item_code || item.itemCode || "",
+            item_no: item.item_name || item.item_no || item.itemName || "",
+            item_name: item.item_name || item.item_no || item.itemName || "",
+            item_code: item.item_code || item.code || item.item_no || "",
+            boq_item_code: item.boq_item_code || item.boqItemCode || item.item_no || "",
             make: item.make || "",
             place_of_utilisation: item.place_of_utilisation || "",
             inventory_id: item.inventory_id ?? item.inventoryId ?? null,
@@ -1617,10 +1614,10 @@ export default function PurchaseRequests() {
             boq_qty: item.boq_qty ?? item.boqQty ?? "",
             row_source: item.boq_id || item.boqId ? "sample" : "manual",
             add_fields: Array.isArray(item.add_fields) ? item.add_fields : [
-              { key: "item_no", value: item.item_no || item.itemNo || item.code || item.item_code || item.itemCode || item.boq_item_code || item.boqItemCode || item.item_name || item.itemName || "" },
-              { key: "item_name", value: item.item_name || item.itemName || item.material_description || item.item_no || "" },
-              { key: "item_code", value: item.item_code || item.itemCode || item.code || item.boq_item_code || item.boqItemCode || "" },
-              { key: "boq_item_code", value: item.boq_item_code || item.boqItemCode || item.item_code || item.itemCode || "" },
+              { key: "item_no", value: item.item_no || item.item_name || item.itemName || "" },
+              { key: "item_name", value: item.item_name || item.item_no || item.itemName || "" },
+              { key: "item_code", value: item.item_code || item.code || item.item_no || "" },
+              { key: "boq_item_code", value: item.boq_item_code || item.boqItemCode || item.item_no || "" },
             ],
             sample_total_qty: item.sample_total_qty ?? item.total_qty ?? "",
             sample_qty_per_flat: item.sample_qty_per_flat ?? item.qty_per_flat ?? "",
@@ -1654,7 +1651,7 @@ export default function PurchaseRequests() {
       try {
         const sampleResult = await api.getSampleById(normalizedPr.sample_id);
         if (sampleResult?.success) {
-          const samplePayload = sampleResult.data?.sample ?? sampleResult.data?.data ?? sampleResult.data ?? null;
+          const samplePayload = sampleResult.data?.data ?? sampleResult.data ?? null;
           if (samplePayload) {
             displayPr = {
               ...normalizedPr,
@@ -1705,25 +1702,13 @@ export default function PurchaseRequests() {
         const previewQty = Number(item.req_qty || item.sample_qty_per_flat || item.sample_total_qty || 0);
         const inventoryId = parseIntegerOrNull(item.inventory_id);
         const boqId = parseIntegerOrNull(item.boq_id);
-        const itemNo = String(
-          item.item_no ||
-            item.itemNo ||
-            item.item_code ||
-            item.itemCode ||
-            item.code ||
-            item.boq_item_code ||
-            item.boqItemCode ||
-            ""
-        ).trim();
-        const itemName = String(item.item_name || item.itemName || item.material_description || itemNo || "").trim();
-        const itemCode = String(item.item_code || item.itemCode || item.code || item.boq_item_code || item.boqItemCode || "").trim();
-        const boqItemCode = String(item.boq_item_code || item.boqItemCode || itemCode || "").trim();
+        const itemNo = String(item.item_no || item.item_name || item.itemName || "").trim();
         const isSampleRow = String(item.row_source || "").toLowerCase() === "sample";
         const normalized = {
           item_no: itemNo,
-          item_name: itemName,
-          item_code: itemCode,
-          boq_item_code: boqItemCode,
+          item_name: itemNo,
+          item_code: itemNo,
+          boq_item_code: itemNo,
           material_description: String(item.material_description || "").trim(),
           unit: String(item.unit || "").trim() || "NOS",
           req_qty: Number(previewQty),
@@ -1731,9 +1716,9 @@ export default function PurchaseRequests() {
           place_of_utilisation: String(item.place_of_utilisation || "").trim(),
           add_fields: [
             { key: "item_no", value: itemNo },
-            { key: "item_name", value: itemName },
-            { key: "item_code", value: itemCode },
-            { key: "boq_item_code", value: boqItemCode },
+            { key: "item_name", value: itemNo },
+            { key: "item_code", value: itemNo },
+            { key: "boq_item_code", value: itemNo },
             { key: "material_description", value: String(item.material_description || "").trim() },
             { key: "unit", value: String(item.unit || "").trim() || "NOS" },
             { key: "req_qty", value: String(previewQty) },
@@ -1815,9 +1800,9 @@ export default function PurchaseRequests() {
             make: item.make,
             place_of_utilisation: item.place_of_utilisation,
             item_no: item.item_no || "",
-            item_name: item.item_name || item.material_description || item.item_no || "",
-            item_code: item.item_code || item.boq_item_code || item.item_no || "",
-            boq_item_code: item.boq_item_code || item.item_code || item.item_no || "",
+            item_name: item.item_no || "",
+            item_code: item.item_no || "",
+            boq_item_code: item.item_no || "",
           };
           if (item.inventory_id) {
             base.inventory_id = item.inventory_id;
@@ -2268,16 +2253,14 @@ export default function PurchaseRequests() {
 
       const tableStartY = frameY + titleH + headerH;
       const sampleData = pr.sample_id ? await api.getSampleById(pr.sample_id).catch(() => null) : null;
-      const samplePayload = sampleData?.success
-        ? (sampleData.data?.sample ?? sampleData.data?.data ?? sampleData.data ?? null)
-        : (sampleData?.data?.sample ?? sampleData?.data?.data ?? sampleData?.data ?? sampleData ?? null);
+      const samplePayload = sampleData?.success ? sampleData.data : sampleData?.data || sampleData || null;
       const items = enrichPrItemsWithSampleData(pr, samplePayload);
       const minRows = 15;
       const tableRows = Array.from({ length: Math.max(items.length, minRows) }, (_, idx) => {
         const item = items[idx] || {};
         return [
           String(item.boq_serial_no || ""),
-          String(item.item_no || item.item_name || ""),
+          String(item.item_no || ""),
           String(item.description || item.material_description || ""),
           String(item.unit || ""),
           item.req_qty == null ? "" : String(item.req_qty),
