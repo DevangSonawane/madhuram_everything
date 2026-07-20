@@ -373,6 +373,12 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
   const vendorNames = (Array.isArray(vendors) ? vendors : []).map((vendor) =>
     typeof vendor === "string" ? vendor : String(vendor?.displayName || vendor?.name || "").trim()
   );
+  const asNumber = (value, fallback = 0) => {
+    if (value === null || value === undefined || value === "") return fallback;
+    const cleaned = String(value).replace(/,/g, "").trim();
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
   const companyLine = "Company Name:- Madhuram Enterprises";
   const projectLine = `Project Name:- ${pr?.project_name || ""}`;
   const indentNoLine = `Indent No:- ${pr?.workorder_no || ""}`;
@@ -410,6 +416,21 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
     return base;
   });
 
+  const itemAmounts = comparisonRows.map((row) =>
+    vendorNames.map((vendorName) => {
+      const price = (Array.isArray(row.vendorPrices) ? row.vendorPrices : []).find((x) => x.vendorName === vendorName) || {};
+      const rate = asNumber(price.rate, 0);
+      const qty = asNumber(row.qty, 0);
+      return asNumber(price.amount, rate * qty);
+    })
+  );
+
+  const subtotalValues = totals.subtotals.map((value) => asNumber(value, 0));
+  const discountValues = totals.discount.map((value) => asNumber(value, 0));
+  const netValues = subtotalValues.map((subtotal, idx) => subtotal - (discountValues[idx] || 0));
+  const gstValues = totals.gst.map((value) => asNumber(value, 0));
+  const totalValues = totals.total.map((value) => asNumber(value, 0));
+
   const subtotalRow = ["", "", "", "", "Subtotal", ""];
   totals.subtotals.forEach((v) => {
     subtotalRow.push("");
@@ -419,6 +440,11 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
   totals.discount.forEach((v) => {
     discountRow.push("");
     discountRow.push(v);
+  });
+  const netRow = ["", "", "", "", "Net Amount", ""];
+  netValues.forEach((v) => {
+    netRow.push("");
+    netRow.push(v);
   });
   const gstRow = ["", "", "", "", "GST", ""];
   totals.gst.forEach((v) => {
@@ -442,11 +468,20 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
     ...itemRows,
     subtotalRow,
     discountRow,
+    netRow,
     gstRow,
     totalRow,
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
+  const setFormulaCell = (rowNumber, colNumber, formula, value = 0) => {
+    const ref = XLSX.utils.encode_cell({ r: rowNumber - 1, c: colNumber - 1 });
+    if (!ws[ref]) ws[ref] = {};
+    ws[ref].t = "n";
+    ws[ref].f = formula;
+    ws[ref].v = value;
+    delete ws[ref].w;
+  };
 
   const mergeRanges = [];
   vendorNames.forEach((_, idx) => {
@@ -455,6 +490,13 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
   ws["!merges"] = mergeRanges;
 
   const lastCol = 5 + vendors.length * 2;
+  const firstItemRow = itemRows.length > 0 ? 8 : 0;
+  const lastItemRow = itemRows.length > 0 ? firstItemRow + itemRows.length - 1 : 0;
+  const subtotalRowNumber = 8 + itemRows.length;
+  const discountRowNumber = subtotalRowNumber + 1;
+  const netRowNumber = discountRowNumber + 1;
+  const gstRowNumber = netRowNumber + 1;
+  const totalRowNumber = gstRowNumber + 1;
   ws["!cols"] = [
     { wch: 8 },
     { wch: 12 },
@@ -512,8 +554,70 @@ const buildExportWorkbook = ({ pr, vendors, comparisonRows, summary = null }) =>
     }
   }
 
+  for (let vendorIndex = 0; vendorIndex < vendorNames.length; vendorIndex += 1) {
+    const rateCol = 7 + vendorIndex * 2;
+    const amountCol = rateCol + 1;
+
+    itemRows.forEach((_, rowIndex) => {
+      const rowNumber = 8 + rowIndex;
+      setFormulaCell(
+        rowNumber,
+        amountCol,
+        `${XLSX.utils.encode_col(rateCol - 1)}${rowNumber}*$E${rowNumber}`,
+        itemAmounts[rowIndex]?.[vendorIndex] ?? 0
+      );
+    });
+
+    if (itemRows.length > 0) {
+      setFormulaCell(
+        subtotalRowNumber,
+        amountCol,
+        `SUM(${XLSX.utils.encode_col(amountCol - 1)}${firstItemRow}:${XLSX.utils.encode_col(amountCol - 1)}${lastItemRow})`,
+        subtotalValues[vendorIndex] ?? 0
+      );
+    } else {
+      setFormulaCell(subtotalRowNumber, amountCol, "0", 0);
+    }
+
+    const discountRate = asNumber(totals.discountRates?.[vendorIndex], 0);
+    setFormulaCell(discountRowNumber, rateCol, `${discountRate}`, discountRate);
+    setFormulaCell(
+      discountRowNumber,
+      amountCol,
+      `${XLSX.utils.encode_col(rateCol - 1)}${discountRowNumber}*${XLSX.utils.encode_col(amountCol - 1)}${subtotalRowNumber}`,
+      discountValues[vendorIndex] ?? 0
+    );
+
+    setFormulaCell(
+      netRowNumber,
+      amountCol,
+      `${XLSX.utils.encode_col(amountCol - 1)}${subtotalRowNumber}-${XLSX.utils.encode_col(amountCol - 1)}${discountRowNumber}`,
+      netValues[vendorIndex] ?? 0
+    );
+
+    const gstRate = asNumber(totals.gstRates?.[vendorIndex], 0.18);
+    setFormulaCell(gstRowNumber, rateCol, `${gstRate}`, gstRate);
+    setFormulaCell(
+      gstRowNumber,
+      amountCol,
+      `${XLSX.utils.encode_col(rateCol - 1)}${gstRowNumber}*${XLSX.utils.encode_col(amountCol - 1)}${netRowNumber}`,
+      gstValues[vendorIndex] ?? 0
+    );
+
+    setFormulaCell(
+      totalRowNumber,
+      amountCol,
+      `${XLSX.utils.encode_col(amountCol - 1)}${netRowNumber}+${XLSX.utils.encode_col(amountCol - 1)}${gstRowNumber}`,
+      totalValues[vendorIndex] ?? 0
+    );
+  }
+
+  ws.Workbook = ws.Workbook || {};
+  ws.Workbook.CalcPr = { calcMode: "auto", fullCalcOnLoad: true, forceFullCalc: true };
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Vendor Comparison");
+  wb.Workbook = { CalcPr: { calcMode: "auto", fullCalcOnLoad: true, forceFullCalc: true } };
   return wb;
 };
 
@@ -778,7 +882,7 @@ const buildItemsExcelWorkbook = async ({ pr, selectedItems, vendors = [] }) => {
         amountCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
         rateCell.numFmt = "#,##0.00";
         amountCell.numFmt = "#,##0.00";
-        amountCell.value = { formula: `${colLetter(rateCol)}${rowNumber}*$D${rowNumber}` };
+        amountCell.value = { formula: `${colLetter(rateCol)}${rowNumber}*$E${rowNumber}` };
         styleThinBorderCell(rateCell, { font: fontArial10, alignment: rateCell.alignment });
         styleThinBorderCell(amountCell, { font: fontArial10, alignment: amountCell.alignment });
       }

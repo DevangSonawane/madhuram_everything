@@ -2259,7 +2259,7 @@ export default function PurchaseRequests() {
       const tableRows = Array.from({ length: Math.max(items.length, minRows) }, (_, idx) => {
         const item = items[idx] || {};
         return [
-          String(item.boq_serial_no || ""),
+          String(idx + 1),
           String(item.item_no || ""),
           String(item.description || item.material_description || ""),
           String(item.unit || ""),
@@ -2272,7 +2272,7 @@ export default function PurchaseRequests() {
         margin: { left: frameX, right: frameX },
         tableWidth: frameW,
         theme: "grid",
-        head: [["BOQ No.", "Item No.", "Description", "Unit", "Qty"]],
+        head: [["Sr no", "BOQ No.", "Description", "Unit", "Qty"]],
         body: tableRows,
         styles: {
           font: "times",
@@ -2292,9 +2292,9 @@ export default function PurchaseRequests() {
           lineWidth: 0.2,
         },
         columnStyles: {
-          0: { cellWidth: 18, halign: "center" },
-          1: { cellWidth: 44 },
-          2: { cellWidth: 82 },
+          0: { cellWidth: 16, halign: "center" },
+          1: { cellWidth: 28, halign: "center" },
+          2: { cellWidth: 88 },
           3: { cellWidth: 18, halign: "center" },
           4: { cellWidth: 28, halign: "center" },
         },
