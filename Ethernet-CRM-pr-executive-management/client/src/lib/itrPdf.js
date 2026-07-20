@@ -166,7 +166,7 @@ const normalizeItr = (input = {}) => {
     },
     descriptionOfWorks: asText(contractorPart.descriptionOfWorks || payload.descriptionOfWorks || payload.description_of_works),
     workItems: rawWorkItems.map((item) => ({
-      boqCode: asText(item?.boqCode || item?.boq_code || item?.boq_id || item?.boqId),
+      boqCode: asText(item?.item_no || item?.itemNo || item?.boqCode || item?.boq_code || item?.item_code || item?.itemCode || item?.boq_id || item?.boqId),
       itemDescription: asText(item?.itemDescription || item?.item_description || item?.description || item?.name),
       quantity: asText(item?.quantity ?? item?.qty ?? item?.boq_qty ?? item?.boqQty),
       unit: asText(item?.unit || item?.uom || ""),

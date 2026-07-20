@@ -235,6 +235,7 @@ const buildItrPayload = (itrData, projectId, user) => {
     description_of_work: itrData.contractorPart.descriptionOfWorks || "",
     work_items: (Array.isArray(itrData.workItems) ? itrData.workItems : []).map((item) => ({
       ...item,
+      item_no: item?.item_no ?? item?.itemNo ?? item?.boqCode ?? item?.boq_code ?? item?.boq_id ?? item?.boqId ?? "",
       boq_id: item?.boq_id ?? item?.boqId ?? "",
       boq_qty: item?.boq_qty ?? item?.boqQty ?? item?.quantity ?? "",
     })),
@@ -432,6 +433,12 @@ const mapApiItrToForm = (rawItem = {}, normalizedItem = null) => {
     status: normalized.status || "DRAFT",
     inspectionCode: normalized.inspectionCode || lodhaSection.resultCode || "",
     title: normalized.title || EMPTY_ITR.title,
+    workItems: Array.isArray(normalized.workItems)
+      ? normalized.workItems.map((item) => ({
+          ...item,
+          item_no: String(item?.item_no || item?.itemNo || item?.boqCode || item?.boq_code || item?.boq_id || item?.boqId || "").trim(),
+        }))
+      : [],
   };
 };
 
@@ -1049,7 +1056,18 @@ export default function ITR() {
     ).trim();
 
   const getSampleItemCode = (row = {}) =>
-    String(row?.item_code || row?.itemCode || row?.code || row?.boq_id || row?.boqId || "").trim();
+    String(
+      row?.item_no ||
+        row?.itemNo ||
+        row?.item_code ||
+        row?.itemCode ||
+        row?.code ||
+        row?.boq_item_code ||
+        row?.boqItemCode ||
+        row?.boq_id ||
+        row?.boqId ||
+        ""
+    ).trim();
 
   const getSampleItemQty = (row = {}) =>
     String(row?.quantity ?? row?.qty ?? row?.selected_qty ?? row?.total_qty ?? row?.boq_qty ?? "").trim();
@@ -1062,6 +1080,7 @@ export default function ITR() {
     size: String(row?.specification || row?.spec || row?.brand_name || row?.brandName || "").trim(),
     quantity: getSampleItemQty(row),
     unit: getSampleItemUnit(row),
+    item_no: String(row?.item_no || row?.itemNo || row?.item_code || row?.itemCode || row?.code || row?.boq_item_code || row?.boqItemCode || "").trim(),
     boq_id: String(row?.boq_id ?? row?.boqId ?? "").trim(),
     boq_qty: String(row?.boq_qty ?? row?.boqQty ?? row?.quantity ?? row?.qty ?? "").trim(),
     boq_issued_qty: String(row?.boq_issued_qty ?? row?.boqIssuedQty ?? row?.issued_qty ?? row?.issuedQty ?? "").trim(),
@@ -1971,7 +1990,7 @@ export default function ITR() {
                                 <Checkbox checked={isSampleRowSelected(index)} onCheckedChange={(value) => toggleSampleRowSelection(index, Boolean(value))} />
                               </TableCell>
                               <TableCell className="font-medium">{index + 1}</TableCell>
-                              <TableCell className="font-medium text-primary">{row.boq_id || row.boq_code || "-"}</TableCell>
+                              <TableCell className="font-medium text-primary">{row.item_no || row.boq_code || row.boq_id || "-"}</TableCell>
                               <TableCell>{row.item_description || "-"}</TableCell>
                               <TableCell>{row.size || "-"}</TableCell>
                               <TableCell className="text-right font-medium">{row.quantity || "-"}</TableCell>
