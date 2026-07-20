@@ -350,7 +350,35 @@ const mergeDeep = (base, incoming) => {
   return result;
 };
 
-export const normalizeLodhaMir = (value) => mergeDeep(EMPTY_LODHA_MIR, value);
+const normalizeMirItemNo = (item) => {
+  if (!isPlainObject(item)) return item;
+  const itemNo = String(
+    item.item_no ??
+      item.itemNo ??
+      item.item_code ??
+      item.itemCode ??
+      item.code ??
+      item.hsn ??
+      ""
+  ).trim();
+  if (!itemNo) return item;
+  return {
+    ...item,
+    item_no: item.item_no ?? itemNo,
+    item_code: item.item_code ?? itemNo,
+  };
+};
+
+export const normalizeLodhaMir = (value) => {
+  const normalized = mergeDeep(EMPTY_LODHA_MIR, value);
+  if (Array.isArray(normalized.items)) {
+    normalized.items = normalized.items.map(normalizeMirItemNo);
+  }
+  if (Array.isArray(normalized.materialRows)) {
+    normalized.materialRows = normalized.materialRows.map(normalizeMirItemNo);
+  }
+  return normalized;
+};
 
 export const normalizeHiranandaniMir = (value) => {
   const normalized = mergeDeep(EMPTY_HIRANANDANI_MIR, value);
@@ -361,6 +389,8 @@ export const normalizeHiranandaniMir = (value) => {
 };
 
 export const getMirTemplateType = (mir) => {
+  const topLevel = String(mir?.template_type || mir?.templateType || "").trim().toLowerCase();
+  if (topLevel === MIR_TEMPLATE_TYPES.LODHA || topLevel === MIR_TEMPLATE_TYPES.HIRANANDANI) return topLevel;
   const fromDynamic = getMirDynamicValue(mir?.dynamic_field, "template_type", "");
   if (fromDynamic === MIR_TEMPLATE_TYPES.LODHA || fromDynamic === MIR_TEMPLATE_TYPES.HIRANANDANI) return fromDynamic;
   const client = String(mir?.client_name || "").toLowerCase();

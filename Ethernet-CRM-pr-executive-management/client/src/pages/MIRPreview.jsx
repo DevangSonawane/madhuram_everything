@@ -121,20 +121,64 @@ const toDateOnly = (value) => {
   return parsed.toISOString().slice(0, 10);
 };
 
-const normalizeItemsForPayload = (items = []) => {
+const normalizeLookupText = (value) =>
+  toTrimmedString(value)
+    .replace(/^[\-\u2022\u00B7•\s]+/, "")
+    .replace(/^\(?\d+[\).\-]\s*/, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
+
+const buildItemNoLookupFromPo = (poItems = []) => {
+  const lookup = new Map();
+  (Array.isArray(poItems) ? poItems : []).forEach((item) => {
+    const itemNo = toTrimmedString(item?.item_no ?? item?.itemNo ?? item?.boq_item_code ?? item?.boqItemCode ?? item?.item_code ?? item?.itemCode);
+    if (!itemNo) return;
+    [
+      item?.description,
+      item?.item_description,
+      item?.material_description,
+      item?.name,
+      item?.item_name,
+      item?.itemName,
+    ]
+      .map(normalizeLookupText)
+      .filter(Boolean)
+      .forEach((key) => {
+        if (!lookup.has(key)) lookup.set(key, itemNo);
+      });
+  });
+  return lookup;
+};
+
+const normalizeItemsForPayload = (items = [], { poItems = [] } = {}) => {
   if (!Array.isArray(items)) return [];
+  const itemNoLookup = buildItemNoLookupFromPo(poItems);
   return items.map((item, index) => {
     const srno = Number(item?.srno);
     const qty = Number(item?.qty);
     const rate = Number(item?.Rate);
     const amount = Number(item?.Amount);
     const normalizedUom = toTrimmedString(item?.UOM ?? item?.uom ?? item?.unit ?? item?.Unit);
+    const sourceItemNo = toTrimmedString(item?.item_no ?? item?.itemNo ?? "");
+    const sourceItemCode = toTrimmedString(item?.item_code ?? item?.itemCode ?? item?.code ?? "");
+    const description = toTrimmedString(item?.description);
+    const name = toTrimmedString(item?.name);
+    const resolvedItemNo =
+      sourceItemNo ||
+      sourceItemCode ||
+      itemNoLookup.get(normalizeLookupText(description)) ||
+      itemNoLookup.get(normalizeLookupText(name)) ||
+      itemNoLookup.get(normalizeLookupText(item?.material_description)) ||
+      itemNoLookup.get(normalizeLookupText(item?.item_name)) ||
+      "";
     return {
       srno: Number.isFinite(srno) && srno > 0 ? srno : index + 1,
       hsn: toTrimmedString(item?.hsn),
-      item_code: toTrimmedString(item?.item_code ?? item?.itemCode ?? item?.code ?? item?.item_no ?? item?.itemNo ?? item?.hsn),
-      description: toTrimmedString(item?.description),
-      name: toTrimmedString(item?.name),
+      item_no: resolvedItemNo,
+      item_code: resolvedItemNo || sourceItemCode || toTrimmedString(item?.hsn),
+      description,
+      name,
       qty: Number.isFinite(qty) ? qty : 0,
       UOM: normalizedUom,
       Rate: Number.isFinite(rate) ? rate : 0,
@@ -241,12 +285,11 @@ export default function MIRPreview() {
   const handleSubmit = async () => {
     setSaving(true);
     try {
-      const normalizedInspectionDateTime = toIsoDateTime(mirData.requestSubmission.engineerInspectionDateTime);
-      const normalizedSubmissionDate = toDateOnly(mirData.requestSubmission.clientSubmissionDateTime);
-      const normalizedPoId = toPositiveInteger(mirData.poId);
-      const normalizedChallanNo = toTrimmedString(mirData.challanNo || mirData.challan_no);
-      const normalizedMirRefNo = toTrimmedString(mirData.mirRefNo || mirData.mir_refrence_no);
-      const normalizedItems = normalizeItemsForPayload(mirData.items);
+    const normalizedInspectionDateTime = toIsoDateTime(mirData.requestSubmission.engineerInspectionDateTime);
+    const normalizedSubmissionDate = toDateOnly(mirData.requestSubmission.clientSubmissionDateTime);
+    const normalizedPoId = toPositiveInteger(mirData.poId);
+    const normalizedChallanNo = toTrimmedString(mirData.challanNo || mirData.challan_no);
+    const normalizedMirRefNo = toTrimmedString(mirData.mirRefNo || mirData.mir_refrence_no);
       let resolvedProjectId = toPositiveInteger(
         projectId ?? mirData.project_id ?? mirData.projectId ?? selectedProject?.project_id ?? selectedProject?.id
       );
@@ -271,6 +314,10 @@ export default function MIRPreview() {
       if (!resolvedProjectId) {
         resolvedProjectId = toPositiveInteger(poCheck.data.project_id);
       }
+      const poItemNoLookup = [
+        ...(Array.isArray(poCheck.data?.items) ? poCheck.data.items : []),
+        ...(Array.isArray(poCheck.data?.item_description) ? poCheck.data.item_description : []),
+      ];
 
       const payload = {
         project_name: toTrimmedString(mirData.projectName || selectedProject?.project_name || selectedProject?.name),
@@ -289,7 +336,7 @@ export default function MIRPreview() {
         dynamic_field: buildDynamicField(),
         project_id: resolvedProjectId,
         po_id: normalizedPoId,
-        items: normalizedItems,
+        items: normalizeItemsForPayload(mirData.items, { poItems: poItemNoLookup }),
       };
 
       const res = mirData.mir_id ? await api.updateLodhaMir(mirData.mir_id, payload) : await api.createLodhaMir(payload);

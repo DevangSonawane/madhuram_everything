@@ -71,11 +71,22 @@ const mapChallanItemsToMirItems = (items) => {
     const qty = toNumber(item?.qty ?? item?.quantity, 0);
     const rate = toNumber(item?.Rate ?? item?.rate ?? item?.price, 0);
     const hsn = toText(item?.hsn ?? item?.hsnCode ?? item?.hsn_code ?? item?.HSN);
-    const itemCode = toText(item?.item_code ?? item?.itemCode ?? item?.code ?? item?.item_no ?? item?.itemNo ?? hsn);
+    const itemNo = toText(
+      item?.item_no ??
+        item?.itemNo ??
+        item?.boq_item_code ??
+        item?.boqItemCode ??
+        item?.item_code ??
+        item?.itemCode ??
+        item?.code ??
+        hsn
+    );
+    const itemCode = toText(item?.item_code ?? item?.itemCode ?? item?.code ?? item?.boq_item_code ?? item?.boqItemCode ?? itemNo ?? hsn);
     const uom = toText(item?.UOM ?? item?.uom ?? item?.unit ?? item?.Unit);
     return {
       srno: toNumber(item?.srno, index + 1),
       hsn,
+      item_no: itemNo,
       item_code: itemCode,
       description: item?.description ?? item?.name ?? "",
       name: item?.name ?? "",
@@ -104,11 +115,24 @@ const enrichMirItemsFromPo = (mirItems, poItems) => {
     const poMatch = (descriptionKey && poItemsByDescription.get(descriptionKey)) || poItems[index] || null;
     if (!poMatch) return item;
 
+    const poItemNo = toText(
+      poMatch?.item_no ??
+        poMatch?.itemNo ??
+        poMatch?.boq_item_code ??
+        poMatch?.boqItemCode ??
+        poMatch?.item_code ??
+        poMatch?.itemCode ??
+        poMatch?.code ??
+        poMatch?.hsn
+    );
+    const poItemCode = toText(poMatch?.item_code ?? poMatch?.itemCode ?? poMatch?.code ?? poItemNo);
     const poHsn = toText(poMatch?.hsn ?? poMatch?.hsnCode ?? poMatch?.hsn_code ?? poMatch?.HSN);
     const poUom = toText(poMatch?.UOM ?? poMatch?.uom ?? poMatch?.unit ?? poMatch?.Unit);
 
     return {
       ...item,
+      item_no: item?.item_no ? item.item_no : poItemNo,
+      item_code: item?.item_code ? item.item_code : poItemCode,
       hsn: item?.hsn ? item.hsn : poHsn,
       UOM: item?.UOM ? item.UOM : poUom,
       inspected: Boolean(item?.inspected),
@@ -639,10 +663,21 @@ export default function MIRCreate() {
       const qty = toPayloadNumber(item.qty);
       const rate = toPayloadNumber(item.Rate);
       const amountValue = item.Amount === "" ? qty * rate : toPayloadNumber(item.Amount);
+      const itemNo = String(
+        item.item_no ||
+          item.itemNo ||
+          item.item_code ||
+          item.itemCode ||
+          item.code ||
+          item.hsn ||
+          ""
+      ).trim();
+      const itemCode = String(item.item_code || item.itemCode || item.code || item.item_no || item.itemNo || item.hsn || "").trim();
       return {
         srno: toPayloadNumber(item.srno || index + 1),
         hsn: String(item.hsn || ""),
-        item_code: String(item.item_code || item.itemCode || item.hsn || ""),
+        item_no: itemNo,
+        item_code: itemCode,
         description: String(item.description || ""),
         name: String(item.name || ""),
         qty,
@@ -1039,7 +1074,7 @@ export default function MIRCreate() {
                             <TableCell>
                               <Input
                                 value={item?.item_code || ""}
-                                onChange={(event) => updateMirItemRow(index, { item_code: event.target.value, hsn: event.target.value })}
+                                onChange={(event) => updateMirItemRow(index, { item_code: event.target.value, item_no: event.target.value, hsn: event.target.value })}
                                 placeholder="Item code / HSN"
                                 className="h-9"
                               />

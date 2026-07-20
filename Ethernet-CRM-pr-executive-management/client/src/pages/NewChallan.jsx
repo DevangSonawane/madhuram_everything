@@ -19,7 +19,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const NONE_VALUE = "__none__";
-const EMPTY_ITEM = { name: "", description: "", width: "", length: "", quantity: "", price: "" };
+const EMPTY_ITEM = { item_no: "", name: "", description: "", width: "", length: "", quantity: "", price: "" };
 const todayDateOnly = () => new Date().toISOString().slice(0, 10);
 const getEmptyForm = () => ({
   challan_number: "",
@@ -119,6 +119,9 @@ const mapPoItemsForPreview = (po, { prItems = [] } = {}) => {
   }
 
   return po.items.map((item) => ({
+    item_no:
+      String(item?.item_no || item?.itemNo || item?.boq_item_code || item?.boqItemCode || item?.item_code || item?.itemCode || "").trim() ||
+      "-",
     // For PO items, show PR item's `make` in the first column.
     // If we can't resolve, fall back to PO item's make (but never fall back to description).
     name:
@@ -138,7 +141,7 @@ const mapPoItemsForPreview = (po, { prItems = [] } = {}) => {
 
 const hasItemValue = (item) => {
   if (!item) return false;
-  return ["name", "description", "width", "length", "quantity", "price"].some((key) => {
+  return ["item_no", "name", "description", "width", "length", "quantity", "price"].some((key) => {
     const value = item[key];
     return value != null && String(value).trim() !== "";
   });
@@ -280,6 +283,7 @@ export default function NewChallan() {
       setSelectedPoItems(
         incomingPoItems.map((row, idx) => ({
           ...row,
+          item_no: String(row?.item_no || row?.itemNo || row?.boq_item_code || row?.boqItemCode || row?.item_code || row?.itemCode || "").trim() || "-",
           name: extractMakeFromRemark(row?.remark) || row?.make || row?.name || "-",
           description: row?.description || "",
           width: row?.width || "",
@@ -422,6 +426,7 @@ export default function NewChallan() {
     }
 
     const mapped = selectedPoItems.map((it) => ({
+      item_no: it?.item_no || it?.itemNo || it?.boq_item_code || it?.boqItemCode || it?.item_code || it?.itemCode || "",
       name: it?.name || "",
       description: it?.description || "",
       width: it?.width || "",
@@ -488,6 +493,7 @@ export default function NewChallan() {
       project_id: Number(projectId),
       challan_number: form.challan_number,
       items: form.items.map((it) => ({
+        item_no: it.item_no || undefined,
         name: it.name,
         description: it.description,
         width: toNumber(it.width),
@@ -639,7 +645,7 @@ export default function NewChallan() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40">
-                        <TableHead>Name</TableHead>
+                        <TableHead>Item No</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead className="text-right">Width</TableHead>
                         <TableHead className="text-right">Length</TableHead>
@@ -651,6 +657,7 @@ export default function NewChallan() {
                         .filter(hasItemValue)
                         .map((item, index) => (
                           <TableRow key={`challan-preview-${index}`}>
+                            <TableCell className="font-mono text-xs">{item.item_no || "-"}</TableCell>
                             <TableCell className="font-medium">{item.name || "-"}</TableCell>
                             <TableCell className="text-muted-foreground">{item.description || "-"}</TableCell>
                             <TableCell className="text-right tabular-nums">{item.width || "-"}</TableCell>
@@ -677,6 +684,7 @@ export default function NewChallan() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/40">
+                        <TableHead>Item No</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead className="text-right">Width</TableHead>
@@ -685,13 +693,13 @@ export default function NewChallan() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {selectedPoItems.map((item, index) => (
-                        <TableRow key={`po-preview-${index}`}>
-                          <TableCell className="font-medium">{item.name || "-"}</TableCell>
-                          <TableCell className="text-muted-foreground">{item.description || "-"}</TableCell>
-                          <TableCell className="text-right tabular-nums">{item.width || "-"}</TableCell>
-                          <TableCell className="text-right tabular-nums">{item.length || "-"}</TableCell>
-                          <TableCell className="text-right tabular-nums">{item.quantity || "-"}</TableCell>
+                    {selectedPoItems.map((item, index) => (
+                      <TableRow key={`po-preview-${index}`}>
+                        <TableCell className="font-mono text-xs">{item.item_no || "-"}</TableCell>
+                        <TableCell className="text-muted-foreground">{item.description || "-"}</TableCell>
+                        <TableCell className="text-right tabular-nums">{item.width || "-"}</TableCell>
+                        <TableCell className="text-right tabular-nums">{item.length || "-"}</TableCell>
+                        <TableCell className="text-right tabular-nums">{item.quantity || "-"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -724,7 +732,7 @@ export default function NewChallan() {
                 <div className="w-full sm:max-w-md">
                   <Input
                     className="h-11"
-                    placeholder="Search PO items by name or description..."
+                    placeholder="Search PO items by item no or description..."
                     value={poItemSearch}
                     onChange={(e) => setPoItemSearch(e.target.value)}
                   />
@@ -739,7 +747,7 @@ export default function NewChallan() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
-                      <TableHead>Name</TableHead>
+                      <TableHead>Item No</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead className="text-right">Width</TableHead>
                       <TableHead className="text-right">Length</TableHead>
@@ -749,7 +757,7 @@ export default function NewChallan() {
                   <TableBody>
                     {filteredPoItems.map((item, index) => (
                       <TableRow key={`po-item-${index}`}>
-                        <TableCell className="font-medium">{item.name || "-"}</TableCell>
+                        <TableCell className="font-mono text-xs">{item.item_no || "-"}</TableCell>
                         <TableCell className="text-muted-foreground">{item.description || "-"}</TableCell>
                         <TableCell className="text-right tabular-nums">{item.width || "-"}</TableCell>
                         <TableCell className="text-right tabular-nums">{item.length || "-"}</TableCell>
@@ -783,6 +791,7 @@ export default function NewChallan() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="hidden lg:grid lg:grid-cols-6 gap-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div>Item No</div>
             <div>Name</div>
             <div className="lg:col-span-2">Description</div>
             <div>Width</div>
@@ -792,9 +801,15 @@ export default function NewChallan() {
           {form.items.map((item, index) => (
             <div
               key={index}
-              className={`grid grid-cols-1 gap-2 lg:grid-cols-6 ${index > 0 ? "border-t pt-3 lg:border-t-0 lg:pt-0" : ""}`}
+              className={`grid grid-cols-1 gap-2 lg:grid-cols-8 ${index > 0 ? "border-t pt-3 lg:border-t-0 lg:pt-0" : ""}`}
             >
               <div className="text-xs font-medium text-muted-foreground lg:hidden">Sr.No {index + 1}</div>
+              <Input
+                className="h-11 text-base"
+                placeholder="Item No"
+                value={item.item_no}
+                onChange={(e) => updateItem(index, 'item_no', e.target.value)}
+              />
               <Input
                 className="h-11 text-base"
                 placeholder="Name"

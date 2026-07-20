@@ -148,6 +148,8 @@ const normalizeMirItems = (value) => {
       return {
         srno: index + 1,
         hsn: '',
+        item_no: '',
+        item_code: '',
         description: '',
         name: '',
         qty: 0,
@@ -166,6 +168,16 @@ const normalizeMirItems = (value) => {
     const rate = Number(item.Rate);
     const amount = Number(item.Amount);
     const hsn = toTrimmedString(item.hsn);
+    const itemNo = toTrimmedString(
+      item.item_no ??
+      item.itemNo ??
+      item.boq_item_code ??
+      item.boqItemCode ??
+      item.item_code ??
+      item.itemCode ??
+      item.code
+    );
+    const itemCode = toTrimmedString(item.item_code ?? item.itemCode ?? item.code ?? item.boq_item_code ?? item.boqItemCode ?? itemNo);
     const description = toTrimmedString(item.description);
     const name = toTrimmedString(item.name);
     const uom = toTrimmedString(item.UOM ?? item.uom ?? item.unit ?? item.Unit);
@@ -178,6 +190,8 @@ const normalizeMirItems = (value) => {
     return {
       srno: Number.isFinite(srno) ? srno : index + 1,
       hsn,
+      item_no: itemNo,
+      item_code: itemCode,
       description,
       name,
       qty: Number.isFinite(qty) ? qty : 0,

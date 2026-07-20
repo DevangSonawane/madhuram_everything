@@ -116,9 +116,11 @@ const normalizeMirItems = (input) => {
     .filter((item) => item?.include_in_mir !== false && item?.print_in_mir !== false && item?.selected !== false && item?.checked !== false)
     .map((item, index) => {
       const qty = item?.qty ?? item?.quantity ?? item?.sample_total_qty ?? item?.total_qty ?? "";
+      const itemNo = item?.item_no ?? item?.itemNo ?? item?.item_code ?? item?.itemCode ?? item?.code ?? "";
       return {
         sr_no: item?.srno ?? item?.sr_no ?? item?.srNo ?? String(index + 1),
-        item_code: item?.item_code ?? item?.itemCode ?? item?.code ?? item?.item_no ?? item?.itemNo ?? item?.hsn ?? "",
+        item_no: itemNo,
+        item_code: itemNo,
         description: item?.description ?? item?.material_description ?? item?.name ?? item?.item_name ?? item?.material ?? "",
         name: item?.name ?? "",
         uom: item?.UOM ?? item?.uom ?? item?.unit ?? item?.Unit ?? "",
@@ -221,10 +223,10 @@ const drawLodhaPdf = async (input, fileName) => {
     margin: { left: x, right: x },
     tableWidth: w,
     theme: "grid",
-    head: [["Sr. No.", "Item Code", "Description", "Name", "UOM", "Qty"]],
-    body: (itemRows.length ? itemRows : [{ sr_no: "", item_code: "", description: "", name: "", uom: "", qty: "" }]).map((item) => [
+    head: [["Sr. No.", "Item No", "Description", "Name", "UOM", "Qty"]],
+    body: (itemRows.length ? itemRows : [{ sr_no: "", item_no: "", item_code: "", description: "", name: "", uom: "", qty: "" }]).map((item) => [
       asText(item.sr_no, ""),
-      asText(item.item_code, "-"),
+      asText(item.item_no || item.item_code, "-"),
       asText(item.description, "-"),
       asText(item.name, "-"),
       asText(item.uom, "-"),
@@ -438,7 +440,7 @@ const drawHiranandaniPdf = async (input, fileName) => {
         const fallbackItems = normalizeMirItems(input);
         return fallbackItems.length
           ? fallbackItems.map((item) => ({
-              material: item.description || item.name || item.item_code || "",
+              material: item.description || item.name || item.item_no || item.item_code || "",
               size: item.hsn || "",
               quantity: item.qty || "",
               unit: item.uom || "",
@@ -520,6 +522,9 @@ export const downloadMirPdf = async (mirOrTemplateData, options = {}) => {
 
 export const buildLodhaPayloadFromMir = (form, lodha) => {
   const normalized = normalizeLodhaMir(lodha);
+  const items = normalizeMirItems({
+    items: Array.isArray(form.items) ? form.items : normalized.items || [],
+  });
   return {
     ...normalized,
     projectName: form.project_name,
@@ -536,7 +541,7 @@ export const buildLodhaPayloadFromMir = (form, lodha) => {
       inspectionDateTime: form.inspection_date_time,
       refDocAttached: form.add_attachment,
     },
-    items: Array.isArray(form.items) ? form.items : normalized.items || [],
+    items,
   };
 };
 
@@ -554,7 +559,7 @@ export const buildHiranandaniPayloadFromMir = (form, hiranandani) => {
     materialRows: Array.isArray(normalized.materialRows) && normalized.materialRows.length > 0
       ? normalized.materialRows
       : items.map((item) => ({
-          material: item?.description || item?.name || item?.item_code || "",
+          material: item?.description || item?.name || item?.item_no || item?.item_code || "",
           size: item?.hsn || "",
           quantity: item?.qty || item?.quantity || "",
           unit: item?.UOM || item?.uom || item?.unit || "",
