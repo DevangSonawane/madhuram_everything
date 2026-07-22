@@ -565,6 +565,80 @@ function extractBOQFromTextInternal(rawText) {
   return { items, sections, projectName, name: 'Oakwood' };
 }
 
+// ─── RUSTOMJEE PARSER ─────────────────────────────────────────────────────────
+// Rustomjee "Annexure - A - Bill of Quantities" PDFs render as a real table with
+// Sr.No / Description / Unit / Qty / Rate / Amount columns, where a parent item's
+// Sr.No + Unit/Qty/Rate/Amount values are vertically centered inside a tall,
+// multi-line Description cell (so they can land mid-paragraph in reading order).
+// A naive line-join (as used by the other parsers' `rawText`) scrambles this, so
+// Rustomjee requires column-aware extraction first — see
+// `extractRustomjeeRows()` in boqExtractor.js, which returns one row per visual
+// table line with its Sr.No / Description / Unit / Qty / Rate / Amount already
+// split into separate fields.
+//
+// Row taxonomy fed into this parser:
+//   - "boundary": a "TOTAL OF ..." row — closes the current section/description run.
+//   - "section": a bare top-level letter (e.g. "B EXTERNAL STORM DRAINAGE") or the
+//     first content after a boundary/doc-start (e.g. "INFRA WORK",
+//     "Drainage (Internal & Risers ...)").
+//   - "header": an item code with no Unit/Qty/Rate/Amount of its own (e.g. "A.2",
+//     "9.c") — its accumulated text becomes the shared description prefix for the
+//     leaf item(s) that follow it.
+//   - "leaf": a row with real Unit/Qty/Rate/Amount values — becomes one output
+//     item. Its own Sr.No may be present (e.g. "A2.1", "a") or blank (e.g. the
+//     un-coded "Note: Fixing of heavy duty..." row) — blank is kept blank to match
+//     the PDF's own Sr.No column exactly.
+function parseRustomjeeBoqInternal(rows) {
+  const cleaned = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      page: row?.page,
+      visualRow: row?.visualRow,
+      srNo: normalizeSpaces(row?.srNo),
+      description: normalizeSpaces(row?.description),
+      unit: normalizeSpaces(row?.unit),
+      qty: normalizeSpaces(row?.qty),
+      rate: normalizeSpaces(row?.rate),
+      amount: normalizeSpaces(row?.amount),
+    }))
+    .filter((row) => row.srNo || row.description || row.unit || row.qty || row.rate || row.amount);
+
+  const sections = [];
+  const seenSections = new Set();
+  const addSection = (name) => {
+    const n = normalizeSpaces(name);
+    if (!n || seenSections.has(n)) return;
+    seenSections.add(n);
+    sections.push(n);
+  };
+
+  const items = cleaned.map((row, index) => {
+    const section = row.page ? `Page ${row.page}` : 'Table';
+    const qty = toNumber(row.qty);
+    const rate = toNumber(row.rate);
+    const amount = toNumber(row.amount);
+    addSection(section);
+    return {
+      item_no: row.srNo,
+      section,
+      description: row.description,
+      hsn: '',
+      sac_code: '995462',
+      unit: row.unit,
+      qty: Number.isFinite(qty) ? qty : 0,
+      rate: Number.isFinite(rate) ? rate : 0,
+      amount: Number.isFinite(amount) ? amount : 0,
+      qty_text: row.qty,
+      rate_text: row.rate,
+      amount_text: row.amount,
+      page: row.page,
+      row_index: row.visualRow || index + 1,
+      source_row: row,
+    };
+  });
+
+  return { items, sections, name: 'Rustomjee', projectName: '' };
+}
+
 // ─── PUBLIC ENTRY POINTS ──────────────────────────────────────────────────────
 export function parseLodhaBoq(rawText) {
   const { items, sections } = parseLodhaBoqInternal(rawText);
@@ -582,7 +656,21 @@ export function parseOakwoodBoq(rawText) {
 }
 
 /**
- * Run all parsers and return the result with the most items.
+ * Rustomjee PDFs need column-aware extraction, not plain joined text — pass the
+ * structured rows from `extractRustomjeeRows(pdf)` (boqExtractor.js), not rawText.
+ * @param {Array<{srNo:string, description:string, unit:string, qty:string, rate:string, amount:string}>} rows
+ */
+export function parseRustomjeeBoq(rows) {
+  const { items, sections } = parseRustomjeeBoqInternal(rows);
+  return { items, sections };
+}
+
+/**
+ * Run the text-based parsers (Lodha, Hiranandani, Oakwood) and return the result
+ * with the most items. Rustomjee is intentionally excluded here since it needs
+ * structured rows (see `parseRustomjeeBoq`), not plain rawText — run it
+ * separately via `extractRustomjeeRows(pdf)` + `parseRustomjeeBoq(rows)` and
+ * compare its item count against this result yourself if auto-detecting format.
  * @param {string} rawText
  * @returns {{ items: any[], sections: string[], projectName: string, name: string }}
  */

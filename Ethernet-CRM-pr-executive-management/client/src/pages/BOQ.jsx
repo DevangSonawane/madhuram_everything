@@ -16,7 +16,7 @@ import { api } from "@/lib/api";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrencyINR, formatNumberIN } from "@/lib/numberFormat";
 import { UnitSelect, convertQuantity } from "@/components/forms/UnitSelect";
-import { extractRawTextFromPdfFile } from "@/lib/boqExtractor";
+import { extractRawTextFromPdfFile, extractRustomjeeRowsFromPdfFile } from "@/lib/boqExtractor";
 
 const NO_FILE_KEY = "__NO_FILE__";
 
@@ -302,6 +302,12 @@ function matchesActiveClient(item, activeClient) {
     return false;
   }
 
+  if (activeClient === "rustomjee") {
+    if (client === "rustomjee") return true;
+    if (/^[A-Z]\d*(?:\.\d+)?(?:\.\d+)?$/i.test(code)) return true;
+    return !hasHsn && !hasSac;
+  }
+
   return true;
 }
 
@@ -559,63 +565,86 @@ export default function BOQ() {
     setExtractError(null);
     setExtracting(true);
     try {
-      const rawText = await extractRawTextFromPdfFile(file);
-
-      if (activeClient === 'lodha') {
-        const { parseLodhaBoq } = await import('@/lib/boqParser');
-        const parsed = parseLodhaBoq(rawText);
+      if (activeClient === 'rustomjee') {
+        const { parseRustomjeeBoq } = await import('@/lib/boqParser');
+        const rows = await extractRustomjeeRowsFromPdfFile(file);
+        const parsed = parseRustomjeeBoq(rows);
         const mapped = parsed.items.map((it, idx) => ({
           id: idx + 1 + Date.now(),
-          category: it.section || 'General',
+          category: it.section || 'Table',
           code: it.item_no || '',
           item_no: it.item_no || '',
-          item_code: it.hsn || '',
+          item_code: it.item_no || '',
           description: it.description || '',
           unit: it.unit || '',
-          quantity: it.qty_text || (it.qty != null ? String(it.qty) : ''),
-          rate: it.rate_text || (it.rate != null ? String(it.rate) : ''),
-          amount: it.amount_text || (it.amount != null ? String(it.amount) : ''),
-          floor: '',
-          hsn: it.hsn || '',
-        }));
-        setExtractedItems(mapped);
-      } else if (activeClient === 'hiranandani') {
-        const { parseHiranandaniBoq } = await import('@/lib/boqParser');
-        const parsed = parseHiranandaniBoq(rawText);
-        const mapped = parsed.items.map((it, idx) => ({
-          id: idx + 1 + Date.now(),
-          category: it.section || 'General',
-          code: it.item_no || '',
-          item_no: it.item_no || '',
-          item_code: it.sac_code || '',
-          description: it.description || '',
-          unit: it.unit || '',
-          quantity: it.qty_text || (Number.isFinite(it.qty) ? String(it.qty) : ''),
-          rate: it.rate_text || (Number.isFinite(it.rate) ? String(it.rate) : ''),
-          amount: it.amount_text || (Number.isFinite(it.amount) ? String(it.amount) : ''),
+          quantity: it.qty_text || '',
+          rate: it.rate_text || '',
+          amount: it.amount_text || '',
           floor: '',
           sac_code: it.sac_code || '',
+          page: it.page,
+          row_index: it.row_index,
         }));
         setExtractedItems(mapped);
       } else {
-        // fallback to server-side for unknown clients
-        const res = await api.parseBoqPdf({ boq_file: file, project_id: projectId || '', save: false });
-        if (res.success && res.data && Array.isArray(res.data.items)) {
-          const mapped = res.data.items.map((it, idx) => ({
+        const rawText = await extractRawTextFromPdfFile(file);
+
+        if (activeClient === 'lodha') {
+          const { parseLodhaBoq } = await import('@/lib/boqParser');
+          const parsed = parseLodhaBoq(rawText);
+          const mapped = parsed.items.map((it, idx) => ({
             id: idx + 1 + Date.now(),
             category: it.section || 'General',
             code: it.item_no || '',
-            item_code: it.item_no || '',
+            item_no: it.item_no || '',
+            item_code: it.hsn || '',
             description: it.description || '',
             unit: it.unit || '',
-            quantity: it.qty ? String(it.qty) : '',
-            rate: '',
-            amount: '',
+            quantity: it.qty_text || (it.qty != null ? String(it.qty) : ''),
+            rate: it.rate_text || (it.rate != null ? String(it.rate) : ''),
+            amount: it.amount_text || (it.amount != null ? String(it.amount) : ''),
             floor: '',
+            hsn: it.hsn || '',
+          }));
+          setExtractedItems(mapped);
+        } else if (activeClient === 'hiranandani') {
+          const { parseHiranandaniBoq } = await import('@/lib/boqParser');
+          const parsed = parseHiranandaniBoq(rawText);
+          const mapped = parsed.items.map((it, idx) => ({
+            id: idx + 1 + Date.now(),
+            category: it.section || 'General',
+            code: it.item_no || '',
+            item_no: it.item_no || '',
+            item_code: it.sac_code || '',
+            description: it.description || '',
+            unit: it.unit || '',
+            quantity: it.qty_text || (Number.isFinite(it.qty) ? String(it.qty) : ''),
+            rate: it.rate_text || (Number.isFinite(it.rate) ? String(it.rate) : ''),
+            amount: it.amount_text || (Number.isFinite(it.amount) ? String(it.amount) : ''),
+            floor: '',
+            sac_code: it.sac_code || '',
           }));
           setExtractedItems(mapped);
         } else {
-          throw new Error(res.error || 'Failed to parse BOQ PDF from server.');
+          // fallback to server-side for unknown clients
+          const res = await api.parseBoqPdf({ boq_file: file, project_id: projectId || '', save: false });
+          if (res.success && res.data && Array.isArray(res.data.items)) {
+            const mapped = res.data.items.map((it, idx) => ({
+              id: idx + 1 + Date.now(),
+              category: it.section || 'General',
+              code: it.item_no || '',
+              item_code: it.item_no || '',
+              description: it.description || '',
+              unit: it.unit || '',
+              quantity: it.qty ? String(it.qty) : '',
+              rate: '',
+              amount: '',
+              floor: '',
+            }));
+            setExtractedItems(mapped);
+          } else {
+            throw new Error(res.error || 'Failed to parse BOQ PDF from server.');
+          }
         }
       }
 
@@ -1062,6 +1091,8 @@ export default function BOQ() {
               <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100">Lodha Format</Badge>
             ) : activeClient === 'hiranandani' ? (
               <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">Hiranandani Format</Badge>
+            ) : activeClient === 'rustomjee' ? (
+              <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Rustomjee Format</Badge>
             ) : null}
           </div>
           <p className="text-muted-foreground mt-2">
@@ -1082,7 +1113,7 @@ export default function BOQ() {
             {activeClient ? (
               <>
                 <Pencil className="mr-2 h-4 w-4" />
-                {activeClient === "lodha" ? "Lodha Format" : activeClient === "hiranandani" ? "Hiranandani Format" : activeClient}
+                {activeClient === "lodha" ? "Lodha Format" : activeClient === "hiranandani" ? "Hiranandani Format" : activeClient === "rustomjee" ? "Rustomjee Format" : activeClient}
               </>
             ) : (
               <>
@@ -1908,7 +1939,7 @@ export default function BOQ() {
                     <>
                       <TableHead>Description</TableHead>
                       <TableHead>Section</TableHead>
-                      <TableHead>{activeClient === 'lodha' ? 'Item No' : 'Code'}</TableHead>
+                      <TableHead>{activeClient ? 'Item No' : 'Code'}</TableHead>
                       {activeClient === 'lodha' ? <TableHead>HSN</TableHead> : null}
                       <TableHead>Unit</TableHead>
                       <TableHead className="text-right">Qty</TableHead>
@@ -1940,7 +1971,7 @@ export default function BOQ() {
                           <>
                             <TableCell className="font-mono text-xs">{it.code}</TableCell>
                             <TableCell className="max-w-[560px] whitespace-normal break-words">
-                              {truncateWords(it.description, 40)}
+                              {activeClient === 'rustomjee' ? it.description : truncateWords(it.description, 40)}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
                               <Badge variant="outline">{it.category}</Badge>
@@ -1954,7 +1985,7 @@ export default function BOQ() {
                         ) : (
                           <>
                             <TableCell className="max-w-[560px] whitespace-normal break-words">
-                              {truncateWords(it.description, 40)}
+                              {activeClient === 'rustomjee' ? it.description : truncateWords(it.description, 40)}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
                               <Badge variant="outline">{it.category}</Badge>
@@ -2011,10 +2042,11 @@ export default function BOQ() {
             <DialogTitle>Select BOQ Format</DialogTitle>
             <DialogDescription>Choose the client format before creating the BOQ.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[
               { label: "Lodha", value: "lodha", description: "Lodha BOQ format" },
               { label: "Hiranandani", value: "hiranandani", description: "Hiranandani BOQ format" },
+              { label: "Rustomjee", value: "rustomjee", description: "Rustomjee table-row format" },
             ].map((opt) => (
               <button
                 key={`boq-new-${opt.value}`}
