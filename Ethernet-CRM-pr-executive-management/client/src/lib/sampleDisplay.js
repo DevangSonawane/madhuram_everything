@@ -40,7 +40,7 @@ const getStoredBoqClient = (projectId) => {
 
 const getClientFromFields = (value) => {
   const client = normalizeClientName(value);
-  if (client === "lodha" || client === "hiranandani") return client;
+  if (client === "lodha" || client === "hiranandani" || client === "rustomjee") return client;
   return "";
 };
 
@@ -56,9 +56,16 @@ const inferSampleClientFromRows = (rows = []) => {
     const hsn = String(row?.hsn ?? row?.hsn_code ?? row?.hsnCode ?? getRowFieldValue(row, "hsn") ?? getRowFieldValue(row, "hsn_code") ?? "").trim();
     return Boolean(hsn) || /^\d+(\.\d+){1,3}$/.test(itemNo);
   });
+  const hasRustomjeeSignal = list.some((row) => {
+    const itemNo = String(row?.item_no ?? row?.itemNo ?? getRowFieldValue(row, "item_no") ?? getRowFieldValue(row, "itemNo") ?? "").trim();
+    const boqItemCode = String(row?.boq_item_code ?? row?.boqItemCode ?? getRowFieldValue(row, "boq_item_code") ?? getRowFieldValue(row, "boqItemCode") ?? "").trim();
+    const sac = String(row?.sac_code ?? row?.sacCode ?? getRowFieldValue(row, "sac_code") ?? getRowFieldValue(row, "sacCode") ?? "").trim();
+    return Boolean(itemNo) && !Boolean(sac) && !/^\d+(\.\d+){1,3}$/.test(itemNo) && !boqItemCode;
+  });
 
   if (hasHiraSignal && !hasLodhaSignal) return "hiranandani";
   if (hasLodhaSignal && !hasHiraSignal) return "lodha";
+  if (hasRustomjeeSignal) return "rustomjee";
   return "";
 };
 
@@ -95,6 +102,7 @@ const getSamplePrimaryIdentifierLabel = (client) => {
   const normalized = normalizeClientName(client);
   if (normalized === "hiranandani") return "Item No";
   if (normalized === "lodha") return "Item Code";
+  if (normalized === "rustomjee") return "Item No";
   return "Item Name";
 };
 
@@ -159,6 +167,20 @@ const getSamplePrimaryIdentifier = (row = {}, client = "") => {
       row?.description ??
       row?.item_name ??
       row?.itemName ??
+      ""
+    );
+  }
+  if (normalized === "rustomjee") {
+    return (
+      manualNameCandidates.find((value) => String(value ?? "").trim() !== "") ??
+      row?.item_no ??
+      row?.itemNo ??
+      getRowFieldValue(row, "item_no") ??
+      getRowFieldValue(row, "itemNo") ??
+      row?.description ??
+      row?.item_name ??
+      row?.itemName ??
+      row?.code ??
       ""
     );
   }

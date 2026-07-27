@@ -550,8 +550,15 @@ export default function BOQ() {
     const originalQty = getRemainingQtyForItem(item);
     const usedFromSamples = getComputedUsedQtyForBoqItem(item, projectSamples);
     const usedFromApi = toFiniteNumber(item?.used_quantity);
-    const computedUsed = usedFromSamples > 0 ? usedFromSamples : (usedFromApi ?? 0);
-    const remaining = originalQty - computedUsed;
+    const remainingFromApi = toFiniteNumber(item?.remaining_quantity);
+    const computedUsed =
+      usedFromSamples > 0
+        ? usedFromSamples
+        : usedFromApi ?? (remainingFromApi != null ? Math.max(0, originalQty - remainingFromApi) : 0);
+    const remaining =
+      usedFromSamples > 0
+        ? Math.max(0, originalQty - computedUsed)
+        : remainingFromApi ?? Math.max(0, originalQty - computedUsed);
     return {
       used: computedUsed,
       remaining,
@@ -871,6 +878,12 @@ export default function BOQ() {
           unit_price: payload.rate,
           value: payload.amount,
         });
+      } else if (activeClient === 'rustomjee') {
+        res = await api.createBOQRustomjee({
+          ...payload,
+          sr_no: payload.item_no || '',
+          item_no: payload.item_no || '',
+        });
       } else {
         res = await api.createBOQ(payload);
       }
@@ -933,6 +946,7 @@ export default function BOQ() {
       const payload = {
         ...itemForm,
         item_code: itemForm.item_code || undefined,
+        item_no: itemForm.item_no || undefined,
         amount: calculateBoqAmount(itemForm.quantity, itemForm.rate)?.toString() ?? itemForm.amount,
       };
       if (formFile instanceof File) payload.boq_file = formFile;

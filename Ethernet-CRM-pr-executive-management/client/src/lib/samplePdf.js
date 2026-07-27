@@ -415,9 +415,15 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
     if (srText && text === srText) return true;
     return /^\d+$/.test(text);
   };
+  const getDisplayItemCode = (item = {}) => {
+    if (sampleClient === "rustomjee") {
+      return asText(item.item_no || item.itemNo || item.item_code || item.code, "-");
+    }
+    return asText(item.item_code || item.code, "-");
+  };
   const getDisplayItemNo = (item = {}) => {
     const itemNo = asText(item.item_no, "");
-    const itemCode = asText(item.item_code || item.code || item.boq_item_code || item.boqItemCode, "");
+    const itemCode = getDisplayItemCode(item);
     const itemName = asText(item.item_name, "");
     const description = asText(item.description, "");
     const srNo = asText(item.sr_no, "");
@@ -465,7 +471,9 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
         ? ["Sr No", "BOQ Item No", "Description", "HSN Code", "Specification", "Brand", "Unit", "Quantity"]
         : sampleClient === "lodha"
           ? ["Sr No", "BOQ Item No", "HSN Code", "Description", "Specification", "Brand", "Unit", "Quantity"]
-          : ["Sr No", "Item Code", "Item Name", "Description", "HSN Code", "Specification", "Brand", "Unit", "Quantity"],
+          : sampleClient === "rustomjee"
+            ? ["Sr No", "Item Code", "Description", "Specification", "Brand", "Unit", "Quantity"]
+            : ["Sr No", "Item Code", "Item Name", "Description", "HSN Code", "Specification", "Brand", "Unit", "Quantity"],
     ],
     body: items.map((item) =>
       sampleClient === "hiranandani"
@@ -490,12 +498,22 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
               asText(item.unit, "-"),
               asText(item.quantity, "-"),
             ]
+        : sampleClient === "rustomjee"
+          ? [
+              asText(item.sr_no, ""),
+              getDisplayItemCode(item),
+              asText(item.description, "-"),
+              asText(item.specification, "-"),
+              asText(item.brand_name, "-"),
+              asText(item.unit, "-"),
+              asText(item.quantity, "-"),
+            ]
         : [
             asText(item.sr_no, ""),
-            asText(item.item_code || item.boq_item_code, "-"),
+            getDisplayItemCode(item),
             asText(item.item_name, "-"),
             asText(item.description, "-"),
-            asText(item.boq_item_code || item.item_code, "-"),
+            asText(item.boq_item_code || item.item_code || item.item_no, "-"),
             asText(item.specification, "-"),
             asText(item.brand_name, "-"),
             asText(item.unit, "-"),
@@ -504,8 +522,8 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
     ),
     styles: {
       font: "times",
-      fontSize: 8.8,
-      cellPadding: 1.2,
+      fontSize: sampleClient === "rustomjee" ? 7.8 : 8.8,
+      cellPadding: sampleClient === "rustomjee" ? 1.0 : 1.2,
       lineColor: [0, 0, 0],
       lineWidth: 0.2,
       textColor: [0, 0, 0],
@@ -518,7 +536,7 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
       textColor: [0, 0, 0],
       lineColor: [0, 0, 0],
       lineWidth: 0.2,
-      fontSize: 8.5,
+      fontSize: sampleClient === "rustomjee" ? 7.8 : 8.5,
     },
     columnStyles:
       sampleClient === "hiranandani"
@@ -542,6 +560,16 @@ export const downloadSamplePdf = async (sampleInput, { fileName } = {}) => {
               5: { cellWidth: 14, halign: "center" },
               6: { cellWidth: 12, halign: "center" },
               7: { cellWidth: 22, halign: "center" },
+            }
+        : sampleClient === "rustomjee"
+          ? {
+              0: { cellWidth: 10, halign: "center" },
+              1: { cellWidth: 22, halign: "center" },
+              2: { cellWidth: 86 },
+              3: { cellWidth: 18 },
+              4: { cellWidth: 16 },
+              5: { cellWidth: 14, halign: "center" },
+              6: { cellWidth: 18, halign: "center" },
             }
         : {
             0: { cellWidth: 10, halign: "center" },

@@ -316,13 +316,29 @@ export default function SamplePreview() {
             row?.name ??
             "";
           const itemCode =
-            row?.item_code ??
-            row?.itemCode ??
-            row?.code ??
-            fieldVal(row, "item_code") ??
-            fieldVal(row, "itemCode") ??
-            fieldVal(row, "code") ??
-            "";
+            sampleClient === "rustomjee"
+              ? (
+                  row?.item_no ??
+                  row?.itemNo ??
+                  fieldVal(row, "item_no") ??
+                  fieldVal(row, "itemNo") ??
+                  row?.item_code ??
+                  row?.itemCode ??
+                  row?.code ??
+                  fieldVal(row, "item_code") ??
+                  fieldVal(row, "itemCode") ??
+                  fieldVal(row, "code") ??
+                  ""
+                )
+              : (
+                  row?.item_code ??
+                  row?.itemCode ??
+                  row?.code ??
+                  fieldVal(row, "item_code") ??
+                  fieldVal(row, "itemCode") ??
+                  fieldVal(row, "code") ??
+                  ""
+                );
           const brandName =
             row?.brand_name ??
             row?.brandName ??
@@ -373,10 +389,14 @@ export default function SamplePreview() {
             fieldVal(row, "boqIssuedQty") ||
             "";
           const boqItemCode =
-            (row?.boq_item_code ?? row?.boqItemCode ?? "") ||
-            fieldVal(row, "boq_item_code") ||
-            fieldVal(row, "boqItemCode") ||
-            "";
+            sampleClient === "rustomjee"
+              ? ""
+              : (
+                  (row?.boq_item_code ?? row?.boqItemCode ?? "") ||
+                  fieldVal(row, "boq_item_code") ||
+                  fieldVal(row, "boqItemCode") ||
+                  ""
+                );
           const boqRemainingQty =
             (row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "") ||
             fieldVal(row, "boq_remaining_quantity") ||
@@ -432,7 +452,17 @@ export default function SamplePreview() {
         item_name: getSamplePrimaryIdentifier(row, sampleClient) || row?.item_name || row?.itemName || row?.name || "",
         brand_name: row?.brand_name ?? row?.brandName ?? "",
         description: row?.description ?? row?.material_description ?? row?.item ?? row?.item_name ?? row?.itemName ?? "",
-        item_code: row?.item_code ?? row?.itemCode ?? row?.code ?? "",
+        item_code:
+          sampleClient === "rustomjee"
+            ? (
+                row?.item_no ??
+                row?.itemNo ??
+                row?.item_code ??
+                row?.itemCode ??
+                row?.code ??
+                ""
+              )
+            : (row?.item_code ?? row?.itemCode ?? row?.code ?? ""),
         specification: row?.specification ?? row?.spec ?? "",
         unit: row?.unit ?? row?.uom ?? row?.UOM ?? "",
         quantity: getEffectiveQty(row) || row?.quantity || row?.qty || row?.req_qty || "",
@@ -441,7 +471,7 @@ export default function SamplePreview() {
         issued_qty: row?.issued_qty ?? row?.issuedQty ?? "",
         boq_id: row?.boq_id ?? row?.boqId ?? "",
         boq_issued_qty: row?.boq_issued_qty ?? row?.boqIssuedQty ?? "",
-        boq_item_code: row?.boq_item_code ?? row?.boqItemCode ?? "",
+        boq_item_code: sampleClient === "rustomjee" ? "" : (row?.boq_item_code ?? row?.boqItemCode ?? ""),
         boq_remaining_quantity: row?.boq_remaining_quantity ?? row?.boqRemainingQuantity ?? "",
       }));
     };
@@ -615,6 +645,7 @@ export default function SamplePreview() {
 
   const sampleClient = resolveSampleClient(sample, sample?.project_id);
   const isHiranandani = sampleClient === "hiranandani";
+  const isRustomjee = sampleClient === "rustomjee";
 
   const fileUrl = sample?.sample_file ? api.getApiFileUrl(sample.sample_file) : null;
   const lower = String(sample?.sample_file || "").toLowerCase();
@@ -1106,7 +1137,7 @@ export default function SamplePreview() {
                         <TableHeader>
                           <TableRow className="bg-muted/30">
                             <TableHead className="w-[140px]">BOQ Item No</TableHead>
-                            <TableHead className="w-[140px]">Item Code</TableHead>
+                            {!isRustomjee && <TableHead className="w-[140px]">Item Code</TableHead>}
                             <TableHead className="min-w-[220px]">Item Description</TableHead>
                             <TableHead className="w-[102px] border-l border-border/70 text-center bg-emerald-100 text-emerald-900 dark:border-border/50 dark:bg-emerald-950/35 dark:text-emerald-100">
                               Samples
@@ -1131,7 +1162,7 @@ export default function SamplePreview() {
                         <TableBody>
                           {boqSummaryRows.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                              <TableCell colSpan={isRustomjee ? 8 : 9} className="py-10 text-center text-muted-foreground">
                                 No BOQ items available for this sample.
                               </TableCell>
                             </TableRow>
@@ -1139,7 +1170,9 @@ export default function SamplePreview() {
                             boqSummaryRows.map((row) => (
                             <TableRow key={row.key} className="align-top">
                                 <TableCell className="font-medium">{row.rawItemNo || row.itemNo || "-"}</TableCell>
-                                <TableCell className="font-medium text-primary">{row.rawItemCode || row.itemCode || "-"}</TableCell>
+                                {!isRustomjee && (
+                                  <TableCell className="font-medium text-primary">{row.rawItemCode || row.itemCode || "-"}</TableCell>
+                                )}
                                 <TableCell className="max-w-[280px] text-muted-foreground">
                                   {row.itemDescription || "-"}
                                 </TableCell>

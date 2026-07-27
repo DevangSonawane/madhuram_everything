@@ -104,6 +104,32 @@ export const createBOQHiranandani = async (req, res) => {
   }
 };
 
+export const createBOQRustomjee = async (req, res) => {
+  try {
+    const b = req.body || {};
+    const payload = buildPayload(req);
+
+    // Rustomjee layout: sr_no, description, unit, qty, rate, amount
+    payload.item_no = b.sr_no ?? b.item_no ?? payload.item_no;
+    payload.description = b.description ?? payload.description;
+    payload.unit = b.unit ?? payload.unit;
+    payload.quantity = toNumber(b.qty ?? payload.quantity);
+    payload.rate = toNumber(b.rate ?? payload.rate);
+    payload.amount = toNumber(b.amount ?? payload.amount);
+    payload.category = b.section ?? b.category ?? payload.category ?? 'Rustomjee';
+
+    if (!payload.description || payload.project_id == null || Number.isNaN(payload.project_id)) {
+      return res.status(400).json({ error: 'Missing required fields or invalid project_id' });
+    }
+
+    const created = await BOQ.create(payload);
+    return res.status(201).json(created);
+  } catch (error) {
+    console.error('Create Rustomjee BOQ error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
 export const getBOQs = async (_req, res) => {
   try {
     const rows = await BOQ.findAll({ order: [['created_at', 'DESC']] });

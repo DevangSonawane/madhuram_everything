@@ -6,6 +6,7 @@ import {
   createBOQ,
   createBOQLodha,
   createBOQHiranandani,
+  createBOQRustomjee,
   getBOQs,
   getBOQById,
   getBOQsByProject,
@@ -35,6 +36,7 @@ const upload = multer({ storage });
 router.post('/', upload.single('boq_file'), createBOQ);
 router.post('/lodha', upload.single('boq_file'), createBOQLodha);
 router.post('/hiranandani', upload.single('boq_file'), createBOQHiranandani);
+router.post('/rustomjee', upload.single('boq_file'), createBOQRustomjee);
 router.get('/', getBOQs);
 router.get('/project/:projectId', getBOQsByProject);
 router.get('/:id', getBOQById);

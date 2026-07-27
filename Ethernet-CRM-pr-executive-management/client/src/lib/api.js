@@ -1151,6 +1151,7 @@ export const api = {
     const formData = new FormData();
     formData.append('category', data.category || '');
     formData.append('project_id', data.project_id);
+    if (data.item_no != null && data.item_no !== '') formData.append('item_no', data.item_no);
     if (data.item_code != null && data.item_code !== '') formData.append('item_code', data.item_code);
     if (data.description != null && data.description !== '') formData.append('description', data.description);
     if (data.floor != null && data.floor !== '') formData.append('floor', data.floor);
@@ -1161,6 +1162,29 @@ export const api = {
     if (data.boq_file instanceof File) formData.append('boq_file', data.boq_file);
 
     const response = await fetch(`${BASE_URL}/api/boq`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  createBOQRustomjee: async (data) => {
+    const formData = new FormData();
+    formData.append('project_id', data.project_id);
+    formData.append('description', data.description || data.item_description || '');
+    if (data.sr_no != null && data.sr_no !== '') formData.append('sr_no', data.sr_no);
+    if (data.item_no != null && data.item_no !== '') formData.append('item_no', data.item_no);
+    if (data.unit != null && data.unit !== '') formData.append('unit', data.unit);
+    if (data.qty != null && data.qty !== '') formData.append('qty', String(data.qty));
+    if (data.rate != null && data.rate !== '') formData.append('rate', String(data.rate));
+    if (data.amount != null && data.amount !== '') formData.append('amount', String(data.amount));
+    if (data.project_name) formData.append('project_name', data.project_name);
+    if (data.category) formData.append('category', data.category);
+    if (data.floor) formData.append('floor', data.floor);
+    if (data.boq_file instanceof File) formData.append('boq_file', data.boq_file);
+
+    const response = await fetch(`${BASE_URL}/api/boq/rustomjee`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData,
@@ -1296,10 +1320,24 @@ export const api = {
           category,
           floor,
         });
+      } else if (cli === 'rustomjee') {
+        res = await api.createBOQRustomjee({
+          project_id: pid,
+          sr_no: item?.sr_no || item?.item_no || item?.code || '',
+          item_no: item?.item_no || item?.code || '',
+          description,
+          unit,
+          qty: quantity,
+          rate,
+          amount,
+          category,
+          floor,
+        });
       } else {
         res = await api.createBOQ({
           project_id: pid,
           category,
+          item_no: item?.item_no || item?.code || '',
           item_code: code,
           description,
           floor,
@@ -1505,7 +1543,7 @@ export const api = {
 
   updateBOQ: async (id, data) => {
     const formData = new FormData();
-    const fields = ['category', 'item_code', 'description', 'floor', 'unit', 'quantity', 'rate', 'amount', 'project_id'];
+    const fields = ['category', 'item_no', 'item_code', 'description', 'floor', 'unit', 'quantity', 'rate', 'amount', 'project_id'];
     fields.forEach((f) => {
       if (data[f] != null && data[f] !== '') formData.append(f, data[f]);
     });
