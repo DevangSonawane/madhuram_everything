@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,10 +32,7 @@ class _AddBOQItemPage extends StatefulWidget {
   final String projectId;
   final String activeClient;
 
-  const _AddBOQItemPage({
-    required this.projectId,
-    this.activeClient = '',
-  });
+  const _AddBOQItemPage({required this.projectId, this.activeClient = ''});
 
   @override
   State<_AddBOQItemPage> createState() => _AddBOQItemPageState();
@@ -114,7 +112,11 @@ class _AddBOQItemPageState extends State<_AddBOQItemPage> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ErrorHandler.getMessage(result['error'] ?? 'Failed to add item'))),
+      SnackBar(
+        content: Text(
+          ErrorHandler.getMessage(result['error'] ?? 'Failed to add item'),
+        ),
+      ),
     );
   }
 
@@ -128,15 +130,17 @@ class _AddBOQItemPageState extends State<_AddBOQItemPage> {
           client == 'lodha'
               ? 'Add Lodha BOQ Item'
               : client == 'hiranandani'
-                  ? 'Add Hiranandani BOQ Item'
-                  : 'Add BOQ Item',
+              ? 'Add Hiranandani BOQ Item'
+              : 'Add BOQ Item',
         ),
       ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 900),
           child: SingleChildScrollView(
-            padding: EdgeInsets.all(responsive.value(mobile: 16, tablet: 20, desktop: 24)),
+            padding: EdgeInsets.all(
+              responsive.value(mobile: 16, tablet: 20, desktop: 24),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -150,9 +154,11 @@ class _AddBOQItemPageState extends State<_AddBOQItemPage> {
                           labelText: client == 'lodha'
                               ? 'HSN/SAC Code'
                               : client == 'hiranandani'
-                                  ? 'SAC Code'
-                                  : 'Item Code',
-                          hintText: client.isNotEmpty ? 'e.g. 995462' : 'Enter item code',
+                              ? 'SAC Code'
+                              : 'Item Code',
+                          hintText: client.isNotEmpty
+                              ? 'e.g. 995462'
+                              : 'Enter item code',
                         ),
                         const SizedBox(height: 16),
                         MadInput(
@@ -180,16 +186,23 @@ class _AddBOQItemPageState extends State<_AddBOQItemPage> {
                             Expanded(
                               child: MadInput(
                                 controller: _quantityController,
-                                labelText: client == 'hiranandani' ? 'Order Qty' : 'Qty',
+                                labelText: client == 'hiranandani'
+                                    ? 'Order Qty'
+                                    : 'Qty',
                                 hintText: '0',
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                               ),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
                               child: MadInput(
                                 controller: _unitController,
-                                labelText: client == 'hiranandani' ? 'UOM' : 'Unit',
+                                labelText: client == 'hiranandani'
+                                    ? 'UOM'
+                                    : 'Unit',
                                 hintText: 'e.g. KG',
                               ),
                             ),
@@ -198,9 +211,13 @@ class _AddBOQItemPageState extends State<_AddBOQItemPage> {
                         const SizedBox(height: 16),
                         MadInput(
                           controller: _rateController,
-                          labelText: client == 'hiranandani' ? 'Unit Price' : 'Rate',
+                          labelText: client == 'hiranandani'
+                              ? 'Unit Price'
+                              : 'Rate',
                           hintText: '0.00',
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                         ),
                       ],
                     ),
@@ -213,7 +230,9 @@ class _AddBOQItemPageState extends State<_AddBOQItemPage> {
                       child: MadButton(
                         text: 'Cancel',
                         variant: ButtonVariant.outline,
-                        onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(false),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -253,7 +272,9 @@ class _BOQPageState extends State<BOQPage> {
   File? _selectedFile;
   bool _extracting = false;
   bool _savingImport = false;
+  bool _loadingProjectSamples = false;
   List<Map<String, dynamic>> _extractedItems = [];
+  List<Map<String, dynamic>> _projectSamples = [];
   String? _extractError;
 
   @override
@@ -273,7 +294,196 @@ class _BOQPageState extends State<BOQPage> {
 
   String _clientStorageKey(String projectId) => 'boqClient:$projectId';
 
-  String _selectedFileLabel() => _selectedFile?.path.split(Platform.pathSeparator).last ?? '';
+  String _selectedFileLabel() =>
+      _selectedFile?.path.split(Platform.pathSeparator).last ?? '';
+
+  static double _toFiniteNumber(dynamic value) {
+    if (value == null || value == '') return 0;
+    final cleaned = value.toString().replaceAll(',', '').trim();
+    if (cleaned.isEmpty) return 0;
+    return double.tryParse(cleaned) ?? 0;
+  }
+
+  static List<Map<String, dynamic>> _extractMapList(dynamic payload) {
+    if (payload is List) {
+      return payload
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+    if (payload is String) {
+      final trimmed = payload.trim();
+      if (trimmed.isEmpty) return const [];
+      try {
+        return _extractMapList(jsonDecode(trimmed));
+      } catch (_) {
+        return const [];
+      }
+    }
+    if (payload is Map<String, dynamic>) {
+      for (final key in [
+        'data',
+        'rows',
+        'result',
+        'results',
+        'samples',
+        'sample',
+        'items',
+        'boqs',
+        'boq',
+      ]) {
+        final candidate = payload[key];
+        if (candidate is List) {
+          return candidate
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        }
+      }
+    }
+    return const [];
+  }
+
+  static String _normalizeMatchKey(dynamic value) {
+    return value.toString().trim().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]+'),
+      '',
+    );
+  }
+
+  static String _boqExactKey(BOQItem item) {
+    final rawExact = _normalizeMatchKey(
+      item.client ?? item.code ?? item.itemNo ?? item.itemCode,
+    );
+    if (rawExact.isNotEmpty) return rawExact;
+    final rawId = _normalizeMatchKey(item.id);
+    return rawId.isNotEmpty ? 'id$rawId' : '';
+  }
+
+  static dynamic _rowFieldValue(Map<String, dynamic> row, String key) {
+    final fields = row['add_fields'];
+    final list = fields is List
+        ? fields
+        : fields is String
+        ? _extractMapList(fields)
+        : const <Map<String, dynamic>>[];
+    for (final field in list.whereType<Map>()) {
+      final mapped = Map<String, dynamic>.from(field);
+      if (_normalizeMatchKey(mapped['key']) == _normalizeMatchKey(key)) {
+        return mapped['value'];
+      }
+    }
+    return null;
+  }
+
+  static String _rowBoqId(Map<String, dynamic> row) {
+    final direct = row['boq_id'] ?? row['boqId'];
+    if (direct != null && direct.toString().trim().isNotEmpty) {
+      return direct.toString().trim();
+    }
+    final field = _rowFieldValue(row, 'boq_id');
+    return field == null ? '' : field.toString().trim();
+  }
+
+  static double _sampleRowMultiplier(Map<String, dynamic> row) {
+    final flatCount = _toFiniteNumber(_rowFieldValue(row, 'flat_count'));
+    final flatFallback = _toFiniteNumber(row['flat_count']);
+    final flats = _toFiniteNumber(row['flats']);
+    final floorCount = _toFiniteNumber(_rowFieldValue(row, 'floors'));
+    final floorFallback = _toFiniteNumber(row['floor_count']);
+    final floors = _toFiniteNumber(row['floors']);
+    final safeFlat = flatCount > 0
+        ? flatCount
+        : (flatFallback > 0 ? flatFallback : flats);
+    final safeFloor = floorCount > 0
+        ? floorCount
+        : (floorFallback > 0 ? floorFallback : floors);
+    return (safeFlat > 0 ? safeFlat : 1) * (safeFloor > 0 ? safeFloor : 1);
+  }
+
+  static double _sampleRowTotalQty(Map<String, dynamic> row) {
+    final explicitCandidates = [
+      row['total_qty'],
+      row['quantity'],
+      row['qty'],
+      row['issued_qty'],
+      _rowFieldValue(row, 'total_qty'),
+      _rowFieldValue(row, 'selected_qty'),
+      _rowFieldValue(row, 'boq_base_qty'),
+      row['boq_issued_qty'],
+    ];
+    for (final candidate in explicitCandidates) {
+      final value = _toFiniteNumber(candidate);
+      if (value > 0) return value;
+    }
+
+    final perFlatCandidates = [
+      row['qty_per_flat'],
+      row['quantity_per_flat'],
+      row['per_flat_qty'],
+      _rowFieldValue(row, 'qty_per_flat'),
+      _rowFieldValue(row, 'boq_qty_per_flat'),
+    ];
+    for (final candidate in perFlatCandidates) {
+      final value = _toFiniteNumber(candidate);
+      if (value > 0) return value * _sampleRowMultiplier(row);
+    }
+
+    return 0;
+  }
+
+  double _usedQtyForBoqItem(BOQItem item) {
+    final boqExactKey = _boqExactKey(item);
+    final boqId = _normalizeMatchKey(item.id);
+    return _projectSamples.fold<double>(0, (sum, sample) {
+      final rows = _extractMapList(
+        sample['item_description'] ??
+            sample['items'] ??
+            sample['item_descriptions'],
+      );
+      return sum +
+          rows.fold<double>(0, (rowSum, row) {
+            final rowExactKey = _normalizeMatchKey(
+              row['boq_match_key'] ?? row['boqMatchKey'],
+            );
+            if (boqExactKey.isNotEmpty &&
+                rowExactKey.isNotEmpty &&
+                boqExactKey == rowExactKey) {
+              return rowSum + _sampleRowTotalQty(row);
+            }
+            final rowBoqId = _normalizeMatchKey(_rowBoqId(row));
+            if (rowBoqId.isNotEmpty && boqId.isNotEmpty && rowBoqId == boqId) {
+              return rowSum + _sampleRowTotalQty(row);
+            }
+            return rowSum;
+          });
+    });
+  }
+
+  Map<String, double> _boqQuantityBreakdown(BOQItem item) {
+    final originalQty = item.quantity;
+    final usedFromSamples = _usedQtyForBoqItem(item);
+    final usedFromApi = item.usedQuantity;
+    final remainingFromApi = item.remainingQuantity;
+    final used = usedFromSamples > 0
+        ? usedFromSamples
+        : (usedFromApi ??
+              (remainingFromApi != null
+                  ? (originalQty - remainingFromApi)
+                        .clamp(0.0, double.infinity)
+                        .toDouble()
+                  : 0));
+    final remaining = usedFromSamples > 0
+        ? (originalQty - used).clamp(0.0, double.infinity).toDouble()
+        : (remainingFromApi ??
+              (originalQty - used).clamp(0.0, double.infinity).toDouble());
+    return {'total': originalQty, 'used': used, 'remaining': remaining};
+  }
+
+  String _formatQty(double value) {
+    final rounded = value.toStringAsFixed(3);
+    return rounded.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
 
   String _clientDisplayName(String client) {
     switch (client) {
@@ -291,7 +501,9 @@ class _BOQPageState extends State<BOQPage> {
     if (projectId.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_clientStorageKey(projectId))?.trim().toLowerCase() ?? '';
+    final stored =
+        prefs.getString(_clientStorageKey(projectId))?.trim().toLowerCase() ??
+        '';
     if (!mounted) return;
     setState(() {
       _activeClient = stored;
@@ -334,7 +546,8 @@ class _BOQPageState extends State<BOQPage> {
     return true;
   }
 
-  bool get _canImportPdf => _currentProjectId.isNotEmpty && _activeClient.isNotEmpty;
+  bool get _canImportPdf =>
+      _currentProjectId.isNotEmpty && _activeClient.isNotEmpty;
 
   String get _currentProjectId {
     return context.appProject.selectedProjectId ?? '';
@@ -343,24 +556,35 @@ class _BOQPageState extends State<BOQPage> {
   Future<void> _loadBOQItems() async {
     setState(() {
       _isLoading = true;
+      _loadingProjectSamples = true;
       _error = null;
     });
     final projectId = _currentProjectId;
-    
+
     if (projectId.isEmpty) {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _loadingProjectSamples = false;
           _items = [];
           _error = 'No project selected';
         });
       }
       return;
     }
-    
+
     try {
       final result = await ApiClient.getBOQsByProject(projectId);
+      Map<String, dynamic> samplesResult = const <String, dynamic>{
+        'success': false,
+      };
+      try {
+        samplesResult = await ApiClient.getSamplesByProject(projectId);
+      } catch (_) {
+        samplesResult = const <String, dynamic>{'success': false};
+      }
       if (!mounted) return;
+      setState(() => _loadingProjectSamples = false);
       if (result['success'] == true) {
         final data = result['data'];
         final List<dynamic> rows;
@@ -375,8 +599,12 @@ class _BOQPageState extends State<BOQPage> {
             .whereType<Map>()
             .map((e) => BOQItem.fromJson(Map<String, dynamic>.from(e)))
             .toList();
+        final sampleRows = samplesResult['success'] == true
+            ? _extractMapList(samplesResult['data'])
+            : const <Map<String, dynamic>>[];
         setState(() {
           _items = loaded;
+          _projectSamples = sampleRows;
           _isLoading = false;
           _selectedIds.removeWhere(
             (id) => !_items.any((item) => item.id == id),
@@ -388,7 +616,9 @@ class _BOQPageState extends State<BOQPage> {
       } else {
         setState(() {
           _items = [];
+          _projectSamples = [];
           _isLoading = false;
+          _loadingProjectSamples = false;
           _error = result['error']?.toString() ?? 'Failed to load BOQ items';
         });
       }
@@ -397,7 +627,9 @@ class _BOQPageState extends State<BOQPage> {
       if (!mounted) return;
       setState(() {
         _items = [];
+        _projectSamples = [];
         _isLoading = false;
+        _loadingProjectSamples = false;
         _error = 'Failed to load BOQ items';
       });
     }
@@ -429,15 +661,18 @@ class _BOQPageState extends State<BOQPage> {
     final end = start + _itemsPerPage;
     final filtered = _filteredItems;
     if (start >= filtered.length) return [];
-    return filtered.sublist(start, end > filtered.length ? filtered.length : end);
+    return filtered.sublist(
+      start,
+      end > filtered.length ? filtered.length : end,
+    );
   }
 
   int get _totalPages => (_filteredItems.length / _itemsPerPage).ceil();
 
   double get _totalAmount => _filteredItems.fold<double>(
-        0,
-        (sum, item) => sum + (item.amount ?? (item.quantity * (item.rate ?? 0))),
-      );
+    0,
+    (sum, item) => sum + (item.amount ?? (item.quantity * (item.rate ?? 0))),
+  );
 
   bool get _hasSelection => _selectedIds.isNotEmpty;
 
@@ -448,7 +683,9 @@ class _BOQPageState extends State<BOQPage> {
 
   bool get _isPagePartiallySelected {
     if (_paginatedItems.isEmpty) return false;
-    final anySelected = _paginatedItems.any((item) => _selectedIds.contains(item.id));
+    final anySelected = _paginatedItems.any(
+      (item) => _selectedIds.contains(item.id),
+    );
     return anySelected && !_isPageFullySelected;
   }
 
@@ -536,7 +773,6 @@ class _BOQPageState extends State<BOQPage> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -568,15 +804,23 @@ class _BOQPageState extends State<BOQPage> {
                           Text(
                             'BOQ',
                             style: TextStyle(
-                              fontSize: responsive.value(mobile: 22, tablet: 26, desktop: 28),
+                              fontSize: responsive.value(
+                                mobile: 22,
+                                tablet: 26,
+                                desktop: 28,
+                              ),
                               fontWeight: FontWeight.bold,
-                              color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
                             ),
                           ),
                           if (activeClientLabel.isNotEmpty)
                             MadBadge(
                               text: activeClientLabel,
-                              variant: _activeClient == _lodhaFormat ? BadgeVariant.primary : BadgeVariant.secondary,
+                              variant: _activeClient == _lodhaFormat
+                                  ? BadgeVariant.primary
+                                  : BadgeVariant.secondary,
                             ),
                         ],
                       ),
@@ -586,7 +830,9 @@ class _BOQPageState extends State<BOQPage> {
                             ? 'Manage BOQ items for the selected project.'
                             : 'Select a project to view and manage BOQ items.',
                         style: TextStyle(
-                          color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
                         ),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
@@ -603,14 +849,14 @@ class _BOQPageState extends State<BOQPage> {
                 ? MadCard(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: MadTableSkeleton(rows: 8, columns: 8),
+                      child: MadTableSkeleton(rows: 8, columns: 11),
                     ),
                   )
                 : _error != null
-                    ? _buildErrorState(isDark, _error!)
-                    : _filteredItems.isEmpty
-                        ? _buildEmptyState(isDark, hasProjectSelected)
-                        : _buildResponsiveTable(isDark, responsive),
+                ? _buildErrorState(isDark, _error!)
+                : _filteredItems.isEmpty
+                ? _buildEmptyState(isDark, hasProjectSelected)
+                : _buildResponsiveTable(isDark, responsive),
             const SizedBox(height: 12),
           ],
         ),
@@ -618,24 +864,30 @@ class _BOQPageState extends State<BOQPage> {
     );
   }
 
-  Widget _buildQuickActions(bool isDark, Responsive responsive, bool hasProjectSelected) {
+  Widget _buildQuickActions(
+    bool isDark,
+    Responsive responsive,
+    bool hasProjectSelected,
+  ) {
     final isMobile = responsive.isMobile;
     final formatButtonLabel = _activeClient.isEmpty
         ? 'Select BOQ Format'
         : _clientDisplayName(_activeClient);
     final fileLabel = !_canImportPdf
         ? (!hasProjectSelected
-            ? 'Select project first'
-            : 'Select BOQ format first')
+              ? 'Select project first'
+              : 'Select BOQ format first')
         : _selectedFile != null
-            ? (_extracting ? 'Extracting…' : _selectedFileLabel())
-            : 'No file chosen';
+        ? (_extracting ? 'Extracting…' : _selectedFileLabel())
+        : 'No file chosen';
 
     final actions = <Widget>[
       MadButton(
         text: formatButtonLabel,
         icon: _activeClient.isEmpty ? LucideIcons.plus : LucideIcons.pencil,
-        variant: _activeClient.isEmpty ? ButtonVariant.primary : ButtonVariant.outline,
+        variant: _activeClient.isEmpty
+            ? ButtonVariant.primary
+            : ButtonVariant.outline,
         disabled: !hasProjectSelected,
         onPressed: hasProjectSelected ? _showFormatDialog : null,
       ),
@@ -654,8 +906,12 @@ class _BOQPageState extends State<BOQPage> {
                   color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
                 ),
                 color: _canImportPdf
-                    ? (isDark ? AppTheme.darkMuted.withValues(alpha: 0.25) : AppTheme.lightMuted.withValues(alpha: 0.35))
-                    : (isDark ? AppTheme.darkMuted.withValues(alpha: 0.12) : AppTheme.lightMuted.withValues(alpha: 0.2)),
+                    ? (isDark
+                          ? AppTheme.darkMuted.withValues(alpha: 0.25)
+                          : AppTheme.lightMuted.withValues(alpha: 0.35))
+                    : (isDark
+                          ? AppTheme.darkMuted.withValues(alpha: 0.12)
+                          : AppTheme.lightMuted.withValues(alpha: 0.2)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.max,
@@ -671,8 +927,12 @@ class _BOQPageState extends State<BOQPage> {
                       LucideIcons.upload,
                       size: 16,
                       color: _canImportPdf
-                          ? (isDark ? AppTheme.darkForeground : AppTheme.lightForeground)
-                          : (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                          ? (isDark
+                                ? AppTheme.darkForeground
+                                : AppTheme.lightForeground)
+                          : (isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground),
                     ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -682,8 +942,12 @@ class _BOQPageState extends State<BOQPage> {
                       style: TextStyle(
                         fontSize: 13,
                         color: _canImportPdf
-                            ? (isDark ? AppTheme.darkForeground : AppTheme.lightForeground)
-                            : (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                            ? (isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground)
+                            : (isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground),
                       ),
                     ),
                   ),
@@ -709,10 +973,10 @@ class _BOQPageState extends State<BOQPage> {
         onPressed: hasProjectSelected ? _openAddItemPage : null,
       ),
       MadButton(
-        text: _isLoading ? 'Loading…' : 'Refresh',
+        text: (_isLoading || _loadingProjectSamples) ? 'Loading…' : 'Refresh',
         icon: LucideIcons.refreshCw,
         variant: ButtonVariant.outline,
-        disabled: _isLoading,
+        disabled: _isLoading || _loadingProjectSamples,
         onPressed: _loadBOQItems,
       ),
       if (_hasSelection)
@@ -738,16 +1002,10 @@ class _BOQPageState extends State<BOQPage> {
                   ],
                 ],
               )
-            : Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: actions,
-              ),
+            : Wrap(spacing: 10, runSpacing: 10, children: actions),
       ),
     );
   }
-
-  
 
   Future<void> _showFormatDialog() async {
     if (_currentProjectId.isEmpty) {
@@ -778,7 +1036,9 @@ class _BOQPageState extends State<BOQPage> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                 ),
@@ -788,7 +1048,9 @@ class _BOQPageState extends State<BOQPage> {
                   child: Text(
                     'Choose the client format before creating the BOQ.',
                     style: TextStyle(
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                   ),
                 ),
@@ -804,7 +1066,9 @@ class _BOQPageState extends State<BOQPage> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                          color: isDark
+                              ? AppTheme.darkBorder
+                              : AppTheme.lightBorder,
                         ),
                       ),
                       child: Column(
@@ -815,7 +1079,9 @@ class _BOQPageState extends State<BOQPage> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -823,12 +1089,17 @@ class _BOQPageState extends State<BOQPage> {
                             option.$3,
                             style: TextStyle(
                               fontSize: 13,
-                              color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                              color: isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground,
                             ),
                           ),
                           if (_activeClient == option.$2) ...[
                             const SizedBox(height: 10),
-                            const MadBadge(text: 'Selected', variant: BadgeVariant.secondary),
+                            const MadBadge(
+                              text: 'Selected',
+                              variant: BadgeVariant.secondary,
+                            ),
                           ],
                         ],
                       ),
@@ -912,7 +1183,10 @@ class _BOQPageState extends State<BOQPage> {
         _extractError = e.toString();
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ErrorHandler.getMessage(e)), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(ErrorHandler.getMessage(e)),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -921,7 +1195,9 @@ class _BOQPageState extends State<BOQPage> {
     return items.asMap().entries.map((entry) {
       final item = entry.value;
       final quantity = double.tryParse(item.quantity.replaceAll(',', '')) ?? 0;
-      final code = item.itemNo.isNotEmpty ? item.itemNo : 'BOQ-${entry.key + 1}';
+      final code = item.itemNo.isNotEmpty
+          ? item.itemNo
+          : 'BOQ-${entry.key + 1}';
       final base = <String, dynamic>{
         'id': entry.key + 1,
         'category': item.category.isNotEmpty ? item.category : 'General',
@@ -939,11 +1215,7 @@ class _BOQPageState extends State<BOQPage> {
       };
 
       if (_activeClient == _lodhaFormat) {
-        return {
-          ...base,
-          'item_code': item.hsn ?? '',
-          'hsn': item.hsn ?? '',
-        };
+        return {...base, 'item_code': item.hsn ?? '', 'hsn': item.hsn ?? ''};
       }
 
       if (_activeClient == _hiranandaniFormat) {
@@ -954,33 +1226,35 @@ class _BOQPageState extends State<BOQPage> {
         };
       }
 
-      return {
-        ...base,
-        'item_code': item.hsn ?? item.sacCode ?? '',
-      };
+      return {...base, 'item_code': item.hsn ?? item.sacCode ?? ''};
     }).toList();
   }
 
   Widget _buildResponsiveTable(bool isDark, Responsive responsive) {
     final isMobile = responsive.isMobile;
     const checkboxWidth = 48.0;
-    const categoryWidth = 140.0;
-    const itemCodeWidth = 120.0;
     const descriptionWidth = 320.0;
-    const floorWidth = 110.0;
+    const sectionWidth = 140.0;
+    const itemCodeWidth = 120.0;
+    const floorWidth = 100.0;
     const unitWidth = 90.0;
-    const qtyWidth = 110.0;
+    const orgQtyWidth = 110.0;
+    const usedWidth = 110.0;
+    const remainingWidth = 120.0;
     const rateWidth = 130.0;
     const amountWidth = 140.0;
-    const actionsWidth = 80.0;
-    const horizontalCellPadding = 24.0; // 12 left + 12 right in header/rows/total rows
-    const tableWidth = checkboxWidth +
-        categoryWidth +
-        itemCodeWidth +
+    const actionsWidth = 120.0;
+    const horizontalCellPadding = 24.0;
+    const tableWidth =
+        checkboxWidth +
         descriptionWidth +
+        sectionWidth +
+        itemCodeWidth +
         floorWidth +
         unitWidth +
-        qtyWidth +
+        orgQtyWidth +
+        usedWidth +
+        remainingWidth +
         rateWidth +
         amountWidth +
         actionsWidth +
@@ -1075,8 +1349,9 @@ class _BOQPageState extends State<BOQPage> {
                     .withOpacity(0.35),
                 border: Border(
                   bottom: BorderSide(
-                    color:
-                        (isDark ? Colors.white : Colors.black).withOpacity(0.08),
+                    color: (isDark ? Colors.white : Colors.black).withOpacity(
+                      0.08,
+                    ),
                   ),
                 ),
               ),
@@ -1125,8 +1400,10 @@ class _BOQPageState extends State<BOQPage> {
                           color: (isDark ? Colors.white : Colors.black)
                               .withOpacity(0.06),
                         ),
-                        itemBuilder: (context, index) =>
-                            _buildTableDataRow(_paginatedItems[index], isDark),
+                        itemBuilder: (context, index) {
+                          final item = _paginatedItems[index];
+                          return _buildTableDataRow(item, isDark);
+                        },
                       ),
                     ),
                     _buildTableTotalRow(isDark),
@@ -1141,14 +1418,13 @@ class _BOQPageState extends State<BOQPage> {
     );
   }
 
-
   Widget _buildTableHeader(bool isDark) {
-    final isHiranandani = _activeClient == _hiranandaniFormat;
-    final isLodha = _activeClient == _lodhaFormat;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(0.5),
+        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(
+          0.5,
+        ),
         border: Border(
           bottom: BorderSide(
             color: (isDark ? Colors.white : Colors.black).withOpacity(0.1),
@@ -1163,29 +1439,41 @@ class _BOQPageState extends State<BOQPage> {
               value: _isPageFullySelected
                   ? true
                   : _isPagePartiallySelected
-                      ? null
-                      : false,
+                  ? null
+                  : false,
               tristate: true,
               onChanged: _paginatedItems.isEmpty
                   ? null
                   : (value) => _togglePageSelection(value == true),
             ),
           ),
-          _buildSizedHeaderCell('Section', 140, isDark),
-          _buildSizedHeaderCell(isHiranandani || isLodha ? 'Item No' : 'Item Code', 120, isDark),
           _buildSizedHeaderCell('Description', 320, isDark),
-          _buildSizedHeaderCell(isHiranandani ? 'SAC Code' : isLodha ? 'HSN' : 'Floor', 110, isDark),
-          _buildSizedHeaderCell(isHiranandani ? 'UOM' : 'Unit', 90, isDark),
-          _buildSizedHeaderCell(isHiranandani ? 'Order Qty' : 'Quantity', 110, isDark, align: TextAlign.right),
-          _buildSizedHeaderCell(isHiranandani ? 'Unit Price' : 'Rate (Est.)', 130, isDark, align: TextAlign.right),
-          _buildSizedHeaderCell(isHiranandani ? 'Value' : 'Amount', 140, isDark, align: TextAlign.right),
-          _buildSizedHeaderCell('Action', 80, isDark, align: TextAlign.center),
+          _buildSizedHeaderCell('Section', 140, isDark),
+          _buildSizedHeaderCell('Item Code', 120, isDark),
+          _buildSizedHeaderCell('Floor', 100, isDark),
+          _buildSizedHeaderCell('Unit', 90, isDark),
+          _buildSizedHeaderCell('Org Qty', 110, isDark, align: TextAlign.right),
+          _buildSizedHeaderCell('Used', 110, isDark, align: TextAlign.right),
+          _buildSizedHeaderCell(
+            'Remaining',
+            120,
+            isDark,
+            align: TextAlign.right,
+          ),
+          _buildSizedHeaderCell('Rate', 130, isDark, align: TextAlign.right),
+          _buildSizedHeaderCell('Amount', 140, isDark, align: TextAlign.right),
+          _buildSizedHeaderCell('Action', 120, isDark, align: TextAlign.center),
         ],
       ),
     );
   }
 
-  Widget _buildSizedHeaderCell(String label, double width, bool isDark, {TextAlign align = TextAlign.left}) {
+  Widget _buildSizedHeaderCell(
+    String label,
+    double width,
+    bool isDark, {
+    TextAlign align = TextAlign.left,
+  }) {
     return SizedBox(
       width: width,
       child: Text(
@@ -1194,23 +1482,32 @@ class _BOQPageState extends State<BOQPage> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+          color: isDark
+              ? AppTheme.darkMutedForeground
+              : AppTheme.lightMutedForeground,
         ),
       ),
     );
   }
 
   Widget _buildTableDataRow(BOQItem item, bool isDark) {
-    final isHiranandani = _activeClient == _hiranandaniFormat;
-    final isLodha = _activeClient == _lodhaFormat;
-    final itemNo = item.itemNo ?? item.code ?? item.itemCode ?? '-';
-    final auxCode = isHiranandani
-        ? (item.sacCode ?? item.itemCode ?? '-')
-        : isLodha
-            ? (item.hsn ?? item.itemCode ?? '-')
-            : (item.floor?.isNotEmpty == true ? item.floor! : '-');
-    final rateText = (item.rate == null || item.rate == 0) ? null : Formatters.currency(item.rate);
-    final amountText = (item.amount == null || item.amount == 0) ? null : Formatters.currency(item.amount);
+    final breakdown = _boqQuantityBreakdown(item);
+    final rateText = (item.rate == null || item.rate == 0)
+        ? null
+        : Formatters.currency(item.rate);
+    final amountText = (item.amount == null || item.amount == 0)
+        ? null
+        : Formatters.currency(item.amount);
+    final code = item.code?.trim().isNotEmpty == true
+        ? item.code!.trim()
+        : (item.itemNo?.trim().isNotEmpty == true
+              ? item.itemNo!.trim()
+              : (item.itemCode?.trim().isNotEmpty == true
+                    ? item.itemCode!.trim()
+                    : '-'));
+    final floor = item.floor?.trim().isNotEmpty == true
+        ? item.floor!.trim()
+        : '-';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1225,45 +1522,64 @@ class _BOQPageState extends State<BOQPage> {
             ),
           ),
           SizedBox(
-            width: 140,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: MadBadge(text: item.category, variant: BadgeVariant.secondary),
+            width: 320,
+            child: Text(
+              item.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
             ),
           ),
-          _buildSizedValueCell(itemNo, 120),
-          _buildSizedValueCell(item.description, 320, maxLines: 2),
-          _buildSizedValueCell(auxCode, 110),
-          _buildSizedValueCell(item.unit, 90),
-          _buildSizedValueCell(item.quantity.toString(), 110, align: TextAlign.right),
+          _buildSizedValueCell(
+            item.category.isNotEmpty ? item.category : '-',
+            140,
+          ),
+          _buildSizedValueCell(code, 120),
+          _buildSizedValueCell(floor, 100),
+          _buildSizedValueCell(item.unit.isNotEmpty ? item.unit : '-', 90),
+          _buildSizedValueCell(
+            _formatQty(breakdown['total'] ?? item.quantity),
+            110,
+            align: TextAlign.right,
+          ),
+          _buildSizedValueCell(
+            _formatQty(breakdown['used'] ?? 0),
+            110,
+            align: TextAlign.right,
+          ),
+          _buildSizedValueCell(
+            _formatQty(breakdown['remaining'] ?? 0),
+            120,
+            align: TextAlign.right,
+          ),
           _buildSizedValueCell(rateText ?? '–', 130, align: TextAlign.right),
           _buildSizedValueCell(amountText ?? '–', 140, align: TextAlign.right),
           SizedBox(
-            width: 80,
+            width: 120,
             child: Align(
               alignment: Alignment.center,
-              child: PopupMenuButton<String>(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                icon: Icon(
-                  Icons.more_vert,
-                  size: 18,
-                  color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-                ),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Delete', style: TextStyle(color: Colors.red)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  MadButton(
+                    icon: LucideIcons.pencil,
+                    variant: ButtonVariant.ghost,
+                    size: ButtonSize.icon,
+                    onPressed: () => _showEditItemDialog(item),
+                  ),
+                  const SizedBox(width: 8),
+                  MadButton(
+                    icon: LucideIcons.trash2,
+                    variant: ButtonVariant.destructive,
+                    size: ButtonSize.icon,
+                    onPressed: () => _showDeleteConfirmDialog(item),
                   ),
                 ],
-                onSelected: (value) {
-                  if (value == 'edit') {
-                    _showEditItemDialog(item);
-                  } else if (value == 'delete') {
-                    _showDeleteConfirmDialog(item);
-                  }
-                },
               ),
             ),
           ),
@@ -1272,7 +1588,12 @@ class _BOQPageState extends State<BOQPage> {
     );
   }
 
-  Widget _buildSizedValueCell(String value, double width, {int maxLines = 1, TextAlign align = TextAlign.left}) {
+  Widget _buildSizedValueCell(
+    String value,
+    double width, {
+    int maxLines = 1,
+    TextAlign align = TextAlign.left,
+  }) {
     return SizedBox(
       width: width,
       child: Text(
@@ -1285,6 +1606,7 @@ class _BOQPageState extends State<BOQPage> {
   }
 
   Widget _buildTableTotalRow(bool isDark) {
+    final totalAmount = _totalAmount;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
@@ -1298,38 +1620,41 @@ class _BOQPageState extends State<BOQPage> {
       child: Row(
         children: [
           const SizedBox(width: 48),
-          const SizedBox(width: 140),
-          const SizedBox(width: 120),
           SizedBox(
             width: 320,
             child: Text(
               'Total',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
           ),
-          const SizedBox(width: 110 + 90 + 110 + 130),
+          const SizedBox(width: 140 + 120 + 100 + 90 + 110 + 110 + 120 + 130),
           SizedBox(
             width: 140,
             child: Text(
-              '₹${_totalAmount.toStringAsFixed(2)}',
+              Formatters.currency(totalAmount),
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
           ),
-          const SizedBox(width: 80),
+          const SizedBox(width: 120),
         ],
       ),
     );
   }
 
   Widget _buildTablePagination(bool isDark, bool isMobile) {
-    final summary = 'Showing ${(_currentPage - 1) * _itemsPerPage + 1}-'
+    final summary =
+        'Showing ${(_currentPage - 1) * _itemsPerPage + 1}-'
         '${_currentPage * _itemsPerPage > _filteredItems.length ? _filteredItems.length : _currentPage * _itemsPerPage} '
         'of ${_filteredItems.length}';
 
@@ -1350,7 +1675,9 @@ class _BOQPageState extends State<BOQPage> {
                   summary,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                    color: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1366,7 +1693,10 @@ class _BOQPageState extends State<BOQPage> {
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text('$_currentPage / $_totalPages', style: const TextStyle(fontSize: 14)),
+                      child: Text(
+                        '$_currentPage / $_totalPages',
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ),
                     MadButton(
                       icon: LucideIcons.chevronRight,
@@ -1386,7 +1716,9 @@ class _BOQPageState extends State<BOQPage> {
                   summary,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                    color: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
                   ),
                 ),
                 Row(
@@ -1400,7 +1732,10 @@ class _BOQPageState extends State<BOQPage> {
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text('$_currentPage of $_totalPages', style: const TextStyle(fontSize: 14)),
+                      child: Text(
+                        '$_currentPage of $_totalPages',
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ),
                     MadButton(
                       icon: LucideIcons.chevronRight,
@@ -1440,7 +1775,11 @@ class _BOQPageState extends State<BOQPage> {
             Icon(
               LucideIcons.clipboardList,
               size: 64,
-              color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withOpacity(0.3),
+              color:
+                  (isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground)
+                      .withOpacity(0.3),
             ),
             const SizedBox(height: 24),
             Text(
@@ -1448,7 +1787,9 @@ class _BOQPageState extends State<BOQPage> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1456,7 +1797,9 @@ class _BOQPageState extends State<BOQPage> {
             Text(
               subtitle,
               style: TextStyle(
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1504,14 +1847,18 @@ class _BOQPageState extends State<BOQPage> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               message,
               style: TextStyle(
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1542,15 +1889,15 @@ class _BOQPageState extends State<BOQPage> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported ${items.length} items')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Imported ${items.length} items')));
       _loadBOQItems();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ErrorHandler.getMessage(e))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(ErrorHandler.getMessage(e))));
     }
   }
 
@@ -1566,7 +1913,11 @@ class _BOQPageState extends State<BOQPage> {
             children: [
               Text(
                 'Select a file to import BOQ items',
-                style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                style: TextStyle(
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
+                ),
               ),
               const SizedBox(height: 24),
               Row(
@@ -1580,16 +1931,35 @@ class _BOQPageState extends State<BOQPage> {
                       child: Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          border: Border.all(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                          border: Border.all(
+                            color: isDark
+                                ? AppTheme.darkBorder
+                                : AppTheme.lightBorder,
+                          ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
                           children: [
-                            Icon(LucideIcons.fileSpreadsheet, size: 32, color: const Color(0xFF22C55E)),
+                            Icon(
+                              LucideIcons.fileSpreadsheet,
+                              size: 32,
+                              color: const Color(0xFF22C55E),
+                            ),
                             const SizedBox(height: 8),
-                            const Text('Excel File', style: TextStyle(fontWeight: FontWeight.w500)),
+                            const Text(
+                              'Excel File',
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
                             const SizedBox(height: 4),
-                            Text('.xlsx, .xls', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
+                            Text(
+                              '.xlsx, .xls',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1605,16 +1975,35 @@ class _BOQPageState extends State<BOQPage> {
                       child: Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          border: Border.all(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                          border: Border.all(
+                            color: isDark
+                                ? AppTheme.darkBorder
+                                : AppTheme.lightBorder,
+                          ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
                           children: [
-                            Icon(LucideIcons.fileText, size: 32, color: const Color(0xFFEF4444)),
+                            Icon(
+                              LucideIcons.fileText,
+                              size: 32,
+                              color: const Color(0xFFEF4444),
+                            ),
                             const SizedBox(height: 8),
-                            const Text('PDF File', style: TextStyle(fontWeight: FontWeight.w500)),
+                            const Text(
+                              'PDF File',
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
                             const SizedBox(height: 4),
-                            Text('.pdf', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
+                            Text(
+                              '.pdf',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1648,12 +2037,16 @@ class _BOQPageState extends State<BOQPage> {
       0,
       (sum, item) => sum + ((item['amount'] as num?)?.toDouble() ?? 0),
     );
-    
+
     showDialog(
       context: context,
       builder: (context) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        Widget headerCell(String label, double width, {TextAlign align = TextAlign.left}) {
+        Widget headerCell(
+          String label,
+          double width, {
+          TextAlign align = TextAlign.left,
+        }) {
           return SizedBox(
             width: width,
             child: Text(
@@ -1662,13 +2055,20 @@ class _BOQPageState extends State<BOQPage> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
             ),
           );
         }
 
-        Widget valueCell(String value, double width, {int maxLines = 1, TextAlign align = TextAlign.left}) {
+        Widget valueCell(
+          String value,
+          double width, {
+          int maxLines = 1,
+          TextAlign align = TextAlign.left,
+        }) {
           return SizedBox(
             width: width,
             child: Text(
@@ -1684,10 +2084,13 @@ class _BOQPageState extends State<BOQPage> {
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.5),
+              color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                  .withValues(alpha: 0.5),
               border: Border(
                 bottom: BorderSide(
-                  color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1),
+                  color: (isDark ? Colors.white : Colors.black).withValues(
+                    alpha: 0.1,
+                  ),
                 ),
               ),
             ),
@@ -1696,9 +2099,16 @@ class _BOQPageState extends State<BOQPage> {
                 headerCell('Section', 140),
                 headerCell(codeLabel, 120),
                 headerCell('Description', 320),
-                headerCell(_activeClient == _hiranandaniFormat ? 'UOM' : 'Unit', 90),
+                headerCell(
+                  _activeClient == _hiranandaniFormat ? 'UOM' : 'Unit',
+                  90,
+                ),
                 headerCell(qtyLabel, 110, align: TextAlign.right),
-                headerCell(_activeClient == _hiranandaniFormat ? 'Unit Price' : 'Rate', 130, align: TextAlign.right),
+                headerCell(
+                  _activeClient == _hiranandaniFormat ? 'Unit Price' : 'Rate',
+                  130,
+                  align: TextAlign.right,
+                ),
                 headerCell(valueLabel, 140, align: TextAlign.right),
               ],
             ),
@@ -1722,14 +2132,24 @@ class _BOQPageState extends State<BOQPage> {
                 SizedBox(
                   width: 140,
                   child: MadBadge(
-                    text: item['category']?.toString().isEmpty == true ? 'General' : item['category'].toString(),
+                    text: item['category']?.toString().isEmpty == true
+                        ? 'General'
+                        : item['category'].toString(),
                     variant: BadgeVariant.outline,
                   ),
                 ),
                 valueCell(code, 120),
-                valueCell(item['description']?.toString() ?? '-', 320, maxLines: 2),
+                valueCell(
+                  item['description']?.toString() ?? '-',
+                  320,
+                  maxLines: 2,
+                ),
                 valueCell(item['unit']?.toString() ?? '-', 90),
-                valueCell(item['quantity']?.toString() ?? '0', 110, align: TextAlign.right),
+                valueCell(
+                  item['quantity']?.toString() ?? '0',
+                  110,
+                  align: TextAlign.right,
+                ),
                 valueCell(rate ?? '–', 130, align: TextAlign.right),
                 valueCell(amount ?? '–', 140, align: TextAlign.right),
               ],
@@ -1741,10 +2161,14 @@ class _BOQPageState extends State<BOQPage> {
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03),
+              color: (isDark ? Colors.white : Colors.black).withValues(
+                alpha: 0.03,
+              ),
               border: Border(
                 top: BorderSide(
-                  color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
+                  color: (isDark ? Colors.white : Colors.black).withValues(
+                    alpha: 0.12,
+                  ),
                 ),
               ),
             ),
@@ -1758,7 +2182,9 @@ class _BOQPageState extends State<BOQPage> {
                     'Total',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                 ),
@@ -1770,7 +2196,9 @@ class _BOQPageState extends State<BOQPage> {
                     textAlign: TextAlign.right,
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                 ),
@@ -1790,7 +2218,11 @@ class _BOQPageState extends State<BOQPage> {
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                      bottom: BorderSide(
+                        color: isDark
+                            ? AppTheme.darkBorder
+                            : AppTheme.lightBorder,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -1801,14 +2233,19 @@ class _BOQPageState extends State<BOQPage> {
                         children: [
                           const Text(
                             'Import Preview',
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '${items.length} items found${projectName.isNotEmpty ? ' • Project: $projectName' : ''}',
                             style: TextStyle(
                               fontSize: 13,
-                              color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                              color: isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground,
                             ),
                           ),
                         ],
@@ -1824,7 +2261,15 @@ class _BOQPageState extends State<BOQPage> {
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final tableWidth = 140.0 + 120.0 + 320.0 + 90.0 + 110.0 + 130.0 + 140.0 + 24.0;
+                      final tableWidth =
+                          140.0 +
+                          120.0 +
+                          320.0 +
+                          90.0 +
+                          110.0 +
+                          130.0 +
+                          140.0 +
+                          24.0;
                       return SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: SizedBox(
@@ -1847,11 +2292,17 @@ class _BOQPageState extends State<BOQPage> {
                                       )
                                     : ListView.separated(
                                         itemCount: items.take(50).length,
-                                        separatorBuilder: (context, _) => Divider(
-                                          height: 1,
-                                          color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
-                                        ),
-                                        itemBuilder: (context, index) => buildPreviewRow(items[index]),
+                                        separatorBuilder: (context, _) =>
+                                            Divider(
+                                              height: 1,
+                                              color:
+                                                  (isDark
+                                                          ? Colors.white
+                                                          : Colors.black)
+                                                      .withValues(alpha: 0.06),
+                                            ),
+                                        itemBuilder: (context, index) =>
+                                            buildPreviewRow(items[index]),
                                       ),
                               ),
                               if (items.isNotEmpty) buildTotalRow(),
@@ -1869,7 +2320,9 @@ class _BOQPageState extends State<BOQPage> {
                       'Showing first 50 of ${items.length} items',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
                       ),
                     ),
                   ),
@@ -1878,7 +2331,11 @@ class _BOQPageState extends State<BOQPage> {
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                      top: BorderSide(
+                        color: isDark
+                            ? AppTheme.darkBorder
+                            : AppTheme.lightBorder,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -1891,7 +2348,9 @@ class _BOQPageState extends State<BOQPage> {
                       ),
                       const SizedBox(width: 12),
                       MadButton(
-                        text: _savingImport ? 'Replacing...' : 'Replace Existing',
+                        text: _savingImport
+                            ? 'Replacing...'
+                            : 'Replace Existing',
                         variant: ButtonVariant.outline,
                         disabled: _savingImport,
                         onPressed: () {
@@ -1919,7 +2378,10 @@ class _BOQPageState extends State<BOQPage> {
     );
   }
 
-  Future<void> _savePdfImport(List<Map<String, dynamic>> items, {required bool replace}) async {
+  Future<void> _savePdfImport(
+    List<Map<String, dynamic>> items, {
+    required bool replace,
+  }) async {
     final projectId = _currentProjectId;
 
     if (projectId.isEmpty) {
@@ -1953,29 +2415,29 @@ class _BOQPageState extends State<BOQPage> {
                 'floor': item['floor'] ?? 'All',
               })
             : _activeClient == _hiranandaniFormat
-                ? await ApiClient.createBOQHiranandani({
-                    'project_id': projectId,
-                    'description': item['description'] ?? '',
-                    'section': item['category'] ?? 'General',
-                    'item_no': item['item_no'] ?? item['code'] ?? '',
-                    'sac_code': item['sac_code'] ?? '',
-                    'uom': item['unit'] ?? 'Nos',
-                    'order_qty': item['quantity'] ?? 0,
-                    'unit_price': item['rate'] ?? 0,
-                    'value': item['amount'] ?? 0,
-                    'floor': item['floor'] ?? 'All',
-                  })
-                : await ApiClient.createBOQ({
-                    'project_id': projectId,
-                    'item_code': item['item_code'] ?? '',
-                    'description': item['description'] ?? '',
-                    'category': item['category'] ?? 'General',
-                    'floor': item['floor'] ?? 'All',
-                    'quantity': (item['quantity'] ?? 0).toString(),
-                    'unit': item['unit'] ?? 'Nos',
-                    'rate': (item['rate'] ?? 0).toString(),
-                    'amount': (item['amount'] ?? 0).toString(),
-                  });
+            ? await ApiClient.createBOQHiranandani({
+                'project_id': projectId,
+                'description': item['description'] ?? '',
+                'section': item['category'] ?? 'General',
+                'item_no': item['item_no'] ?? item['code'] ?? '',
+                'sac_code': item['sac_code'] ?? '',
+                'uom': item['unit'] ?? 'Nos',
+                'order_qty': item['quantity'] ?? 0,
+                'unit_price': item['rate'] ?? 0,
+                'value': item['amount'] ?? 0,
+                'floor': item['floor'] ?? 'All',
+              })
+            : await ApiClient.createBOQ({
+                'project_id': projectId,
+                'item_code': item['item_code'] ?? '',
+                'description': item['description'] ?? '',
+                'category': item['category'] ?? 'General',
+                'floor': item['floor'] ?? 'All',
+                'quantity': (item['quantity'] ?? 0).toString(),
+                'unit': item['unit'] ?? 'Nos',
+                'rate': (item['rate'] ?? 0).toString(),
+                'amount': (item['amount'] ?? 0).toString(),
+              });
         if (result['success'] == true) {
           successCount++;
         }
@@ -1985,7 +2447,9 @@ class _BOQPageState extends State<BOQPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Successfully imported $successCount of ${items.length} items'),
+          content: Text(
+            'Successfully imported $successCount of ${items.length} items',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -1998,7 +2462,10 @@ class _BOQPageState extends State<BOQPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ErrorHandler.getMessage(e)), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(ErrorHandler.getMessage(e)),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) {
@@ -2018,10 +2485,8 @@ class _BOQPageState extends State<BOQPage> {
 
     final added = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _AddBOQItemPage(
-          projectId: projectId,
-          activeClient: _activeClient,
-        ),
+        builder: (_) =>
+            _AddBOQItemPage(projectId: projectId, activeClient: _activeClient),
       ),
     );
 
@@ -2039,9 +2504,13 @@ class _BOQPageState extends State<BOQPage> {
     );
     final descriptionController = TextEditingController(text: item.description);
     final categoryController = TextEditingController(text: item.category);
-    final quantityController = TextEditingController(text: item.quantity.toString());
+    final quantityController = TextEditingController(
+      text: item.quantity.toString(),
+    );
     final unitController = TextEditingController(text: item.unit);
-    final rateController = TextEditingController(text: item.rate?.toString() ?? '');
+    final rateController = TextEditingController(
+      text: item.rate?.toString() ?? '',
+    );
     final floorController = TextEditingController(text: item.floor ?? '');
     final client = _activeClient;
 
@@ -2052,8 +2521,8 @@ class _BOQPageState extends State<BOQPage> {
           client == _lodhaFormat
               ? 'Edit Lodha BOQ Item'
               : client == _hiranandaniFormat
-                  ? 'Edit Hiranandani BOQ Item'
-                  : 'Edit BOQ Item',
+              ? 'Edit Hiranandani BOQ Item'
+              : 'Edit BOQ Item',
         ),
         content: SingleChildScrollView(
           child: Column(
@@ -2064,14 +2533,16 @@ class _BOQPageState extends State<BOQPage> {
                 labelText: client == _lodhaFormat
                     ? 'HSN/SAC Code'
                     : client == _hiranandaniFormat
-                        ? 'SAC Code'
-                        : 'Item Code',
+                    ? 'SAC Code'
+                    : 'Item Code',
                 hintText: 'Enter code',
               ),
               const SizedBox(height: 16),
               MadInput(
                 controller: descriptionController,
-                labelText: client == _hiranandaniFormat ? 'Service Description' : 'Item Description',
+                labelText: client == _hiranandaniFormat
+                    ? 'Service Description'
+                    : 'Item Description',
                 hintText: 'Enter description',
               ),
               const SizedBox(height: 16),
@@ -2092,7 +2563,9 @@ class _BOQPageState extends State<BOQPage> {
                   Expanded(
                     child: MadInput(
                       controller: quantityController,
-                      labelText: client == _hiranandaniFormat ? 'Order Qty' : 'Qty',
+                      labelText: client == _hiranandaniFormat
+                          ? 'Order Qty'
+                          : 'Qty',
                       hintText: '0',
                     ),
                   ),
@@ -2112,7 +2585,9 @@ class _BOQPageState extends State<BOQPage> {
                   Expanded(
                     child: MadInput(
                       controller: rateController,
-                      labelText: client == _hiranandaniFormat ? 'Unit Price' : 'Rate',
+                      labelText: client == _hiranandaniFormat
+                          ? 'Unit Price'
+                          : 'Rate',
                       hintText: '0.00',
                     ),
                   ),
@@ -2155,27 +2630,35 @@ class _BOQPageState extends State<BOQPage> {
                       'qty': data['quantity'],
                     })
                   : client == _hiranandaniFormat
-                      ? await ApiClient.updateBOQ(item.id, {
-                          ...data,
-                          'section': data['category'],
-                          'item_no': itemCodeController.text,
-                          'sac_code': itemCodeController.text,
-                          'order_qty': data['quantity'],
-                          'uom': data['unit'],
-                          'unit_price': data['rate'],
-                          'value': data['amount'],
-                        })
-                      : await ApiClient.updateBOQ(item.id, data);
+                  ? await ApiClient.updateBOQ(item.id, {
+                      ...data,
+                      'section': data['category'],
+                      'item_no': itemCodeController.text,
+                      'sac_code': itemCodeController.text,
+                      'order_qty': data['quantity'],
+                      'uom': data['unit'],
+                      'unit_price': data['rate'],
+                      'value': data['amount'],
+                    })
+                  : await ApiClient.updateBOQ(item.id, data);
               if (!mounted) return;
 
               if (result['success'] == true) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('BOQ item updated successfully')),
+                  const SnackBar(
+                    content: Text('BOQ item updated successfully'),
+                  ),
                 );
                 _loadBOQItems();
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(ErrorHandler.getMessage(result['error'] ?? 'Failed to update item'))),
+                  SnackBar(
+                    content: Text(
+                      ErrorHandler.getMessage(
+                        result['error'] ?? 'Failed to update item',
+                      ),
+                    ),
+                  ),
                 );
               }
             },
@@ -2195,7 +2678,9 @@ class _BOQPageState extends State<BOQPage> {
         content: Text(
           'Are you sure you want to delete "${item.description}"? This action cannot be undone.',
           style: TextStyle(
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
           ),
         ),
         actions: [
@@ -2215,11 +2700,20 @@ class _BOQPageState extends State<BOQPage> {
                 _loadBOQItems();
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(ErrorHandler.getMessage(result['error'] ?? 'Failed to delete'))),
+                  SnackBar(
+                    content: Text(
+                      ErrorHandler.getMessage(
+                        result['error'] ?? 'Failed to delete',
+                      ),
+                    ),
+                  ),
                 );
               }
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),

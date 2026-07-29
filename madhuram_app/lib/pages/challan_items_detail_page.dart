@@ -49,17 +49,29 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
   }
 
   bool _hasItemValue(Map<String, String> item) {
-    const keys = ['name', 'description', 'width', 'length', 'quantity', 'price'];
+    const keys = [
+      'name',
+      'description',
+      'width',
+      'length',
+      'quantity',
+      'price',
+    ];
     return keys.any((key) => (item[key] ?? '').trim().isNotEmpty);
   }
 
-  Map<String, String> _mapPoItemToHalfDelivery(Map<String, String> item, int index) {
+  Map<String, String> _mapPoItemToHalfDelivery(
+    Map<String, String> item,
+    int index,
+  ) {
     final parsedQty = double.tryParse((item['quantity'] ?? '').trim());
     final qty = parsedQty == null ? '' : (parsedQty / 2).toString();
     return {
       'name': (item['name'] ?? '').isNotEmpty
           ? item['name']!
-          : ((item['description'] ?? '').isNotEmpty ? item['description']! : 'Item ${index + 1}'),
+          : ((item['description'] ?? '').isNotEmpty
+                ? item['description']!
+                : 'Item ${index + 1}'),
       'description': item['description'] ?? '',
       'width': item['width'] ?? '',
       'length': item['length'] ?? '',
@@ -68,7 +80,9 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
     };
   }
 
-  List<Map<String, String>> _mapPoItemsToHalfDelivery(List<Map<String, String>> poItems) {
+  List<Map<String, String>> _mapPoItemsToHalfDelivery(
+    List<Map<String, String>> poItems,
+  ) {
     if (poItems.isEmpty) return [Map<String, String>.from(_emptyItem)];
     return poItems
         .asMap()
@@ -126,17 +140,14 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
   }
 
   void _applyAndReturn() {
-    Navigator.pop(
-      context,
-      _deliveryItems.map((item) => item.toMap()).toList(),
-    );
+    Navigator.pop(context, _deliveryItems.map((item) => item.toMap()).toList());
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 1024;
+    final isCompact = screenWidth < 1024;
 
     return ProtectedRoute(
       title: 'Challan Item Detail',
@@ -149,69 +160,114 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  runSpacing: 12,
-                  spacing: 12,
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: isMobile ? screenWidth : 760,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                if (isCompact)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Challan Item Detail',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Review PO items and prepare delivery item lines before applying them to the challan.',
+                        style: TextStyle(
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
-                          Text(
-                            'Challan Item Detail',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: isDark
-                                  ? AppTheme.darkForeground
-                                  : AppTheme.lightForeground,
-                            ),
+                          MadButton(
+                            text: 'Back',
+                            icon: LucideIcons.arrowLeft,
+                            variant: ButtonVariant.outline,
+                            onPressed: _applyAndReturn,
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Review PO items and prepare delivery item lines before applying them to the challan.',
-                            style: TextStyle(
-                              color: isDark
-                                  ? AppTheme.darkMutedForeground
-                                  : AppTheme.lightMutedForeground,
-                            ),
+                          MadButton(
+                            text: 'Apply to Challan',
+                            onPressed: _applyAndReturn,
                           ),
                         ],
                       ),
-                    ),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        MadButton(
-                          text: 'Back',
-                          icon: LucideIcons.arrowLeft,
-                          variant: ButtonVariant.outline,
-                          onPressed: _applyAndReturn,
+                    ],
+                  )
+                else
+                  Wrap(
+                    runSpacing: 12,
+                    spacing: 12,
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 760,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Challan Item Detail',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: isDark
+                                    ? AppTheme.darkForeground
+                                    : AppTheme.lightForeground,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Review PO items and prepare delivery item lines before applying them to the challan.',
+                              style: TextStyle(
+                                color: isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground,
+                              ),
+                            ),
+                          ],
                         ),
-                        MadButton(
-                          text: 'Apply to Challan',
-                          onPressed: _applyAndReturn,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          MadButton(
+                            text: 'Back',
+                            icon: LucideIcons.arrowLeft,
+                            variant: ButtonVariant.outline,
+                            onPressed: _applyAndReturn,
+                          ),
+                          MadButton(
+                            text: 'Apply to Challan',
+                            onPressed: _applyAndReturn,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 const SizedBox(height: 20),
-                if (isMobile) ...[
-                  _buildPoItemsCard(isDark),
+                if (isCompact) ...[
+                  _buildPoItemsCard(isDark, isCompact),
                   const SizedBox(height: 14),
-                  _buildDeliveryItemsCard(isDark),
+                  _buildDeliveryItemsCard(isDark, isCompact),
                 ] else
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: _buildPoItemsCard(isDark)),
+                      Expanded(child: _buildPoItemsCard(isDark, isCompact)),
                       const SizedBox(width: 14),
-                      Expanded(child: _buildDeliveryItemsCard(isDark)),
+                      Expanded(
+                        child: _buildDeliveryItemsCard(isDark, isCompact),
+                      ),
                     ],
                   ),
               ],
@@ -222,7 +278,7 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
     );
   }
 
-  Widget _buildPoItemsCard(bool isDark) {
+  Widget _buildPoItemsCard(bool isDark, bool isCompact) {
     return MadCard(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -237,7 +293,9 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                 ),
@@ -293,27 +351,32 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                      color: isDark
+                          ? AppTheme.darkBorder
+                          : AppTheme.lightBorder,
                     ),
                     color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
                         .withValues(alpha: 0.2),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  child: isCompact
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
                               (item['name'] ?? '').isNotEmpty
                                   ? item['name']!
                                   : 'Item ${index + 1}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(height: 4),
-                            Text((item['description'] ?? '').isEmpty ? '-' : item['description']!),
-                            const SizedBox(height: 2),
+                            Text(
+                              (item['description'] ?? '').isEmpty
+                                  ? '-'
+                                  : item['description']!,
+                            ),
+                            const SizedBox(height: 8),
                             Text(
                               'W: ${(item['width'] ?? '').isEmpty ? '-' : item['width']} | '
                               'L: ${(item['length'] ?? '').isEmpty ? '-' : item['length']} | '
@@ -326,18 +389,66 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                                     : AppTheme.lightMutedForeground,
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: MadButton(
+                                text: 'Add',
+                                variant: ButtonVariant.outline,
+                                size: ButtonSize.sm,
+                                onPressed: () =>
+                                    _addPoItemToDelivery(item, index),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    (item['name'] ?? '').isNotEmpty
+                                        ? item['name']!
+                                        : 'Item ${index + 1}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    (item['description'] ?? '').isEmpty
+                                        ? '-'
+                                        : item['description']!,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'W: ${(item['width'] ?? '').isEmpty ? '-' : item['width']} | '
+                                    'L: ${(item['length'] ?? '').isEmpty ? '-' : item['length']} | '
+                                    'Qty: ${(item['quantity'] ?? '').isEmpty ? '-' : item['quantity']} | '
+                                    'Price: ${(item['price'] ?? '').isEmpty ? '-' : item['price']}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isDark
+                                          ? AppTheme.darkMutedForeground
+                                          : AppTheme.lightMutedForeground,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            MadButton(
+                              text: 'Add',
+                              variant: ButtonVariant.outline,
+                              size: ButtonSize.sm,
+                              onPressed: () =>
+                                  _addPoItemToDelivery(item, index),
+                            ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      MadButton(
-                        text: 'Add',
-                        variant: ButtonVariant.outline,
-                        size: ButtonSize.sm,
-                        onPressed: () => _addPoItemToDelivery(item, index),
-                      ),
-                    ],
-                  ),
                 );
               }),
           ],
@@ -346,7 +457,7 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
     );
   }
 
-  Widget _buildDeliveryItemsCard(bool isDark) {
+  Widget _buildDeliveryItemsCard(bool isDark, bool isCompact) {
     return MadCard(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -363,7 +474,9 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
                     ),
                   ),
                 ),
@@ -406,62 +519,118 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                     MadInput(
                       hintText: 'Name',
                       controller: item.name,
-                      onChanged: (value) => _updateDeliveryItem(index, 'name', value),
+                      onChanged: (value) =>
+                          _updateDeliveryItem(index, 'name', value),
                     ),
                     const SizedBox(height: 8),
                     MadTextarea(
                       hintText: 'Description',
                       minLines: 2,
                       controller: item.description,
-                      onChanged: (value) => _updateDeliveryItem(index, 'description', value),
+                      onChanged: (value) =>
+                          _updateDeliveryItem(index, 'description', value),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: MadInput(
+                    if (isCompact)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          MadInput(
                             hintText: 'Width',
                             controller: item.width,
-                            onChanged: (value) => _updateDeliveryItem(index, 'width', value),
+                            onChanged: (value) =>
+                                _updateDeliveryItem(index, 'width', value),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: MadInput(
+                          const SizedBox(height: 8),
+                          MadInput(
                             hintText: 'Length',
                             controller: item.length,
-                            onChanged: (value) => _updateDeliveryItem(index, 'length', value),
+                            onChanged: (value) =>
+                                _updateDeliveryItem(index, 'length', value),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: MadInput(
+                              hintText: 'Width',
+                              controller: item.width,
+                              onChanged: (value) =>
+                                  _updateDeliveryItem(index, 'width', value),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: MadInput(
+                              hintText: 'Length',
+                              controller: item.length,
+                              onChanged: (value) =>
+                                  _updateDeliveryItem(index, 'length', value),
+                            ),
+                          ),
+                        ],
+                      ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: MadInput(
+                    if (isCompact)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          MadInput(
                             hintText: 'Quantity',
                             controller: item.quantity,
-                            onChanged: (value) => _updateDeliveryItem(index, 'quantity', value),
+                            onChanged: (value) =>
+                                _updateDeliveryItem(index, 'quantity', value),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: MadInput(
+                          const SizedBox(height: 8),
+                          MadInput(
                             hintText: 'Price',
                             controller: item.price,
-                            onChanged: (value) => _updateDeliveryItem(index, 'price', value),
+                            onChanged: (value) =>
+                                _updateDeliveryItem(index, 'price', value),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        MadButton(
-                          icon: LucideIcons.minus,
-                          variant: ButtonVariant.outline,
-                          size: ButtonSize.sm,
-                          onPressed: () => _removeDeliveryItem(index),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: MadButton(
+                              icon: LucideIcons.minus,
+                              variant: ButtonVariant.outline,
+                              size: ButtonSize.sm,
+                              onPressed: () => _removeDeliveryItem(index),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: MadInput(
+                              hintText: 'Quantity',
+                              controller: item.quantity,
+                              onChanged: (value) =>
+                                  _updateDeliveryItem(index, 'quantity', value),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: MadInput(
+                              hintText: 'Price',
+                              controller: item.price,
+                              onChanged: (value) =>
+                                  _updateDeliveryItem(index, 'price', value),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          MadButton(
+                            icon: LucideIcons.minus,
+                            variant: ButtonVariant.outline,
+                            size: ButtonSize.sm,
+                            onPressed: () => _removeDeliveryItem(index),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               );
@@ -488,12 +657,12 @@ class _DetailItemControllers {
     String length = '',
     String quantity = '',
     String price = '',
-  })  : name = TextEditingController(text: name),
-        description = TextEditingController(text: description),
-        width = TextEditingController(text: width),
-        length = TextEditingController(text: length),
-        quantity = TextEditingController(text: quantity),
-        price = TextEditingController(text: price);
+  }) : name = TextEditingController(text: name),
+       description = TextEditingController(text: description),
+       width = TextEditingController(text: width),
+       length = TextEditingController(text: length),
+       quantity = TextEditingController(text: quantity),
+       price = TextEditingController(text: price);
 
   factory _DetailItemControllers.fromMap(Map<String, String> map) {
     return _DetailItemControllers(
@@ -507,13 +676,13 @@ class _DetailItemControllers {
   }
 
   Map<String, String> toMap() => {
-        'name': name.text,
-        'description': description.text,
-        'width': width.text,
-        'length': length.text,
-        'quantity': quantity.text,
-        'price': price.text,
-      };
+    'name': name.text,
+    'description': description.text,
+    'width': width.text,
+    'length': length.text,
+    'quantity': quantity.text,
+    'price': price.text,
+  };
 
   void dispose() {
     name.dispose();

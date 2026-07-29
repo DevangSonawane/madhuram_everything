@@ -11,6 +11,8 @@ class BOQItem {
   final String? floor;
   final String unit;
   final double quantity;
+  final double? usedQuantity;
+  final double? remainingQuantity;
   final double? rate;
   final double? amount;
   final String? boqFile;
@@ -30,6 +32,8 @@ class BOQItem {
     this.floor,
     required this.unit,
     required this.quantity,
+    this.usedQuantity,
+    this.remainingQuantity,
     this.rate,
     this.amount,
     this.boqFile,
@@ -51,10 +55,19 @@ class BOQItem {
       floor: json['floor'],
       unit: json['unit'] ?? '',
       quantity: _parseDouble(json['quantity']),
+      usedQuantity: _parseNullableDouble(
+        json['used_quantity'] ?? json['usedQty'] ?? json['used'],
+      ),
+      remainingQuantity: _parseNullableDouble(
+        json['remaining_quantity'] ?? json['remainingQty'] ?? json['remaining'],
+      ),
       rate: json['rate'] != null ? _parseDouble(json['rate']) : null,
       amount: json['amount'] != null ? _parseDouble(json['amount']) : null,
       boqFile: json['boq_file'],
-      client: (json['client'] ?? json['boq_client'] ?? json['client_format'])?.toString().trim().toLowerCase(),
+      client: (json['client'] ?? json['boq_client'] ?? json['client_format'])
+          ?.toString()
+          .trim()
+          .toLowerCase(),
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'])
           : null,
@@ -74,6 +87,8 @@ class BOQItem {
     'floor': floor,
     'unit': unit,
     'quantity': quantity,
+    'used_quantity': usedQuantity,
+    'remaining_quantity': remainingQuantity,
     'rate': rate,
     'amount': amount,
     'boq_file': boqFile,
@@ -86,6 +101,17 @@ class BOQItem {
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0;
     return 0;
+  }
+
+  static double? _parseNullableDouble(dynamic value) {
+    if (value == null || value == '') return null;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final cleaned = value.replaceAll(',', '').trim();
+      if (cleaned.isEmpty) return null;
+      return double.tryParse(cleaned);
+    }
+    return null;
   }
 
   BOQItem copyWith({
@@ -101,6 +127,8 @@ class BOQItem {
     String? floor,
     String? unit,
     double? quantity,
+    double? usedQuantity,
+    double? remainingQuantity,
     double? rate,
     double? amount,
     String? boqFile,
@@ -119,6 +147,8 @@ class BOQItem {
       floor: floor ?? this.floor,
       unit: unit ?? this.unit,
       quantity: quantity ?? this.quantity,
+      usedQuantity: usedQuantity ?? this.usedQuantity,
+      remainingQuantity: remainingQuantity ?? this.remainingQuantity,
       rate: rate ?? this.rate,
       amount: amount ?? this.amount,
       boqFile: boqFile ?? this.boqFile,

@@ -168,12 +168,12 @@ Map<String, dynamic> _buildPoApiPayloadFromUi(
     'termsAndConditions': termsAndConditions is List
         ? termsAndConditions.map((e) => e.toString()).toList()
         : (termsAndConditions is String && termsAndConditions.trim().isNotEmpty
-            ? termsAndConditions
-                .split('\n')
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList()
-            : const <String>[]),
+              ? termsAndConditions
+                    .split('\n')
+                    .map((e) => e.trim())
+                    .where((e) => e.isNotEmpty)
+                    .toList()
+              : const <String>[]),
     'status': statusOverride ?? poData['status'] ?? 'created',
   };
 }
@@ -245,6 +245,11 @@ Map<String, dynamic> _normalizePoForPreview(Map<String, dynamic> raw) {
 
   return {
     'poId': _poReadString(raw['po_id'] ?? raw['id']),
+    'vendorComparisonId': _poReadString(
+      raw['vendorComparisonId'] ??
+          raw['selectedPrId'] ??
+          raw['vendor_comparison_id'],
+    ),
     'companyName': _poReadString(raw['companyName'] ?? raw['company_name']),
     'companySubtitle': _poReadString(
       raw['companySubtitle'] ?? raw['company_subtitle'],
@@ -258,6 +263,12 @@ Map<String, dynamic> _normalizePoForPreview(Map<String, dynamic> raw) {
     'vendor': {
       'name': _poReadString(vendorRaw['name'] ?? raw['vendor_name']),
       'site': _poReadString(vendorRaw['site'] ?? raw['site']),
+      'siteAddress': _poReadString(
+        vendorRaw['siteAddress'] ??
+            raw['site_address'] ??
+            vendorRaw['address'] ??
+            raw['vendor_address'],
+      ),
       'contactPerson': _poReadString(
         vendorRaw['contactPerson'] ?? raw['contact_person'],
       ),
@@ -312,7 +323,9 @@ Map<String, dynamic> _normalizePoForPreview(Map<String, dynamic> raw) {
     'termsAndConditions': _poReadStringList(
       raw['termsAndConditions'] ?? raw['terms_and_conditions'],
     ),
-    'status': _poReadString(raw['status']).isEmpty ? 'created' : _poReadString(raw['status']),
+    'status': _poReadString(raw['status']).isEmpty
+        ? 'created'
+        : _poReadString(raw['status']),
     'sourceFileName': _poReadString(
       raw['sourceFileName'] ?? raw['source_file_name'],
     ),
@@ -364,8 +377,7 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
       });
     } else {
       setState(() {
-        _extractionMessage =
-            result['error']?.toString() ?? 'Upload failed.';
+        _extractionMessage = result['error']?.toString() ?? 'Upload failed.';
       });
     }
   }
@@ -484,7 +496,8 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
   Future<void> _downloadPurchaseOrderPdf(PurchaseOrder order) async {
     try {
       final doc = await PdfService.generatePurchaseOrderPdf(order.toJson());
-      final filename = 'PO_${order.orderNo.isNotEmpty ? order.orderNo : order.id}.pdf';
+      final filename =
+          'PO_${order.orderNo.isNotEmpty ? order.orderNo : order.id}.pdf';
       final savedPath = await PdfService.exportPurchaseOrderPdf(doc, filename);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -498,16 +511,19 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
     }
   }
 
   Future<void> _downloadPurchaseOrderExcel(PurchaseOrder order) async {
     try {
-      final workbook = await ExcelService.exportPurchaseOrderToExcel(order.toJson());
-      final filename = 'PO_${order.orderNo.isNotEmpty ? order.orderNo : order.id}.xlsx';
+      final workbook = await ExcelService.exportPurchaseOrderToExcel(
+        order.toJson(),
+      );
+      final filename =
+          'PO_${order.orderNo.isNotEmpty ? order.orderNo : order.id}.xlsx';
       final savedPath = await ExcelService.exportExcel(workbook, filename);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -521,9 +537,9 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Excel export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Excel export failed: $e')));
     }
   }
 
@@ -625,7 +641,9 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                                 text: _isUploading ? 'Uploading...' : 'Upload',
                                 icon: LucideIcons.upload,
                                 loading: _isUploading,
-                                onPressed: _isUploading ? null : _pickAndUploadPOFile,
+                                onPressed: _isUploading
+                                    ? null
+                                    : _pickAndUploadPOFile,
                               ),
                               MadButton(
                                 text: 'Manual Entry',
@@ -663,7 +681,8 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
   }
 
   Widget _buildManualEntryTab(bool isDark, bool isMobile, {Key? key}) {
-    final projectId = context.appProject.selectedProjectId ??
+    final projectId =
+        context.appProject.selectedProjectId ??
         context.appProject.selectedProject?['project_id']?.toString() ??
         '';
     return _ManualPOForm(
@@ -1269,10 +1288,8 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
     final projectId = _resolveCurrentProjectId();
     showDialog(
       context: context,
-      builder: (context) => _PurchaseOrderEmailDialog(
-        order: order,
-        projectId: projectId,
-      ),
+      builder: (context) =>
+          _PurchaseOrderEmailDialog(order: order, projectId: projectId),
     );
   }
 
@@ -1525,9 +1542,9 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                         text: 'Submit PO',
                         onPressed: () async {
                           if ((poData['sample_id'] ?? poData['sampleId'])
-                              ?.toString()
-                              .trim()
-                              .isEmpty ??
+                                  ?.toString()
+                                  .trim()
+                                  .isEmpty ??
                               true) {
                             if (!ctx.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1640,7 +1657,8 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
   }
 
   Future<void> _openCreatePOPage() async {
-    final projectId = context.appProject.selectedProjectId ??
+    final projectId =
+        context.appProject.selectedProjectId ??
         context.appProject.selectedProject?['project_id']?.toString() ??
         '';
 
@@ -1890,21 +1908,24 @@ class _POViewPageState extends State<_POViewPage> {
     if (data == null) return;
     try {
       final doc = await PdfService.generatePurchaseOrderPdf(data);
-      final filename = 'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.pdf';
+      final filename =
+          'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.pdf';
       final savedPath = await PdfService.exportPurchaseOrderPdf(doc, filename);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            savedPath == null ? 'PDF export failed.' : 'PDF saved successfully.',
+            savedPath == null
+                ? 'PDF export failed.'
+                : 'PDF saved successfully.',
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
     }
   }
 
@@ -1913,21 +1934,24 @@ class _POViewPageState extends State<_POViewPage> {
     if (data == null) return;
     try {
       final workbook = await ExcelService.exportPurchaseOrderToExcel(data);
-      final filename = 'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.xlsx';
+      final filename =
+          'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.xlsx';
       final savedPath = await ExcelService.exportExcel(workbook, filename);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            savedPath == null ? 'Excel export failed.' : 'Excel saved successfully.',
+            savedPath == null
+                ? 'Excel export failed.'
+                : 'Excel saved successfully.',
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Excel export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Excel export failed: $e')));
     }
   }
 
@@ -2183,6 +2207,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   final _poDate = TextEditingController();
   final _vendorName = TextEditingController();
   final _site = TextEditingController();
+  final _siteAddress = TextEditingController();
   final _contactPerson = TextEditingController();
   final _vendorAddress = TextEditingController();
   final _primaryContactName = TextEditingController();
@@ -2286,9 +2311,9 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     if (_loadingPrOptions) return;
     setState(() => _loadingPrOptions = true);
     try {
-      final result = widget.projectId.isNotEmpty
-          ? await ApiClient.getPRsByProject(widget.projectId)
-          : await ApiClient.getPRs();
+      final result = await ApiClient.listVendorComparisons(
+        projectId: widget.projectId.isNotEmpty ? widget.projectId : null,
+      );
       if (!mounted) return;
       if (result['success'] == true && result['data'] is List) {
         final list = (result['data'] as List)
@@ -2315,15 +2340,81 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   }
 
   String _formatPrNumber(Map<String, dynamic> pr) {
-    final sourceDate =
-        pr['date'] ?? pr['created_at'] ?? DateTime.now().toIso8601String();
-    final parsed = DateTime.tryParse(sourceDate.toString());
-    final datePart = parsed == null
-        ? '0000-00-00'
-        : '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
-    final sequence = pr['pr_id'] ?? pr['id'] ?? '0';
-    final project = pr['project_id'] ?? pr['projectId'] ?? '0';
-    return 'PR-$datePart-$sequence-$project';
+    final id =
+        pr['id'] ??
+        pr['comparison_id'] ??
+        pr['vendor_comparison_id'] ??
+        pr['comparisonId'] ??
+        '';
+    final prNo = pr['pr_no'] ?? pr['pr_number'] ?? pr['prNo'] ?? '';
+    final rows = _getComparisonRows(pr);
+    final vendors = rows
+        .map(
+          (row) => _firstNonEmpty([
+            row['vendor_name'],
+            row['vendorName'],
+            row['vendor'],
+          ]),
+        )
+        .where((text) => text.trim().isNotEmpty)
+        .toSet()
+        .toList();
+    final vendorLabel = _firstNonEmpty([
+      pr['approved_vendor_name'],
+      pr['approvedVendorName'],
+      pr['approved_vendor'],
+      vendors.length == 1 ? vendors.first : '',
+    ]);
+    return [
+      if ('$id'.trim().isNotEmpty) 'VC $id',
+      if ('$prNo'.trim().isNotEmpty) 'PR $prNo',
+      if (vendorLabel.trim().isNotEmpty) 'Vendor $vendorLabel',
+    ].join(' | ');
+  }
+
+  List<Map<String, dynamic>> _getComparisonRows(
+    Map<String, dynamic> comparison,
+  ) {
+    final raw =
+        comparison['pricelist'] ??
+        comparison['price_list'] ??
+        comparison['priceList'] ??
+        comparison['items'] ??
+        const [];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  String _getComparisonVendorName(Map<String, dynamic> comparison) {
+    final direct = _firstNonEmpty([
+      comparison['approved_vendor_name'],
+      comparison['approvedVendorName'],
+    ]);
+    if (direct.isNotEmpty) return direct;
+    final approved = _firstNonEmpty([
+      comparison['approved_vendor'],
+      comparison['approvedVendor'],
+    ]);
+    if (approved.isNotEmpty && !RegExp(r'^\d+$').hasMatch(approved)) {
+      return approved;
+    }
+
+    final rows = _getComparisonRows(comparison);
+    final vendors = rows
+        .map(
+          (row) => _firstNonEmpty([
+            row['vendor_name'],
+            row['vendorName'],
+            row['vendor'],
+          ]),
+        )
+        .where((text) => text.trim().isNotEmpty)
+        .toSet()
+        .toList();
+    return vendors.length == 1 ? vendors.first : '';
   }
 
   List<Map<String, dynamic>> _mapPrItemsToPoItems(List<dynamic> items) {
@@ -2332,34 +2423,64 @@ class _ManualPOFormState extends State<_ManualPOForm> {
       final raw = entry.value is Map
           ? Map<String, dynamic>.from(entry.value as Map)
           : <String, dynamic>{};
-      final make = (raw['make'] ?? '').toString().trim();
-      final place = (raw['place_of_utilisation'] ?? '').toString().trim();
-      final remarks = [
-        if (make.isNotEmpty) 'Make: $make',
-        if (place.isNotEmpty) 'Place: $place',
-      ].join(' | ');
+      final itemDescription = _firstNonEmpty([
+        raw['item_description'],
+        raw['description'],
+        raw['item_name'],
+      ]);
+      final boqItemCode = _firstNonEmpty([
+        raw['boq_item_code'],
+        raw['boqItemCode'],
+        raw['item_no'],
+        raw['itemNo'],
+        raw['item_code'],
+        raw['itemCode'],
+        raw['code'],
+        itemDescription,
+      ]);
+      final vendorName = _firstNonEmpty([
+        raw['vendor_name'],
+        raw['vendorName'],
+        raw['vendor'],
+      ]);
       return {
         '_id': ++_itemId,
         'srNo': '${idx + 1}',
-        'hsn': '',
-        'description': (raw['material_description'] ?? '').toString(),
-        'qty': (raw['req_qty'] ?? '').toString(),
-        'uom': (raw['unit'] ?? '').toString(),
-        'rate': '',
-        'amount': '',
-        'remark': remarks,
+        'boqItemCode': boqItemCode,
+        'hsn': _firstNonEmpty([raw['hsn'], raw['hsnCode'], raw['hsn_code']]),
+        'description': itemDescription,
+        'qty': _firstNonEmpty([raw['total_qty'], raw['qty'], raw['quantity']]),
+        'uom': _firstNonEmpty([raw['unit'], raw['uom'], raw['UOM']]),
+        'rate': _firstNonEmpty([
+          raw['rate'],
+          raw['unit_rate'],
+          raw['unitRate'],
+        ]),
+        'amount': _firstNonEmpty([raw['amount'], raw['Amount']]),
+        'remark': vendorName.isNotEmpty ? 'Vendor: $vendorName' : '',
       };
     }).toList();
   }
 
   void _applySelectedPrToPo(Map<String, dynamic> pr) {
-    final itemsRaw = pr['items'];
-    final itemsList = itemsRaw is List ? itemsRaw : const [];
-    final mappedItems = _mapPrItemsToPoItems(itemsList);
-    final sampleId = pr['sample_id']?.toString();
+    final mappedItems = _mapPrItemsToPoItems(_getComparisonRows(pr));
+    final vendorName = _getComparisonVendorName(pr);
+    final vcId = _firstNonEmpty([
+      pr['id'],
+      pr['comparison_id'],
+      pr['vendor_comparison_id'],
+      pr['comparisonId'],
+    ]);
+    final vcPrNo = _firstNonEmpty([pr['pr_no'], pr['pr_number'], pr['prNo']]);
     setState(() {
-      if (sampleId != null && sampleId.isNotEmpty) {
-        _selectedSampleId = sampleId;
+      if (vcId.isNotEmpty) {
+        _selectedPrId = vcId;
+      }
+      if (vcPrNo.isNotEmpty) {
+        _indentNo.text = vcPrNo;
+      }
+      if (vendorName.isNotEmpty) {
+        _vendorName.text = vendorName;
       }
       _items = mappedItems;
     });
@@ -2373,17 +2494,20 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     });
     if (next.isEmpty) return;
 
-    final selected =
-        _prOptions.firstWhere((pr) => '${pr['pr_id'] ?? pr['id']}' == next,
-            orElse: () => {});
-    if (selected.isNotEmpty && selected['items'] is List) {
+    final selected = _prOptions.firstWhere(
+      (pr) =>
+          '${pr['id'] ?? pr['comparison_id'] ?? pr['vendor_comparison_id'] ?? pr['comparisonId']}' ==
+          next,
+      orElse: () => {},
+    );
+    if (selected.isNotEmpty) {
       _applySelectedPrToPo(selected);
       return;
     }
 
     setState(() => _loadingPrItems = true);
     try {
-      final result = await ApiClient.getPRById(next);
+      final result = await ApiClient.getVendorComparisonById(next);
       if (!mounted) return;
       if (result['success'] == true && result['data'] is Map) {
         _applySelectedPrToPo(Map<String, dynamic>.from(result['data']));
@@ -2398,9 +2522,9 @@ class _ManualPOFormState extends State<_ManualPOForm> {
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to load PR items')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to load PR items')));
     } finally {
       if (mounted) setState(() => _loadingPrItems = false);
     }
@@ -2408,8 +2532,10 @@ class _ManualPOFormState extends State<_ManualPOForm> {
 
   void _applyFormData(Map<String, dynamic> data) {
     _isRecalculating = true;
-    _selectedSampleId = (data['sample_id'] ?? data['sampleId'] ?? '').toString();
-    _selectedPrId = (data['selectedPrId'] ?? '').toString();
+    _selectedSampleId = (data['sample_id'] ?? data['sampleId'] ?? '')
+        .toString();
+    _selectedPrId = (data['vendorComparisonId'] ?? data['selectedPrId'] ?? '')
+        .toString();
     _companyName.text = data['companyName']?.toString() ?? '';
     _companySubtitle.text = data['companySubtitle']?.toString() ?? '';
     _companyEmail.text = data['companyEmail']?.toString() ?? '';
@@ -2422,6 +2548,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     if (v != null) {
       _vendorName.text = v['name']?.toString() ?? '';
       _site.text = v['site']?.toString() ?? '';
+      _siteAddress.text = (v['siteAddress'] ?? v['address'])?.toString() ?? '';
       _contactPerson.text = v['contactPerson']?.toString() ?? '';
       _vendorAddress.text = v['address']?.toString() ?? '';
       final c = v['contacts'] as Map<String, dynamic>?;
@@ -2510,6 +2637,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
       final normalized = _normalizePoForPreview(record);
       final manualSeed = <String, dynamic>{
         'project_id': record['project_id']?.toString() ?? widget.projectId,
+        'vendorComparisonId': normalized['vendorComparisonId'],
         'companyName': normalized['companyName'],
         'companySubtitle': normalized['companySubtitle'],
         'companyEmail': normalized['companyEmail'],
@@ -2519,6 +2647,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
         'order_no': normalized['orderNo'],
         'po_date': normalized['poDate'],
         'vendor': normalized['vendor'],
+        'site_address': normalized['siteAddress'],
         'items': (normalized['items'] as List<dynamic>? ?? []).map((item) {
           final m = item is Map ? Map<String, dynamic>.from(item) : {};
           return {
@@ -2559,6 +2688,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     _poDate.dispose();
     _vendorName.dispose();
     _site.dispose();
+    _siteAddress.dispose();
     _contactPerson.dispose();
     _vendorAddress.dispose();
     _primaryContactName.dispose();
@@ -2608,6 +2738,16 @@ class _ManualPOFormState extends State<_ManualPOForm> {
   void _setControllerText(TextEditingController c, String value) {
     if (c.text == value) return;
     c.text = value;
+  }
+
+  String _firstNonEmpty(Iterable<dynamic> values, [String fallback = '']) {
+    for (final value in values) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
+        return text;
+      }
+    }
+    return fallback;
   }
 
   void _onDiscountPercentChanged() {
@@ -2689,8 +2829,9 @@ class _ManualPOFormState extends State<_ManualPOForm> {
       discountAmount = discountAmountInput ?? 0;
       discountPercent = subtotal > 0 ? (discountAmount * 100) / subtotal : null;
     } else if (discountMode == 'percent') {
-      discountAmount =
-          discountPercentInput != null ? (subtotal * discountPercentInput) / 100 : 0;
+      discountAmount = discountPercentInput != null
+          ? (subtotal * discountPercentInput) / 100
+          : 0;
     } else if (discountPercentInput != null) {
       discountAmount = (subtotal * discountPercentInput) / 100;
     } else if (discountAmountInput != null) {
@@ -2707,21 +2848,28 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     ) {
       if (mode == 'amount') {
         final double amount = amountInput ?? 0.0;
-        final percent =
-            afterDiscount != 0 ? (amount * 100) / afterDiscount : null;
+        final percent = afterDiscount != 0
+            ? (amount * 100) / afterDiscount
+            : null;
         return {'percent': percent, 'amount': amount};
       }
       if (mode == 'percent') {
-        final double amount =
-            percentInput != null ? (afterDiscount * percentInput) / 100 : 0.0;
+        final double amount = percentInput != null
+            ? (afterDiscount * percentInput) / 100
+            : 0.0;
         return {'percent': percentInput, 'amount': amount};
       }
       if (percentInput != null) {
-        return {'percent': percentInput, 'amount': (afterDiscount * percentInput) / 100};
+        return {
+          'percent': percentInput,
+          'amount': (afterDiscount * percentInput) / 100,
+        };
       }
       if (amountInput != null) {
         return {
-          'percent': afterDiscount != 0 ? (amountInput * 100) / afterDiscount : null,
+          'percent': afterDiscount != 0
+              ? (amountInput * 100) / afterDiscount
+              : null,
           'amount': amountInput,
         };
       }
@@ -2805,7 +2953,8 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     final sgstPct = _parseValue(_sgstPercent.text);
     final cgstAmt = _parseValue(_cgstAmount.text) ?? 0;
     final sgstAmt = _parseValue(_sgstAmount.text) ?? 0;
-    final total = _parseValue(_totalAmount.text) ?? (afterDiscount + cgstAmt + sgstAmt);
+    final total =
+        _parseValue(_totalAmount.text) ?? (afterDiscount + cgstAmt + sgstAmt);
 
     final notesText = _notes.text.trim();
     final termsText = _termsAndConditions.text.trim();
@@ -2815,7 +2964,8 @@ class _ManualPOFormState extends State<_ManualPOForm> {
         'sample_id': _selectedSampleId.trim(),
       if (_selectedSampleId.trim().isNotEmpty)
         'sampleId': _selectedSampleId.trim(),
-      if (_selectedPrId.trim().isNotEmpty) 'selectedPrId': _selectedPrId.trim(),
+      if (_selectedPrId.trim().isNotEmpty)
+        'vendorComparisonId': _selectedPrId.trim(),
       'companyName': _companyName.text.trim().isEmpty
           ? null
           : _companyName.text.trim(),
@@ -2839,6 +2989,9 @@ class _ManualPOFormState extends State<_ManualPOForm> {
             ? null
             : _vendorName.text.trim(),
         'site': _site.text.trim().isEmpty ? null : _site.text.trim(),
+        'siteAddress': _siteAddress.text.trim().isEmpty
+            ? null
+            : _siteAddress.text.trim(),
         'contactPerson': _contactPerson.text.trim().isEmpty
             ? null
             : _contactPerson.text.trim(),
@@ -2862,7 +3015,9 @@ class _ManualPOFormState extends State<_ManualPOForm> {
         'amount': discountAmt > 0 ? _formatCalc(discountAmt) : null,
       },
       'subtotalAmount': itemsTotal > 0 ? _formatCalc(itemsTotal) : null,
-      'afterDiscountAmount': afterDiscount > 0 ? _formatCalc(afterDiscount) : null,
+      'afterDiscountAmount': afterDiscount > 0
+          ? _formatCalc(afterDiscount)
+          : null,
       'taxes': {
         'cgst': {
           'percent': cgstPct != null ? _formatCalc(cgstPct) : null,
@@ -2911,35 +3066,42 @@ class _ManualPOFormState extends State<_ManualPOForm> {
     final selectedSampleMissing =
         _selectedSampleId.isNotEmpty &&
         !_sampleOptions.any(
-          (s) =>
-              '${s['sample_id'] ?? s['id'] ?? ''}' == _selectedSampleId,
+          (s) => '${s['sample_id'] ?? s['id'] ?? ''}' == _selectedSampleId,
         );
     final selectedPrMissing =
         _selectedPrId.isNotEmpty &&
-        !_prOptions.any((p) => '${p['pr_id'] ?? p['id'] ?? ''}' == _selectedPrId);
-    final sampleSelectOptions =
-        _sampleOptions.map((sample) {
-          final id = (sample['sample_id'] ?? sample['id'] ?? '').toString();
-          final label =
-              sample['work_done'] ??
-              sample['site_name'] ??
-              sample['building_name'] ??
-              'Sample #$id';
-          return MadSelectOption<String>(
-            value: id,
-            label: '#$id - $label',
-          );
-        }).toList();
-    final prSelectOptions =
-        _prOptions.map((pr) {
-          final id = (pr['pr_id'] ?? pr['id'] ?? '').toString();
-          final label =
-              pr['workorder_no'] ?? pr['project_name'] ?? 'Purchase Request';
-          return MadSelectOption<String>(
-            value: id,
-            label: '${_formatPrNumber(pr)} - $label',
-          );
-        }).toList();
+        !_prOptions.any(
+          (p) =>
+              '${p['id'] ?? p['comparison_id'] ?? p['vendor_comparison_id'] ?? p['comparisonId'] ?? ''}' ==
+              _selectedPrId,
+        );
+    final sampleSelectOptions = _sampleOptions.map((sample) {
+      final id = (sample['sample_id'] ?? sample['id'] ?? '').toString();
+      final label =
+          sample['work_done'] ??
+          sample['site_name'] ??
+          sample['building_name'] ??
+          'Sample #$id';
+      return MadSelectOption<String>(value: id, label: '#$id - $label');
+    }).toList();
+    final prSelectOptions = _prOptions.map((pr) {
+      final id =
+          (pr['id'] ??
+                  pr['comparison_id'] ??
+                  pr['vendor_comparison_id'] ??
+                  pr['comparisonId'] ??
+                  '')
+              .toString();
+      final label =
+          pr['workorder_no'] ??
+          pr['pr_no'] ??
+          pr['pr_number'] ??
+          'Vendor Comparison';
+      return MadSelectOption<String>(
+        value: id,
+        label: '${_formatPrNumber(pr)} - $label',
+      );
+    }).toList();
     return SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 12 : 24),
       child: MadCard(
@@ -2949,13 +3111,23 @@ class _ManualPOFormState extends State<_ManualPOForm> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Order Details',
+                'Create PO',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: isDark
                       ? AppTheme.darkForeground
                       : AppTheme.lightForeground,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Fill the purchase order form manually.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
                 ),
               ),
               const SizedBox(height: 12),
@@ -2967,10 +3139,9 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                           ? null
                           : _selectedSampleId,
                       labelText: 'Sample ID',
-                      placeholder:
-                          _loadingSamples
-                              ? 'Loading samples...'
-                              : 'Select sample (required)',
+                      placeholder: _loadingSamples
+                          ? 'Loading samples...'
+                          : 'Select sample (required)',
                       clearable: true,
                       onChanged: (value) => setState(() {
                         _selectedSampleId = value ?? '';
@@ -2987,28 +3158,39 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     const SizedBox(height: 12),
                     MadSelect<String>(
                       value: _selectedPrId.isEmpty ? null : _selectedPrId,
-                      labelText: 'PR Number',
+                      labelText: 'Vendor Source (Vendor ID)',
                       placeholder: _loadingPrOptions || _loadingPrItems
-                          ? 'Loading PR...'
-                          : 'Select PR Number',
+                          ? 'Loading VC...'
+                          : 'Select VC',
                       clearable: true,
                       searchable: true,
-                      searchHint: 'Search PR number...',
+                      searchHint: 'Search vendor comparison...',
                       onChanged: (value) => _handlePrSelect(value),
                       options: [
                         if (selectedPrMissing)
                           MadSelectOption(
                             value: _selectedPrId,
-                            label: 'PR #$_selectedPrId (current)',
+                            label: 'VC #$_selectedPrId (current)',
                           ),
                         ...prSelectOptions,
                       ],
                     ),
                     const SizedBox(height: 12),
                     MadInput(
-                      labelText: 'Indent No',
-                      hintText: 'Indent number',
+                      labelText: 'Indent No (Auto)',
+                      hintText: 'Auto-filled from selected vendor source',
                       controller: _indentNo,
+                      enabled: false,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Locked to the selected vendor source. It cannot be edited manually.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     MadInput(
@@ -3068,19 +3250,19 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     Expanded(
                       child: MadSelect<String>(
                         value: _selectedPrId.isEmpty ? null : _selectedPrId,
-                        labelText: 'PR Number',
+                        labelText: 'Vendor Source (Vendor ID)',
                         placeholder: _loadingPrOptions || _loadingPrItems
-                            ? 'Loading PR...'
-                            : 'Select PR Number',
+                            ? 'Loading VC...'
+                            : 'Select VC',
                         clearable: true,
                         searchable: true,
-                        searchHint: 'Search PR number...',
+                        searchHint: 'Search vendor comparison...',
                         onChanged: (value) => _handlePrSelect(value),
                         options: [
                           if (selectedPrMissing)
                             MadSelectOption(
                               value: _selectedPrId,
-                              label: 'PR #$_selectedPrId (current)',
+                              label: 'VC #$_selectedPrId (current)',
                             ),
                           ...prSelectOptions,
                         ],
@@ -3094,9 +3276,10 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                   children: [
                     Expanded(
                       child: MadInput(
-                        labelText: 'Indent No',
-                        hintText: 'Indent number',
+                        labelText: 'Indent No (Auto)',
+                        hintText: 'Auto-filled from selected vendor source',
                         controller: _indentNo,
+                        enabled: false,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -3189,8 +3372,8 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                 ),
               const SizedBox(height: 12),
               MadInput(
-                labelText: 'Vendor Address',
-                hintText: 'Address',
+                labelText: 'Site Address',
+                hintText: 'Site address',
                 controller: _vendorAddress,
                 maxLines: 2,
               ),
@@ -3318,7 +3501,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
               }),
               const SizedBox(height: 24),
               Text(
-                'Totals',
+                'Amounts & Delivery',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -3332,7 +3515,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                 Column(
                   children: [
                     MadInput(
-                      labelText: 'Subtotal Amount',
+                      labelText: 'Subtotal',
                       hintText: '0',
                       controller: _subtotalAmount,
                       enabled: false,
@@ -3355,7 +3538,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     ),
                     const SizedBox(height: 12),
                     MadInput(
-                      labelText: 'After Discount Amount',
+                      labelText: 'After Discount',
                       hintText: '0',
                       controller: _afterDiscountAmount,
                       enabled: false,
@@ -3410,7 +3593,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                   children: [
                     Expanded(
                       child: MadInput(
-                        labelText: 'Subtotal Amount',
+                        labelText: 'Subtotal',
                         hintText: '0',
                         controller: _subtotalAmount,
                         enabled: false,
@@ -3439,7 +3622,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: MadInput(
-                        labelText: 'After Discount Amount',
+                        labelText: 'After Discount',
                         hintText: '0',
                         controller: _afterDiscountAmount,
                         enabled: false,
@@ -3507,7 +3690,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                 ),
               const SizedBox(height: 24),
               Text(
-                'Additional',
+                'Delivery & Notes',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -3521,13 +3704,13 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                 Column(
                   children: [
                     MadInput(
-                      labelText: 'Delivery terms',
+                      labelText: 'Delivery',
                       hintText: 'e.g. 7 days',
                       controller: _deliveryTerms,
                     ),
                     const SizedBox(height: 12),
                     MadInput(
-                      labelText: 'Payment terms',
+                      labelText: 'Payment',
                       hintText: 'e.g. 30 days',
                       controller: _paymentTerms,
                     ),
@@ -3538,7 +3721,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                   children: [
                     Expanded(
                       child: MadInput(
-                        labelText: 'Delivery terms',
+                        labelText: 'Delivery',
                         hintText: 'e.g. 7 days',
                         controller: _deliveryTerms,
                       ),
@@ -3546,7 +3729,7 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: MadInput(
-                        labelText: 'Payment terms',
+                        labelText: 'Payment',
                         hintText: 'e.g. 30 days',
                         controller: _paymentTerms,
                       ),
@@ -3600,7 +3783,9 @@ class _ManualPOFormState extends State<_ManualPOForm> {
                     if (_selectedSampleId.trim().isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Sample ID is required for purchase order.'),
+                          content: Text(
+                            'Sample ID is required for purchase order.',
+                          ),
                         ),
                       );
                       return;
@@ -3945,8 +4130,7 @@ class _PurchaseOrderEmailDialog extends StatefulWidget {
       _PurchaseOrderEmailDialogState();
 }
 
-class _PurchaseOrderEmailDialogState
-    extends State<_PurchaseOrderEmailDialog> {
+class _PurchaseOrderEmailDialogState extends State<_PurchaseOrderEmailDialog> {
   bool _loadingVendors = false;
   bool _sending = false;
   bool _vendorDropdownOpen = false;
@@ -4091,23 +4275,21 @@ class _PurchaseOrderEmailDialogState
       if (!mounted) return;
       if (result['success'] == true) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PO email sent')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('PO email sent')));
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            (result['error'] ?? 'Failed to send email').toString(),
-          ),
+          content: Text((result['error'] ?? 'Failed to send email').toString()),
         ),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to send email')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to send email')));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -4163,7 +4345,9 @@ class _PurchaseOrderEmailDialogState
                           children: [
                             Text(
                               'PO: ${widget.order.orderNo}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             Text(
@@ -4194,10 +4378,11 @@ class _PurchaseOrderEmailDialogState
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: border.withOpacity(0.8)),
-                          color: (isDark
-                                  ? AppTheme.darkMuted
-                                  : AppTheme.lightMuted)
-                              .withOpacity(0.15),
+                          color:
+                              (isDark
+                                      ? AppTheme.darkMuted
+                                      : AppTheme.lightMuted)
+                                  .withOpacity(0.15),
                         ),
                         child: Column(
                           children: [
@@ -4230,10 +4415,11 @@ class _PurchaseOrderEmailDialogState
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: border.withOpacity(0.6)),
-                            color: (isDark
-                                    ? AppTheme.darkMuted
-                                    : AppTheme.lightMuted)
-                                .withOpacity(0.25),
+                            color:
+                                (isDark
+                                        ? AppTheme.darkMuted
+                                        : AppTheme.lightMuted)
+                                    .withOpacity(0.25),
                           ),
                           child: Row(
                             children: [
@@ -4302,152 +4488,139 @@ class _PurchaseOrderEmailDialogState
                                 ],
                               )
                             : _vendors.isEmpty
-                                ? Text(
-                                    'No vendors with email found for this project.',
-                                    style: TextStyle(color: muted),
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      InkWell(
-                                        onTap: _toggleVendorDropdown,
+                            ? Text(
+                                'No vendors with email found for this project.',
+                                style: TextStyle(color: muted),
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  InkWell(
+                                    onTap: _toggleVendorDropdown,
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
+                                      decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(10),
-                                        child: Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 12,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color:
-                                                  border.withOpacity(0.7),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  _selectedVendorIds.isEmpty
-                                                      ? 'Select Vendors'
-                                                      : '${_selectedVendorIds.length} vendor(s) selected',
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                              Icon(
-                                                _vendorDropdownOpen
-                                                    ? LucideIcons.chevronUp
-                                                    : LucideIcons.chevronDown,
-                                                size: 16,
-                                                color: muted,
-                                              ),
-                                            ],
-                                          ),
+                                        border: Border.all(
+                                          color: border.withOpacity(0.7),
                                         ),
                                       ),
-                                      if (_vendorDropdownOpen) ...[
-                                        const SizedBox(height: 12),
-                                        MadInput(
-                                          controller: _vendorSearchController,
-                                          labelText: 'Search vendors',
-                                          hintText:
-                                              'Search vendor name or email...',
-                                        ),
-                                        const SizedBox(height: 12),
-                                        SizedBox(
-                                          height: 220,
-                                          child: ListView.separated(
-                                            itemCount: _filteredVendors.length,
-                                            separatorBuilder: (_, __) =>
-                                                const SizedBox(height: 10),
-                                            itemBuilder: (context, index) {
-                                              final vendor =
-                                                  _filteredVendors[index];
-                                              final id = _vendorId(vendor);
-                                              final checked =
-                                                  _selectedVendorIds
-                                                      .contains(id);
-                                              return MadCheckbox(
-                                                value: checked,
-                                                label: _vendorName(vendor),
-                                                description:
-                                                    _vendorEmail(vendor),
-                                                onChanged: (value) =>
-                                                    _toggleVendor(
-                                                  id,
-                                                  value,
-                                                ),
-                                              );
-                                            },
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              _selectedVendorIds.isEmpty
+                                                  ? 'Select Vendors'
+                                                  : '${_selectedVendorIds.length} vendor(s) selected',
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: 12),
-                                      if (selectedVendors.isNotEmpty)
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children:
-                                              selectedVendors.map((vendor) {
-                                            final id = _vendorId(vendor);
-                                            return Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 6,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                                color: (isDark
+                                          Icon(
+                                            _vendorDropdownOpen
+                                                ? LucideIcons.chevronUp
+                                                : LucideIcons.chevronDown,
+                                            size: 16,
+                                            color: muted,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  if (_vendorDropdownOpen) ...[
+                                    const SizedBox(height: 12),
+                                    MadInput(
+                                      controller: _vendorSearchController,
+                                      labelText: 'Search vendors',
+                                      hintText:
+                                          'Search vendor name or email...',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      height: 220,
+                                      child: ListView.separated(
+                                        itemCount: _filteredVendors.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(height: 10),
+                                        itemBuilder: (context, index) {
+                                          final vendor =
+                                              _filteredVendors[index];
+                                          final id = _vendorId(vendor);
+                                          final checked = _selectedVendorIds
+                                              .contains(id);
+                                          return MadCheckbox(
+                                            value: checked,
+                                            label: _vendorName(vendor),
+                                            description: _vendorEmail(vendor),
+                                            onChanged: (value) =>
+                                                _toggleVendor(id, value),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  if (selectedVendors.isNotEmpty)
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: selectedVendors.map((vendor) {
+                                        final id = _vendorId(vendor);
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                            color:
+                                                (isDark
                                                         ? AppTheme.darkMuted
                                                         : AppTheme.lightMuted)
                                                     .withOpacity(0.35),
-                                                border: Border.all(
-                                                  color:
-                                                      border.withOpacity(0.5),
+                                            border: Border.all(
+                                              color: border.withOpacity(0.5),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                _vendorName(vendor),
+                                                style: const TextStyle(
+                                                  fontSize: 12,
                                                 ),
                                               ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    _vendorName(vendor),
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  InkWell(
-                                                    onTap: () =>
-                                                        _toggleVendor(
-                                                      id,
-                                                      false,
-                                                    ),
-                                                    child: const Icon(
-                                                      LucideIcons.x,
-                                                      size: 12,
-                                                    ),
-                                                  ),
-                                                ],
+                                              const SizedBox(width: 6),
+                                              InkWell(
+                                                onTap: () =>
+                                                    _toggleVendor(id, false),
+                                                child: const Icon(
+                                                  LucideIcons.x,
+                                                  size: 12,
+                                                ),
                                               ),
-                                            );
-                                          }).toList(),
-                                        )
-                                      else
-                                        Text(
-                                          'No vendor selected',
-                                          style: TextStyle(
-                                            color: muted,
-                                            fontSize: 12,
+                                            ],
                                           ),
-                                        ),
-                                    ],
-                                  ),
+                                        );
+                                      }).toList(),
+                                    )
+                                  else
+                                    Text(
+                                      'No vendor selected',
+                                      style: TextStyle(
+                                        color: muted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                ],
+                              ),
                       ),
                     ),
                   ],
@@ -4470,7 +4643,9 @@ class _PurchaseOrderEmailDialogState
                     text: _sending ? 'Sending...' : 'Send Email',
                     icon: LucideIcons.mail,
                     disabled:
-                        _sending || _loadingVendors || _selectedVendorIds.isEmpty,
+                        _sending ||
+                        _loadingVendors ||
+                        _selectedVendorIds.isEmpty,
                     onPressed: _sendEmail,
                   ),
                 ],

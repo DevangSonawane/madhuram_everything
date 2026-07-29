@@ -1746,6 +1746,34 @@ class ApiClient {
     );
   }
 
+  static Future<Map<String, dynamic>> listVendorComparisons({
+    String? projectId,
+    String? prNo,
+  }) async {
+    final token = await _getToken();
+    final query = <String, String>{};
+    if (projectId != null && projectId.trim().isNotEmpty) {
+      query['project_id'] = projectId.trim();
+    }
+    if (prNo != null && prNo.trim().isNotEmpty) {
+      query['pr_no'] = prNo.trim();
+    }
+    final uri = Uri.parse('$baseUrl/api/vendor-comparison').replace(
+      queryParameters: query.isEmpty ? null : query,
+    );
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getVendorComparisonById(
+    String comparisonId,
+  ) async {
+    final token = await _getToken();
+    final uri = Uri.parse('$baseUrl/api/vendor-comparison/$comparisonId');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
   /// Parse PO file (extract structured data from uploaded PDF)
   static Future<Map<String, dynamic>> parsePOFile(File file) async {
     return _multipartRequest(

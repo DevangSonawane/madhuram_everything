@@ -38,14 +38,35 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     'building_name': '',
     'site_name': '',
     'work_done': '',
+    'flats': '',
     'sample_file': '',
     'location': {'floor': '', 'block': '', 'wing': '', 'coordinates': ''},
     'item_description': [
       {
         'sr_no': '',
+        'item_no': '',
+        'item_name': '',
+        'item_code': '',
+        'code': '',
+        'brand_name': '',
         'description': '',
+        'specification': '',
+        'unit': '',
         'quantity': '',
         'value': '',
+        'qty_per_flat': '',
+        'total_qty': '',
+        'selected_qty': '',
+        'flat_count': '',
+        'floors': '',
+        'boq_flat_multiplier': '',
+        'boq_floor_multiplier': '',
+        'boq_base_qty': '',
+        'boq_id': '',
+        'boq_key': '',
+        'boq_match_key': '',
+        'boq_item_code': '',
+        'boq_description': '',
         'add_fields': [],
       },
     ],
@@ -66,7 +87,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
   }
 
   Future<void> _uploadSampleFiles() async {
-    final files = await FileService.pickMultipleFilesWithSource(context: context);
+    final files = await FileService.pickMultipleFilesWithSource(
+      context: context,
+    );
     if (files.isEmpty) return;
 
     final res = await ApiClient.uploadSampleFiles(files);
@@ -103,7 +126,12 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty) return '';
     final lower = text.toLowerCase();
-    if (lower == '-' || lower == '_' || lower == 'na' || lower == 'n/a' || lower == 'null' || lower == 'undefined') {
+    if (lower == '-' ||
+        lower == '_' ||
+        lower == 'na' ||
+        lower == 'n/a' ||
+        lower == 'null' ||
+        lower == 'undefined') {
       return '';
     }
     return text;
@@ -111,22 +139,33 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
 
   Map<String, dynamic> _deriveBoqFields(Map<String, dynamic> item) {
     final raw = Map<String, dynamic>.from(item);
-    final qtyRaw = raw['quantity'] ?? raw['qty'] ?? raw['order_qty'] ?? raw['orderQty'];
+    final qtyRaw =
+        raw['quantity'] ?? raw['qty'] ?? raw['order_qty'] ?? raw['orderQty'];
     final rateRaw = raw['rate'] ?? raw['unit_price'] ?? raw['unitPrice'];
     final amountRaw = raw['amount'] ?? raw['value'];
     return {
       'id': raw['boq_id'] ?? raw['id'] ?? '',
       'item_no': raw['item_no'] ?? raw['itemNo'] ?? '',
       'item_code': raw['item_code'] ?? raw['itemCode'] ?? raw['code'] ?? '',
-      'section': raw['category'] ?? raw['section'] ?? raw['section_name'] ?? raw['sectionName'] ?? '',
-      'description': raw['description'] ?? raw['item_description'] ?? raw['service_description'] ?? '',
+      'section':
+          raw['category'] ??
+          raw['section'] ??
+          raw['section_name'] ??
+          raw['sectionName'] ??
+          '',
+      'description':
+          raw['description'] ??
+          raw['item_description'] ??
+          raw['service_description'] ??
+          '',
       'unit': raw['unit'] ?? raw['uom'] ?? raw['UOM'] ?? '',
       'qty': qtyRaw ?? '',
       'rate': rateRaw ?? '',
       'amount': amountRaw ?? '',
       'hsn': raw['hsn'] ?? raw['hsn_sac_code'] ?? '',
       'sac_code': raw['sac_code'] ?? '',
-      'client': raw['client'] ?? raw['client_format'] ?? raw['boq_client'] ?? '',
+      'client':
+          raw['client'] ?? raw['client_format'] ?? raw['boq_client'] ?? '',
     };
   }
 
@@ -169,9 +208,26 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
   }
 
   double _toFiniteNumber(dynamic value) {
-    final cleaned = value == null ? '' : value.toString().replaceAll(',', '').trim();
+    final cleaned = value == null
+        ? ''
+        : value.toString().replaceAll(',', '').trim();
     return double.tryParse(cleaned) ?? 0;
   }
+
+  int _parsePositiveInt(dynamic value) {
+    final parsed = int.tryParse(
+      (value ?? '').toString().replaceAll(RegExp(r'[^0-9]'), ''),
+    );
+    return parsed != null && parsed > 0 ? parsed : 0;
+  }
+
+  int get _flatCount => _parsePositiveInt(_createForm['flats']);
+
+  int get _floorCount =>
+      _parsePositiveInt((_createForm['location'] as Map)['floor']);
+
+  int get _sampleMultiplier =>
+      _flatCount > 0 && _floorCount > 0 ? _flatCount * _floorCount : 0;
 
   double _getBoqRemainingQty(Map<String, dynamic> item) {
     final derived = _deriveBoqFields(item);
@@ -201,23 +257,30 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     final items = payload is List
         ? payload
         : payload is Map && payload['boqs'] is List
-            ? payload['boqs'] as List
-            : payload is Map && payload['items'] is List
-                ? payload['items'] as List
-                : payload is Map && payload['data'] is List
-                    ? payload['data'] as List
-                    : const [];
+        ? payload['boqs'] as List
+        : payload is Map && payload['items'] is List
+        ? payload['items'] as List
+        : payload is Map && payload['data'] is List
+        ? payload['data'] as List
+        : const [];
 
-    final rows = items.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final rows = items
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
     String client = '';
-    final storedClient = _cleanToken((payload is Map) ? payload['client'] ?? payload['boq_client'] : '');
+    final storedClient = _cleanToken(
+      (payload is Map) ? payload['client'] ?? payload['boq_client'] : '',
+    );
     if (storedClient.isNotEmpty) {
       client = storedClient.toLowerCase();
     } else {
       final hasLodha = rows.any((row) {
         final derived = _deriveBoqFields(row);
         return derived['hsn'].toString().trim().isNotEmpty ||
-            RegExp(r'^\d+(\.\d+){1,3}$').hasMatch(derived['item_no'].toString().trim());
+            RegExp(
+              r'^\d+(\.\d+){1,3}$',
+            ).hasMatch(derived['item_no'].toString().trim());
       });
       final hasHira = rows.any((row) {
         final derived = _deriveBoqFields(row);
@@ -228,7 +291,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
       if (hasLodha && !hasHira) client = 'lodha';
     }
 
-    final filtered = rows.where((row) => _matchesBoqClient(row, client)).toList();
+    final filtered = rows
+        .where((row) => _matchesBoqClient(row, client))
+        .toList();
     setState(() {
       _activeBoqClient = client;
       _projectBoqItems = filtered;
@@ -237,14 +302,35 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
   }
 
   void _addManualSampleItemRow() {
-    final items = List<Map<String, dynamic>>.from(_createForm['item_description'] as List);
+    final items = List<Map<String, dynamic>>.from(
+      _createForm['item_description'] as List,
+    );
     items.add({
       '_row_type': 'manual',
       'sr_no': '',
+      'item_no': '',
+      'item_name': '',
+      'item_code': '',
+      'code': '',
+      'brand_name': '',
       'description': '',
+      'specification': '',
+      'unit': '',
       'quantity': '',
       'value': '',
-      'unit': '',
+      'qty_per_flat': '',
+      'total_qty': '',
+      'selected_qty': '',
+      'flat_count': '',
+      'floors': '',
+      'boq_flat_multiplier': '',
+      'boq_floor_multiplier': '',
+      'boq_base_qty': '',
+      'boq_id': '',
+      'boq_key': '',
+      'boq_match_key': '',
+      'boq_item_code': '',
+      'boq_description': '',
       'add_fields': [],
     });
     setState(() => _createForm['item_description'] = items);
@@ -252,6 +338,60 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
 
   void _clearItemTable() {
     setState(() => _createForm['item_description'] = []);
+  }
+
+  List<Map<String, dynamic>> get _calculatedSampleRows {
+    final rows = List<Map<String, dynamic>>.from(
+      _createForm['item_description'] as List,
+    );
+    return rows.map((row) {
+      final qtyPerFlat = _toFiniteNumber(
+        row['qty_per_flat'] ??
+            row['selected_qty'] ??
+            row['boq_base_qty'] ??
+            row['quantity'] ??
+            row['qty'] ??
+            row['issued_qty'] ??
+            row['boq_issued_qty'],
+      );
+      final totalQty = _sampleMultiplier > 0
+          ? qtyPerFlat * _sampleMultiplier
+          : qtyPerFlat;
+      final displayItemNo =
+          [
+                row['item_no'],
+                row['itemNo'],
+                row['item_code'],
+                row['itemCode'],
+                row['code'],
+                row['boq_description'],
+                row['description'],
+              ]
+              .map((e) => e?.toString().trim() ?? '')
+              .firstWhere((text) => text.isNotEmpty, orElse: () => '');
+      return {
+        ...row,
+        'item_no': displayItemNo,
+        'qty_per_flat': qtyPerFlat > 0
+            ? qtyPerFlat.toString()
+            : (row['qty_per_flat'] ?? row['quantity'] ?? '').toString(),
+        'flats': _flatCount > 0
+            ? _flatCount.toString()
+            : (row['flats'] ?? row['flat_count'] ?? '').toString(),
+        'floors': _floorCount > 0
+            ? _floorCount.toString()
+            : (row['floors'] ?? '').toString(),
+        'multiplier': _sampleMultiplier > 0
+            ? '$_flatCount x $_floorCount = $_sampleMultiplier'
+            : ((row['flats']?.toString().isNotEmpty == true &&
+                      row['floors']?.toString().isNotEmpty == true)
+                  ? '${row['flats']} x ${row['floors']}'
+                  : ''),
+        'total_qty': totalQty > 0
+            ? totalQty.toString()
+            : (row['total_qty'] ?? row['quantity'] ?? '').toString(),
+      };
+    }).toList();
   }
 
   void _openBoqDescriptionPreview(Map<String, dynamic> item) {
@@ -268,8 +408,10 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
             _boqInfoRow('Item Code', derived['item_code'].toString()),
             _boqInfoRow('Item No', derived['item_no'].toString()),
             _boqInfoRow('Section', derived['section'].toString()),
-            if (_activeBoqClient == 'lodha') _boqInfoRow('HSN', derived['hsn'].toString()),
-            if (_activeBoqClient == 'hiranandani') _boqInfoRow('SAC Code', derived['sac_code'].toString()),
+            if (_activeBoqClient == 'lodha')
+              _boqInfoRow('HSN', derived['hsn'].toString()),
+            if (_activeBoqClient == 'hiranandani')
+              _boqInfoRow('SAC Code', derived['sac_code'].toString()),
             _boqInfoRow('Unit', derived['unit'].toString()),
             _boqInfoRow('Qty', derived['qty'].toString()),
             _boqInfoRow('Rate', derived['rate'].toString()),
@@ -283,7 +425,11 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
         ),
       ),
       actions: [
-        MadButton(text: 'Close', variant: ButtonVariant.outline, onPressed: () => Navigator.pop(context)),
+        MadButton(
+          text: 'Close',
+          variant: ButtonVariant.outline,
+          onPressed: () => Navigator.pop(context),
+        ),
       ],
     );
   }
@@ -296,10 +442,16 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
         children: [
           SizedBox(
             width: 100,
-            child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ),
           Expanded(
-            child: Text(value.isEmpty ? '-' : value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            child: Text(
+              value.isEmpty ? '-' : value,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -312,10 +464,14 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     final auxLabel = client == 'lodha'
         ? 'HSN'
         : client == 'hiranandani'
-            ? 'SAC Code'
-            : 'Floor';
+        ? 'SAC Code'
+        : 'Floor';
 
-    Widget headerCell(String label, double width, {TextAlign align = TextAlign.left}) {
+    Widget headerCell(
+      String label,
+      double width, {
+      TextAlign align = TextAlign.left,
+    }) {
       return SizedBox(
         width: width,
         child: Text(
@@ -324,7 +480,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
           ),
         ),
       );
@@ -333,10 +491,14 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.5),
+        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(
+          alpha: 0.5,
+        ),
         border: Border(
           bottom: BorderSide(
-            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
+            color: (isDark ? Colors.white : Colors.black).withValues(
+              alpha: 0.08,
+            ),
           ),
         ),
       ),
@@ -348,8 +510,16 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
           headerCell(auxLabel, 120),
           headerCell('Unit', 90),
           headerCell('Qty', 100, align: TextAlign.right),
-          headerCell(client == 'hiranandani' ? 'Unit Price' : 'Rate', 120, align: TextAlign.right),
-          headerCell(client == 'hiranandani' ? 'Value' : 'Amount', 130, align: TextAlign.right),
+          headerCell(
+            client == 'hiranandani' ? 'Unit Price' : 'Rate',
+            120,
+            align: TextAlign.right,
+          ),
+          headerCell(
+            client == 'hiranandani' ? 'Value' : 'Amount',
+            130,
+            align: TextAlign.right,
+          ),
           headerCell('Action', 220, align: TextAlign.center),
         ],
       ),
@@ -368,17 +538,32 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     final pendingQty = _pendingBoqQty[key];
     final client = _activeBoqClient;
     final itemCode = client == 'hiranandani'
-        ? (derived['item_no'].toString().isNotEmpty ? derived['item_no'].toString() : '-')
-        : (derived['item_code'].toString().isNotEmpty ? derived['item_code'].toString() : '-');
+        ? (derived['item_no'].toString().isNotEmpty
+              ? derived['item_no'].toString()
+              : '-')
+        : (derived['item_code'].toString().isNotEmpty
+              ? derived['item_code'].toString()
+              : '-');
     final auxValue = client == 'lodha'
-        ? (derived['hsn'].toString().isNotEmpty ? derived['hsn'].toString() : '-')
+        ? (derived['hsn'].toString().isNotEmpty
+              ? derived['hsn'].toString()
+              : '-')
         : client == 'hiranandani'
-            ? (derived['sac_code'].toString().isNotEmpty ? derived['sac_code'].toString() : '-')
-            : (derived['section'].toString().isNotEmpty ? derived['section'].toString() : '-');
+        ? (derived['sac_code'].toString().isNotEmpty
+              ? derived['sac_code'].toString()
+              : '-')
+        : (derived['section'].toString().isNotEmpty
+              ? derived['section'].toString()
+              : '-');
     final rate = _toFiniteNumber(derived['rate']);
     final amount = _toFiniteNumber(derived['amount']);
 
-    Widget cell(String value, double width, {int maxLines = 1, TextAlign align = TextAlign.left}) {
+    Widget cell(
+      String value,
+      double width, {
+      int maxLines = 1,
+      TextAlign align = TextAlign.left,
+    }) {
       return SizedBox(
         width: width,
         child: Text(
@@ -398,7 +583,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
           SizedBox(
             width: 140,
             child: MadBadge(
-              text: derived['section'].toString().isEmpty ? 'General' : derived['section'].toString(),
+              text: derived['section'].toString().isEmpty
+                  ? 'General'
+                  : derived['section'].toString(),
               variant: BadgeVariant.outline,
             ),
           ),
@@ -408,7 +595,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
             child: InkWell(
               onTap: () => _openBoqDescriptionPreview(item),
               child: Text(
-                derived['description'].toString().isEmpty ? '-' : derived['description'].toString(),
+                derived['description'].toString().isEmpty
+                    ? '-'
+                    : derived['description'].toString(),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -417,8 +606,16 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
           cell(auxValue, 120),
           cell(derived['unit'].toString(), 90),
           cell(availableQty.toString(), 100, align: TextAlign.right),
-          cell(rate > 0 ? '₹${rate.toStringAsFixed(2)}' : '–', 120, align: TextAlign.right),
-          cell(amount > 0 ? '₹${amount.toStringAsFixed(2)}' : '–', 130, align: TextAlign.right),
+          cell(
+            rate > 0 ? '₹${rate.toStringAsFixed(2)}' : '–',
+            120,
+            align: TextAlign.right,
+          ),
+          cell(
+            amount > 0 ? '₹${amount.toStringAsFixed(2)}' : '–',
+            130,
+            align: TextAlign.right,
+          ),
           SizedBox(
             width: 220,
             child: Align(
@@ -435,16 +632,24 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                           size: ButtonSize.icon,
                           variant: ButtonVariant.outline,
                           onPressed: () {
-                            final current = int.tryParse(_pendingBoqQty[key] ?? '1') ?? 1;
-                            dialogSetState(() => _pendingBoqQty[key] = (current - 1).clamp(1, 999999).toString());
+                            final current =
+                                int.tryParse(_pendingBoqQty[key] ?? '1') ?? 1;
+                            dialogSetState(
+                              () => _pendingBoqQty[key] = (current - 1)
+                                  .clamp(1, 999999)
+                                  .toString(),
+                            );
                           },
                         ),
                         SizedBox(
                           width: 72,
                           child: MadInput(
                             labelText: '',
-                            controller: TextEditingController(text: pendingQty ?? '1'),
-                            onChanged: (v) => dialogSetState(() => _pendingBoqQty[key] = v),
+                            controller: TextEditingController(
+                              text: pendingQty ?? '1',
+                            ),
+                            onChanged: (v) =>
+                                dialogSetState(() => _pendingBoqQty[key] = v),
                           ),
                         ),
                         MadButton(
@@ -452,21 +657,29 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                           size: ButtonSize.icon,
                           variant: ButtonVariant.outline,
                           onPressed: () {
-                            final current = int.tryParse(_pendingBoqQty[key] ?? '1') ?? 1;
-                            dialogSetState(() => _pendingBoqQty[key] = (current + 1).toString());
+                            final current =
+                                int.tryParse(_pendingBoqQty[key] ?? '1') ?? 1;
+                            dialogSetState(
+                              () => _pendingBoqQty[key] = (current + 1)
+                                  .toString(),
+                            );
                           },
                         ),
                         MadButton(
                           text: 'Apply',
                           onPressed: () {
-                            final qty = int.tryParse(_pendingBoqQty[key] ?? '') ?? 0;
+                            final qty =
+                                int.tryParse(_pendingBoqQty[key] ?? '') ?? 0;
                             if (qty <= 0) return;
                             _addBoqItemToSampleItems(item, qty);
                             dialogSetState(() {
                               _addingBoqKey = null;
                               _pendingBoqQty.remove(key);
                             });
-                            Navigator.of(context, rootNavigator: true).maybePop();
+                            Navigator.of(
+                              context,
+                              rootNavigator: true,
+                            ).maybePop();
                           },
                         ),
                         MadButton(
@@ -536,7 +749,17 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
       content: StatefulBuilder(
         builder: (context, dialogSetState) {
           final filtered = _filteredBoqItems;
-          final tableWidth = 140.0 + 120.0 + 320.0 + 120.0 + 90.0 + 100.0 + 120.0 + 130.0 + 220.0 + 24.0;
+          final tableWidth =
+              140.0 +
+              120.0 +
+              320.0 +
+              120.0 +
+              90.0 +
+              100.0 +
+              120.0 +
+              130.0 +
+              220.0 +
+              24.0;
           return SizedBox(
             width: double.maxFinite,
             height: 600,
@@ -547,7 +770,8 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                     Expanded(
                       child: MadInput(
                         labelText: 'Search',
-                        hintText: 'Search by item no, section, unit, or description',
+                        hintText:
+                            'Search by item no, section, unit, or description',
                         onChanged: (v) => dialogSetState(() => _boqSearch = v),
                       ),
                     ),
@@ -555,7 +779,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                     MadButton(
                       text: 'Refresh',
                       variant: ButtonVariant.outline,
-                      icon: _loadingProjectBoqItems ? null : LucideIcons.refreshCw,
+                      icon: _loadingProjectBoqItems
+                          ? null
+                          : LucideIcons.refreshCw,
                       loading: _loadingProjectBoqItems,
                       onPressed: _loadingProjectBoqItems
                           ? null
@@ -565,7 +791,11 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                                 await _refreshProjectBoqItems();
                                 dialogSetState(() {});
                               } finally {
-                                if (mounted) setState(() => _loadingProjectBoqItems = false);
+                                if (mounted) {
+                                  setState(
+                                    () => _loadingProjectBoqItems = false,
+                                  );
+                                }
                               }
                             },
                     ),
@@ -573,12 +803,17 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                 ),
                 const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
-                    color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.35),
+                    color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                        .withValues(alpha: 0.35),
                     border: Border(
                       bottom: BorderSide(
-                        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -587,7 +822,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                       Icon(
                         LucideIcons.moveHorizontal,
                         size: 16,
-                        color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -595,7 +832,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                           'Swipe horizontally to view all columns',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
                           ),
                         ),
                       ),
@@ -619,13 +858,16 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                                     itemCount: filtered.length,
                                     separatorBuilder: (context, _) => Divider(
                                       height: 1,
-                                      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+                                      color:
+                                          (isDark ? Colors.white : Colors.black)
+                                              .withValues(alpha: 0.06),
                                     ),
-                                    itemBuilder: (context, index) => _buildBoqPickerRow(
-                                      filtered[index],
-                                      isDark,
-                                      dialogSetState,
-                                    ),
+                                    itemBuilder: (context, index) =>
+                                        _buildBoqPickerRow(
+                                          filtered[index],
+                                          isDark,
+                                          dialogSetState,
+                                        ),
                                   ),
                                 ),
                               ],
@@ -639,7 +881,11 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
         },
       ),
       actions: [
-        MadButton(text: 'Close', variant: ButtonVariant.outline, onPressed: _closeBoqPicker),
+        MadButton(
+          text: 'Close',
+          variant: ButtonVariant.outline,
+          onPressed: _closeBoqPicker,
+        ),
       ],
     );
   }
@@ -666,40 +912,80 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     final derived = _deriveBoqFields(boqItem);
     final key = _boqItemKey(boqItem);
     final rate = _toFiniteNumber(derived['rate']);
-    final amount = rate > 0 ? rate * selectedQty : _toFiniteNumber(derived['amount']);
+    final amount = rate > 0
+        ? rate * selectedQty
+        : _toFiniteNumber(derived['amount']);
+    final flatCount = _flatCount;
+    final floorCount = _floorCount;
+    final multiplier = _sampleMultiplier;
+    final totalQty = multiplier > 0 ? selectedQty * multiplier : selectedQty;
     final row = <String, dynamic>{
       '_row_type': 'boq',
       'sr_no': _createForm['item_description'].length.toString(),
+      'item_no': derived['item_no'].toString().isNotEmpty
+          ? derived['item_no'].toString()
+          : derived['item_code'].toString(),
+      'item_name': derived['description'].toString(),
+      'item_code': derived['item_code'].toString(),
+      'code': derived['item_code'].toString(),
+      'brand_name': '',
       'description': derived['description'].toString(),
+      'specification': '',
       'unit': derived['unit'].toString(),
       'quantity': selectedQty.toString(),
       'value': amount > 0 ? amount.toString() : '',
+      'qty_per_flat': selectedQty.toString(),
+      'total_qty': totalQty.toString(),
+      'selected_qty': selectedQty.toString(),
+      'flat_count': flatCount.toString(),
+      'floors': floorCount.toString(),
+      'boq_flat_multiplier': flatCount.toString(),
+      'boq_floor_multiplier': floorCount.toString(),
+      'boq_base_qty': selectedQty.toString(),
+      'boq_id': derived['id'].toString(),
+      'boq_key': key,
+      'boq_match_key': key,
+      'boq_item_code': derived['item_code'].toString(),
+      'boq_description': derived['description'].toString(),
       'add_fields': [
         {'key': 'boq_id', 'value': derived['id'].toString()},
         {'key': 'boq_key', 'value': key},
+        {'key': 'boq_match_key', 'value': key},
         {'key': 'item_code', 'value': derived['item_code'].toString()},
         {'key': 'item_no', 'value': derived['item_no'].toString()},
         {'key': 'section', 'value': derived['section'].toString()},
         {'key': 'description', 'value': derived['description'].toString()},
         {'key': 'unit', 'value': derived['unit'].toString()},
         {'key': 'qty', 'value': selectedQty.toString()},
+        {'key': 'qty_per_flat', 'value': selectedQty.toString()},
+        {'key': 'selected_qty', 'value': selectedQty.toString()},
+        {'key': 'flat_count', 'value': flatCount.toString()},
+        {'key': 'floors', 'value': floorCount.toString()},
+        {'key': 'boq_flat_multiplier', 'value': flatCount.toString()},
+        {'key': 'boq_floor_multiplier', 'value': floorCount.toString()},
+        {'key': 'boq_base_qty', 'value': selectedQty.toString()},
         {'key': 'rate', 'value': derived['rate'].toString()},
         {'key': 'amount', 'value': amount > 0 ? amount.toString() : ''},
+        {'key': 'total_qty', 'value': totalQty.toString()},
         {'key': 'hsn', 'value': derived['hsn'].toString()},
         {'key': 'sac_code', 'value': derived['sac_code'].toString()},
-        {'key': 'selected_qty', 'value': selectedQty.toString()},
         {'key': 'project_id', 'value': _projectId.trim()},
       ],
     };
 
     setState(() {
-      final items = List<Map<String, dynamic>>.from(_createForm['item_description'] as List);
+      final items = List<Map<String, dynamic>>.from(
+        _createForm['item_description'] as List,
+      );
       final existingIndex = items.indexWhere((existing) {
-        final fields = List<Map<String, dynamic>>.from(existing['add_fields'] as List? ?? []);
-        final existingKey = fields.firstWhere(
-          (f) => (f['key'] ?? '').toString().trim() == 'boq_key',
-          orElse: () => <String, dynamic>{'value': ''},
-        )['value']
+        final fields = List<Map<String, dynamic>>.from(
+          existing['add_fields'] as List? ?? [],
+        );
+        final existingKey = fields
+            .firstWhere(
+              (f) => (f['key'] ?? '').toString().trim() == 'boq_key',
+              orElse: () => <String, dynamic>{'value': ''},
+            )['value']
             .toString();
         return existingKey == key;
       });
@@ -709,15 +995,53 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
         final existing = Map<String, dynamic>.from(items[existingIndex]);
         final existingQty = _toFiniteNumber(existing['quantity']);
         final nextQty = existingQty + selectedQty;
+        final nextTotalQty = multiplier > 0 ? nextQty * multiplier : nextQty;
         existing['quantity'] = nextQty.toString();
+        existing['qty_per_flat'] = nextQty.toString();
+        existing['total_qty'] = nextTotalQty.toString();
+        existing['selected_qty'] = nextQty.toString();
+        existing['flat_count'] = flatCount.toString();
+        existing['floors'] = floorCount.toString();
+        existing['boq_flat_multiplier'] = flatCount.toString();
+        existing['boq_floor_multiplier'] = floorCount.toString();
+        existing['boq_base_qty'] = nextQty.toString();
         existing['value'] = (rate > 0 ? rate * nextQty : amount).toString();
-        final fields = List<Map<String, dynamic>>.from(existing['add_fields'] as List? ?? []);
+        final fields = List<Map<String, dynamic>>.from(
+          existing['add_fields'] as List? ?? [],
+        );
         for (var i = 0; i < fields.length; i++) {
-          if ((fields[i]['key'] ?? '').toString() == 'qty' || (fields[i]['key'] ?? '').toString() == 'selected_qty' || (fields[i]['key'] ?? '').toString() == 'amount') {
-            if ((fields[i]['key'] ?? '').toString() == 'qty' || (fields[i]['key'] ?? '').toString() == 'selected_qty') {
-              fields[i] = {'key': fields[i]['key'], 'value': nextQty.toString()};
+          final fieldKey = (fields[i]['key'] ?? '').toString();
+          if (fieldKey == 'qty' ||
+              fieldKey == 'qty_per_flat' ||
+              fieldKey == 'selected_qty' ||
+              fieldKey == 'boq_base_qty' ||
+              fieldKey == 'flat_count' ||
+              fieldKey == 'floors' ||
+              fieldKey == 'boq_flat_multiplier' ||
+              fieldKey == 'boq_floor_multiplier' ||
+              fieldKey == 'total_qty' ||
+              fieldKey == 'amount') {
+            if (fieldKey == 'qty' ||
+                fieldKey == 'qty_per_flat' ||
+                fieldKey == 'selected_qty' ||
+                fieldKey == 'boq_base_qty' ||
+                fieldKey == 'flat_count' ||
+                fieldKey == 'floors' ||
+                fieldKey == 'boq_flat_multiplier' ||
+                fieldKey == 'boq_floor_multiplier') {
+              fields[i] = {
+                'key': fields[i]['key'],
+                'value': nextQty.toString(),
+              };
             } else {
-              fields[i] = {'key': fields[i]['key'], 'value': (rate > 0 ? rate * nextQty : amount).toString()};
+              fields[i] = {
+                'key': fields[i]['key'],
+                'value':
+                    (fieldKey == 'total_qty'
+                            ? nextTotalQty
+                            : (rate > 0 ? rate * nextQty : amount))
+                        .toString(),
+              };
             }
           }
         }
@@ -738,6 +1062,12 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
     setState(() => _saving = true);
     final payload = Map<String, dynamic>.from(_createForm);
     payload['project_id'] = projectId;
+    payload['sample_id'] = payload['sample_id']?.toString().trim() ?? '';
+    payload['flats'] = payload['flats']?.toString().trim() ?? '';
+    payload['location'] = {
+      ...Map<String, dynamic>.from(payload['location'] as Map),
+      'flat_no': payload['flats'],
+    };
     final res = await ApiClient.createSample(payload);
     if (!mounted) return;
     setState(() => _saving = false);
@@ -838,11 +1168,16 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
   }
 
   Widget _buildSampleItemSection(bool isDark, bool isMobile) {
-    final items = List<Map<String, dynamic>>.from(_createForm['item_description'] as List);
+    final items = List<Map<String, dynamic>>.from(
+      _createForm['item_description'] as List,
+    );
 
     Widget buildRow(Map<String, dynamic> row, int index) {
-      final isBoqRow = (row['_row_type'] ?? '').toString().toLowerCase() == 'boq';
-      final fields = List<Map<String, dynamic>>.from(row['add_fields'] as List? ?? []);
+      final isBoqRow =
+          (row['_row_type'] ?? '').toString().toLowerCase() == 'boq';
+      final fields = List<Map<String, dynamic>>.from(
+        row['add_fields'] as List? ?? [],
+      );
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: MadCard(
@@ -851,80 +1186,159 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
-                    Expanded(
-                      child: MadTextarea(
-                        labelText: 'Description',
-                        minLines: 2,
-                        controller: TextEditingController(text: row['description']?.toString() ?? ''),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 120,
+                      child: MadInput(
+                        labelText: 'Sr No',
+                        controller: TextEditingController(
+                          text: row['sr_no']?.toString() ?? '',
+                        ),
                         onChanged: (v) {
-                          row['description'] = v;
-                          _createForm['item_description'] = items;
+                          setState(() {
+                            row['sr_no'] = v;
+                            _createForm['item_description'] = items;
+                          });
                         },
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.end,
-                        children: [
-                          SizedBox(
-                            width: 110,
-                            child: MadInput(
-                              labelText: 'Unit',
-                              controller: TextEditingController(text: row['unit']?.toString() ?? ''),
-                              onChanged: (v) {
-                                row['unit'] = v;
-                                _createForm['item_description'] = items;
-                              },
-                            ),
-                          ),
-                          SizedBox(
-                            width: 110,
-                            child: MadInput(
-                              labelText: 'Qty',
-                              controller: TextEditingController(text: row['quantity']?.toString() ?? ''),
-                              onChanged: (v) {
-                                row['quantity'] = v;
-                                _createForm['item_description'] = items;
-                              },
-                            ),
-                          ),
-                          SizedBox(
-                            width: 110,
-                            child: MadInput(
-                              labelText: 'Value',
-                              controller: TextEditingController(text: row['value']?.toString() ?? ''),
-                              onChanged: (v) {
-                                row['value'] = v;
-                                _createForm['item_description'] = items;
-                              },
-                            ),
-                          ),
-                          MadButton(
-                            icon: LucideIcons.plus,
-                            size: ButtonSize.sm,
-                            variant: ButtonVariant.outline,
-                            onPressed: () => _openItemFieldDialog(index),
-                          ),
-                          if (items.length > 1)
-                            MadButton(
-                              icon: LucideIcons.trash2,
-                              variant: ButtonVariant.outline,
-                              size: ButtonSize.sm,
-                              onPressed: () {
-                                setState(() {
-                                  items.removeAt(index);
-                                  _createForm['item_description'] = items;
-                                });
-                              },
-                            ),
-                        ],
+                    SizedBox(
+                      width: isMobile ? double.infinity : 180,
+                      child: MadInput(
+                        labelText: 'Item No',
+                        controller: TextEditingController(
+                          text: row['item_no']?.toString() ?? '',
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            row['item_no'] = v;
+                            _createForm['item_description'] = items;
+                          });
+                        },
                       ),
                     ),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 240,
+                      child: MadInput(
+                        labelText: 'Item Code',
+                        controller: TextEditingController(
+                          text: row['item_code']?.toString() ?? '',
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            row['item_code'] = v;
+                            row['code'] = v;
+                            _createForm['item_description'] = items;
+                          });
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 220,
+                      child: MadInput(
+                        labelText: 'Brand Name',
+                        controller: TextEditingController(
+                          text: row['brand_name']?.toString() ?? '',
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            row['brand_name'] = v;
+                            _createForm['item_description'] = items;
+                          });
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 220,
+                      child: MadInput(
+                        labelText: 'Unit',
+                        controller: TextEditingController(
+                          text: row['unit']?.toString() ?? '',
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            row['unit'] = v;
+                            _createForm['item_description'] = items;
+                          });
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 220,
+                      child: MadInput(
+                        labelText: 'Qty / Flat',
+                        keyboardType: TextInputType.number,
+                        controller: TextEditingController(
+                          text:
+                              row['qty_per_flat']?.toString().isNotEmpty == true
+                              ? row['qty_per_flat']?.toString() ?? ''
+                              : row['quantity']?.toString() ?? '',
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            row['qty_per_flat'] = v;
+                            row['quantity'] = v;
+                            row['selected_qty'] = v;
+                            row['boq_base_qty'] = v;
+                            _createForm['item_description'] = items;
+                          });
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 220,
+                      child: MadInput(
+                        labelText: 'Value',
+                        controller: TextEditingController(
+                          text: row['value']?.toString() ?? '',
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            row['value'] = v;
+                            _createForm['item_description'] = items;
+                          });
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: isMobile ? double.infinity : 420,
+                      child: MadTextarea(
+                        labelText: 'Description',
+                        minLines: 2,
+                        controller: TextEditingController(
+                          text: row['description']?.toString() ?? '',
+                        ),
+                        onChanged: (v) {
+                          setState(() {
+                            row['description'] = v;
+                            row['item_name'] = v;
+                            row['boq_description'] = v;
+                            _createForm['item_description'] = items;
+                          });
+                        },
+                      ),
+                    ),
+                    MadButton(
+                      icon: LucideIcons.plus,
+                      size: ButtonSize.sm,
+                      variant: ButtonVariant.outline,
+                      onPressed: () => _openItemFieldDialog(index),
+                    ),
+                    if (items.length > 1)
+                      MadButton(
+                        icon: LucideIcons.trash2,
+                        variant: ButtonVariant.outline,
+                        size: ButtonSize.sm,
+                        onPressed: () {
+                          setState(() {
+                            items.removeAt(index);
+                            _createForm['item_description'] = items;
+                          });
+                        },
+                      ),
                   ],
                 ),
                 if (fields.isNotEmpty) ...[
@@ -933,14 +1347,19 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (int fieldIndex = 0; fieldIndex < fields.length; fieldIndex++)
+                      for (
+                        int fieldIndex = 0;
+                        fieldIndex < fields.length;
+                        fieldIndex++
+                      )
                         Wrap(
                           spacing: 4,
                           runSpacing: 4,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             MadBadge(
-                              text: '${fields[fieldIndex]['key'] ?? ''}: ${fields[fieldIndex]['value'] ?? ''}',
+                              text:
+                                  '${fields[fieldIndex]['key'] ?? ''}: ${fields[fieldIndex]['value'] ?? ''}',
                               variant: BadgeVariant.outline,
                             ),
                             const SizedBox(width: 4),
@@ -948,7 +1367,8 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                               icon: LucideIcons.x,
                               size: ButtonSize.sm,
                               variant: ButtonVariant.outline,
-                              onPressed: () => _removeItemField(index, fieldIndex),
+                              onPressed: () =>
+                                  _removeItemField(index, fieldIndex),
                             ),
                           ],
                         ),
@@ -961,7 +1381,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                     'BOQ curated row',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                   ),
                 ],
@@ -989,7 +1411,10 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            MadBadge(text: '${items.length} row(s)', variant: BadgeVariant.outline),
+            MadBadge(
+              text: '${items.length} row(s)',
+              variant: BadgeVariant.outline,
+            ),
             MadButton(
               text: 'View Items in BOQ',
               icon: LucideIcons.layers,
@@ -1017,8 +1442,11 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
-              color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.25),
+              border: Border.all(
+                color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+              ),
+              color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                  .withValues(alpha: 0.25),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -1027,7 +1455,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                   'No items added yet. Use View Items in BOQ or add a manual row here.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                    color: isDark
+                        ? AppTheme.darkMutedForeground
+                        : AppTheme.lightMutedForeground,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1063,6 +1493,257 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
               onPressed: items.isEmpty ? null : _clearItemTable,
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalculatedPreviewSection(bool isDark) {
+    final rows = _calculatedSampleRows;
+
+    Widget summaryCard(String title, String value) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+          ),
+          color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(
+            alpha: 0.25,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 0.6,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget cell(
+      String value,
+      double width, {
+      TextAlign align = TextAlign.left,
+      int maxLines = 1,
+    }) {
+      return SizedBox(
+        width: width,
+        child: Text(
+          value.isEmpty ? '-' : value,
+          textAlign: align,
+          maxLines: maxLines,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+    }
+
+    final tableWidth =
+        220.0 +
+        520.0 +
+        220.0 +
+        420.0 +
+        260.0 +
+        180.0 +
+        120.0 +
+        120.0 +
+        120.0 +
+        150.0 +
+        140.0 +
+        24.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Calculated Preview',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Read-only totals calculated from `flats count x floors x qty per flat`.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                summaryCard(
+                  'Flats Count',
+                  _flatCount > 0 ? _flatCount.toString() : '-',
+                ),
+                summaryCard(
+                  'Floors',
+                  _floorCount > 0 ? _floorCount.toString() : '-',
+                ),
+                summaryCard(
+                  'Multiplier',
+                  _sampleMultiplier > 0 ? _sampleMultiplier.toString() : '-',
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+            ),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: tableWidth,
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                          .withValues(alpha: 0.4),
+                      border: Border(
+                        bottom: BorderSide(
+                          color: (isDark ? Colors.white : Colors.black)
+                              .withValues(alpha: 0.08),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        cell('Item No', 220),
+                        cell('Description', 520),
+                        cell('Item Code', 220),
+                        cell('Specification', 420),
+                        cell('Brand Name', 260),
+                        cell('Unit', 180),
+                        cell('Qty / Flat', 120, align: TextAlign.right),
+                        cell('Flats', 120, align: TextAlign.center),
+                        cell('Floors', 120, align: TextAlign.center),
+                        cell('Multiplier', 150, align: TextAlign.center),
+                        cell('Total Qty', 140, align: TextAlign.right),
+                      ],
+                    ),
+                  ),
+                  if (rows.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'No rows to preview',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppTheme.darkMutedForeground
+                                : AppTheme.lightMutedForeground,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...rows.asMap().entries.map((entry) {
+                      final row = entry.value;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: (isDark ? Colors.white : Colors.black)
+                                  .withValues(alpha: 0.06),
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            cell(row['item_no']?.toString() ?? '-', 220),
+                            cell(row['description']?.toString() ?? '-', 520),
+                            cell(row['item_code']?.toString() ?? '-', 220),
+                            cell(row['specification']?.toString() ?? '-', 420),
+                            cell(row['brand_name']?.toString() ?? '-', 260),
+                            cell(row['unit']?.toString() ?? '-', 180),
+                            cell(
+                              row['qty_per_flat']?.toString() ?? '-',
+                              120,
+                              align: TextAlign.right,
+                            ),
+                            cell(
+                              row['flats']?.toString() ?? '-',
+                              120,
+                              align: TextAlign.center,
+                            ),
+                            cell(
+                              row['floors']?.toString() ?? '-',
+                              120,
+                              align: TextAlign.center,
+                            ),
+                            cell(
+                              row['multiplier']?.toString() ?? '-',
+                              150,
+                              align: TextAlign.center,
+                              maxLines: 2,
+                            ),
+                            cell(
+                              row['total_qty']?.toString() ?? '-',
+                              140,
+                              align: TextAlign.right,
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -1129,25 +1810,29 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                       MadInput(
                         labelText: 'Sample ID',
                         hintText: 'Enter sample ID (e.g. SAMPLE-001)',
-                        onChanged: (v) => _createForm['sample_id'] = v,
+                        onChanged: (v) =>
+                            setState(() => _createForm['sample_id'] = v),
                       ),
                       const SizedBox(height: 12),
                       MadInput(
                         labelText: 'Building name',
                         hintText: 'Building A',
-                        onChanged: (v) => _createForm['building_name'] = v,
+                        onChanged: (v) =>
+                            setState(() => _createForm['building_name'] = v),
                       ),
                       const SizedBox(height: 12),
                       MadInput(
                         labelText: 'Site name',
                         hintText: 'Site 1',
-                        onChanged: (v) => _createForm['site_name'] = v,
+                        onChanged: (v) =>
+                            setState(() => _createForm['site_name'] = v),
                       ),
                       const SizedBox(height: 12),
                       MadInput(
                         labelText: 'Work done',
                         hintText: 'CPVC',
-                        onChanged: (v) => _createForm['work_done'] = v,
+                        onChanged: (v) =>
+                            setState(() => _createForm['work_done'] = v),
                       ),
                     ] else
                       Row(
@@ -1158,7 +1843,7 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                               hintText: 'Enter project id',
                               controller: _projectIdController,
                               enabled: widget.initialProjectId.isEmpty,
-                              onChanged: (v) => _projectId = v,
+                              onChanged: (v) => setState(() => _projectId = v),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -1166,7 +1851,8 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                             child: MadInput(
                               labelText: 'Sample ID',
                               hintText: 'Enter sample ID (e.g. SAMPLE-001)',
-                              onChanged: (v) => _createForm['sample_id'] = v,
+                              onChanged: (v) =>
+                                  setState(() => _createForm['sample_id'] = v),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -1174,8 +1860,9 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                             child: MadInput(
                               labelText: 'Building name',
                               hintText: 'Building A',
-                              onChanged: (v) =>
-                                  _createForm['building_name'] = v,
+                              onChanged: (v) => setState(
+                                () => _createForm['building_name'] = v,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -1183,7 +1870,8 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                             child: MadInput(
                               labelText: 'Site name',
                               hintText: 'Site 1',
-                              onChanged: (v) => _createForm['site_name'] = v,
+                              onChanged: (v) =>
+                                  setState(() => _createForm['site_name'] = v),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -1191,93 +1879,129 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                             child: MadInput(
                               labelText: 'Work done',
                               hintText: 'CPVC',
-                              onChanged: (v) => _createForm['work_done'] = v,
+                              onChanged: (v) =>
+                                  setState(() => _createForm['work_done'] = v),
                             ),
                           ),
                         ],
                       ),
                     const SizedBox(height: 16),
-                    if (isMobile) ...[
-                      MadInput(
-                        labelText: 'Floor',
-                        onChanged: (v) {
-                          location['floor'] = v;
-                          _createForm['location'] = location;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      MadInput(
-                        labelText: 'Block',
-                        onChanged: (v) {
-                          location['block'] = v;
-                          _createForm['location'] = location;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      MadInput(
-                        labelText: 'Wing',
-                        onChanged: (v) {
-                          location['wing'] = v;
-                          _createForm['location'] = location;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      MadInput(
-                        labelText: 'Coordinates',
-                        onChanged: (v) {
-                          location['coordinates'] = v;
-                          _createForm['location'] = location;
-                        },
-                      ),
-                    ] else
-                      Row(
-                        children: [
-                          Expanded(
-                            child: MadInput(
-                              labelText: 'Floor',
-                              onChanged: (v) {
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 12,
+                      children: [
+                        SizedBox(
+                          width: isMobile ? double.infinity : 220,
+                          child: MadInput(
+                            labelText: 'Floor/Shaft',
+                            keyboardType: TextInputType.number,
+                            onChanged: (v) {
+                              setState(() {
                                 location['floor'] = v;
                                 _createForm['location'] = location;
-                              },
-                            ),
+                              });
+                            },
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: MadInput(
-                              labelText: 'Block',
-                              onChanged: (v) {
+                        ),
+                        SizedBox(
+                          width: isMobile ? double.infinity : 220,
+                          child: MadInput(
+                            labelText: 'Flat/Zone',
+                            keyboardType: TextInputType.number,
+                            hintText: 'Enter the flat count as a number.',
+                            onChanged: (v) =>
+                                setState(() => _createForm['flats'] = v),
+                          ),
+                        ),
+                        SizedBox(
+                          width: isMobile ? double.infinity : 220,
+                          child: MadInput(
+                            labelText: 'Block',
+                            onChanged: (v) {
+                              setState(() {
                                 location['block'] = v;
                                 _createForm['location'] = location;
-                              },
-                            ),
+                              });
+                            },
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: MadInput(
-                              labelText: 'Wing',
-                              onChanged: (v) {
+                        ),
+                        SizedBox(
+                          width: isMobile ? double.infinity : 220,
+                          child: MadInput(
+                            labelText: 'Wing',
+                            onChanged: (v) {
+                              setState(() {
                                 location['wing'] = v;
                                 _createForm['location'] = location;
-                              },
-                            ),
+                              });
+                            },
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: MadInput(
-                              labelText: 'Coordinates',
-                              onChanged: (v) {
+                        ),
+                        SizedBox(
+                          width: isMobile ? double.infinity : 320,
+                          child: MadInput(
+                            labelText: 'Coordinates',
+                            onChanged: (v) {
+                              setState(() {
                                 location['coordinates'] = v;
                                 _createForm['location'] = location;
-                              },
-                            ),
+                              });
+                            },
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: MadSelect<String>(
+                    Text(
+                      'Other documents/diagrams',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isDark
+                              ? AppTheme.darkBorder
+                              : AppTheme.lightBorder,
+                        ),
+                        color:
+                            (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                                .withValues(alpha: 0.2),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              MadButton(
+                                text: 'Select Files',
+                                icon: LucideIcons.upload,
+                                variant: ButtonVariant.outline,
+                                onPressed: _uploadSampleFiles,
+                              ),
+                              if (_selectedUploadedFile.isNotEmpty)
+                                MadButton(
+                                  text: 'Preview',
+                                  icon: LucideIcons.eye,
+                                  variant: ButtonVariant.outline,
+                                  onPressed: _openAttachmentPreview,
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          MadSelect<String>(
                             value: _selectedUploadedFile.isEmpty
                                 ? null
                                 : _selectedUploadedFile,
@@ -1285,7 +2009,12 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                                 ? 'Upload files first'
                                 : 'Select uploaded file',
                             options: _uploadFilePaths
-                                .map((e) => MadSelectOption(value: e, label: _fileNameFromPath(e)))
+                                .map(
+                                  (e) => MadSelectOption(
+                                    value: e,
+                                    label: _fileNameFromPath(e),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) {
                               setState(() {
@@ -1295,27 +2024,23 @@ class _SampleCreatePageState extends State<SampleCreatePage> {
                               });
                             },
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        MadButton(
-                          text: 'Upload',
-                          icon: LucideIcons.upload,
-                          variant: ButtonVariant.outline,
-                          onPressed: _uploadSampleFiles,
-                        ),
-                        const SizedBox(width: 8),
-                        MadButton(
-                          text: 'Preview',
-                          icon: LucideIcons.eye,
-                          variant: ButtonVariant.outline,
-                          onPressed: _selectedUploadedFile.isEmpty
-                              ? null
-                              : _openAttachmentPreview,
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            'Drag and drop support is handled through the file picker on mobile and desktop.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
                     _buildSampleItemSection(isDark, isMobile),
+                    const SizedBox(height: 16),
+                    _buildCalculatedPreviewSection(isDark),
                     const SizedBox(height: 16),
                     Text(
                       'Additional Fields',

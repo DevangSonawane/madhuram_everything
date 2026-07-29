@@ -21,37 +21,86 @@ import '../providers/legacy_session_providers.dart';
 import '../utils/riverpod_context.dart';
 
 class PurchaseRequestItem {
+  String itemNo;
+  String itemName;
   String materialDescription;
   String unit;
   String reqQty;
   String make;
   String placeOfUtilisation;
+  String rowSource;
+  String? inventoryId;
+  String? issuedQty;
+  String? boqId;
+  String? boqQty;
 
   PurchaseRequestItem({
+    this.itemNo = '',
+    this.itemName = '',
     this.materialDescription = '',
     this.unit = 'NOS',
     this.reqQty = '',
     this.make = '',
     this.placeOfUtilisation = '',
+    this.rowSource = 'manual',
+    this.inventoryId,
+    this.issuedQty,
+    this.boqId,
+    this.boqQty,
   });
 
   factory PurchaseRequestItem.fromJson(Map<String, dynamic> json) {
     return PurchaseRequestItem(
+      itemNo: (json['item_no'] ?? json['itemNo'] ?? '').toString(),
+      itemName: (json['item_name'] ?? json['itemName'] ?? '').toString(),
       materialDescription: (json['material_description'] ?? '').toString(),
       unit: (json['unit'] ?? 'NOS').toString(),
       reqQty: (json['req_qty'] ?? '').toString(),
       make: (json['make'] ?? '').toString(),
       placeOfUtilisation: (json['place_of_utilisation'] ?? '').toString(),
+      rowSource: (json['row_source'] ?? 'manual').toString(),
+      inventoryId: json['inventory_id']?.toString(),
+      issuedQty: json['issued_qty']?.toString(),
+      boqId: json['boq_id']?.toString(),
+      boqQty: json['boq_qty']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() {
+    final resolvedItemNo = itemNo.trim().isNotEmpty
+        ? itemNo.trim()
+        : itemName.trim();
+    final resolvedItemName = itemName.trim().isNotEmpty
+        ? itemName.trim()
+        : resolvedItemNo;
+    final reqQtyValue = reqQty.trim();
     return {
+      'item_no': resolvedItemNo,
+      'item_name': resolvedItemName,
       'material_description': materialDescription,
       'unit': unit,
-      'req_qty': reqQty,
+      'req_qty': reqQtyValue,
       'make': make,
       'place_of_utilisation': placeOfUtilisation,
+      'row_source': rowSource,
+      if (inventoryId != null && inventoryId!.isNotEmpty)
+        'inventory_id': inventoryId,
+      if (issuedQty != null && issuedQty!.isNotEmpty) 'issued_qty': issuedQty,
+      if (boqId != null && boqId!.isNotEmpty) 'boq_id': boqId,
+      if (boqQty != null && boqQty!.isNotEmpty) 'boq_qty': boqQty,
+      'item_code': resolvedItemNo,
+      'boq_item_code': resolvedItemNo,
+      'add_fields': [
+        {'key': 'item_no', 'value': resolvedItemNo},
+        {'key': 'item_name', 'value': resolvedItemName},
+        {'key': 'item_code', 'value': resolvedItemNo},
+        {'key': 'boq_item_code', 'value': resolvedItemNo},
+        {'key': 'material_description', 'value': materialDescription},
+        {'key': 'unit', 'value': unit},
+        {'key': 'req_qty', 'value': reqQtyValue},
+        {'key': 'make', 'value': make},
+        {'key': 'place_of_utilisation', 'value': placeOfUtilisation},
+      ],
     };
   }
 }
@@ -105,9 +154,7 @@ class PurchaseRequest {
               .toList()
         : const [];
     final poRaw = json['po'];
-    String? poId = (json['po_id'] ??
-            json['poId'] ??
-            json['purchase_order_id'])
+    String? poId = (json['po_id'] ?? json['poId'] ?? json['purchase_order_id'])
         ?.toString();
     if ((poId ?? '').isEmpty && poRaw is Map) {
       poId = (poRaw['po_id'] ?? poRaw['id'])?.toString();
@@ -118,7 +165,8 @@ class PurchaseRequest {
 
     return PurchaseRequest(
       id: (json['pr_id'] ?? json['id'] ?? '').toString(),
-      prNumber: (json['pr_number'] ?? json['pr_no'] ?? json['prNo'] ?? '').toString(),
+      prNumber: (json['pr_number'] ?? json['pr_no'] ?? json['prNo'] ?? '')
+          .toString(),
       projectId: (json['project_id'] ?? json['projectId'] ?? '').toString(),
       sampleId: json['sample_id']?.toString(),
       poId: poId,
@@ -159,11 +207,14 @@ int? _parsePositiveIntOrNull(String value) {
 class _PRWizardItem extends PurchaseRequestItem {
   _PRWizardItem()
     : super(
+        itemNo: '',
+        itemName: '',
         materialDescription: '',
         unit: 'NOS',
         reqQty: '',
         make: '',
         placeOfUtilisation: '',
+        rowSource: 'manual',
       );
 }
 
@@ -187,19 +238,25 @@ class _PRItemRow extends StatefulWidget {
 }
 
 class _PRItemRowState extends State<_PRItemRow> {
+  late TextEditingController _itemNoController;
   late TextEditingController _materialController;
   late TextEditingController _qtyController;
-  late TextEditingController _makeController;
+  late TextEditingController _totalQtyController;
   late TextEditingController _placeController;
 
   @override
   void initState() {
     super.initState();
+    _itemNoController = TextEditingController(text: widget.item.itemNo);
     _materialController = TextEditingController(
       text: widget.item.materialDescription,
     );
     _qtyController = TextEditingController(text: widget.item.reqQty);
-    _makeController = TextEditingController(text: widget.item.make);
+    final initialBoqQty = widget.item.boqQty?.trim() ?? '';
+    final initialTotalQty = initialBoqQty.isNotEmpty
+        ? initialBoqQty
+        : widget.item.reqQty.trim();
+    _totalQtyController = TextEditingController(text: initialTotalQty);
     _placeController = TextEditingController(
       text: widget.item.placeOfUtilisation,
     );
@@ -207,9 +264,10 @@ class _PRItemRowState extends State<_PRItemRow> {
 
   @override
   void dispose() {
+    _itemNoController.dispose();
     _materialController.dispose();
     _qtyController.dispose();
-    _makeController.dispose();
+    _totalQtyController.dispose();
     _placeController.dispose();
     super.dispose();
   }
@@ -217,6 +275,14 @@ class _PRItemRowState extends State<_PRItemRow> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
+    final currentBoqQty = item.boqQty?.trim() ?? '';
+    final totalQty = currentBoqQty.isNotEmpty
+        ? currentBoqQty
+        : item.reqQty.trim();
+    if (_totalQtyController.text != totalQty) {
+      _totalQtyController.text = totalQty;
+    }
+    final isMobile = MediaQuery.of(context).size.width < 700;
     return MadCard(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -238,63 +304,159 @@ class _PRItemRowState extends State<_PRItemRow> {
               ],
             ),
             const SizedBox(height: 12),
-            MadInput(
-              labelText: 'Material Description *',
-              hintText: 'Material',
-              controller: _materialController,
-              onChanged: (v) => item.materialDescription = v,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: MadInput(
-                    labelText: 'Req Qty',
-                    hintText: '0',
-                    keyboardType: TextInputType.number,
-                    controller: _qtyController,
-                    onChanged: (v) => item.reqQty = v,
+            if (isMobile) ...[
+              MadInput(
+                labelText: 'Item No.',
+                hintText: 'Item no.',
+                controller: _itemNoController,
+                onChanged: (v) {
+                  item.itemNo = v;
+                  item.itemName = v;
+                  item.rowSource = 'manual';
+                },
+              ),
+              const SizedBox(height: 12),
+              MadInput(
+                labelText: 'Material Description *',
+                hintText: 'Material description',
+                controller: _materialController,
+                onChanged: (v) {
+                  item.materialDescription = v;
+                  item.rowSource = 'manual';
+                },
+              ),
+              const SizedBox(height: 12),
+              MadSelect<String>(
+                labelText: 'Unit',
+                placeholder: 'NOS',
+                value: item.unit,
+                options: const [
+                  MadSelectOption(value: 'NOS', label: 'NOS'),
+                  MadSelectOption(value: 'MTR', label: 'MTR'),
+                  MadSelectOption(value: 'KG', label: 'KG'),
+                  MadSelectOption(value: 'LTR', label: 'LTR'),
+                ],
+                onChanged: (v) => setState(() {
+                  item.unit = v ?? 'NOS';
+                  item.rowSource = 'manual';
+                }),
+              ),
+              const SizedBox(height: 12),
+              MadInput(
+                labelText: 'Qty / Flat *',
+                hintText: '0',
+                keyboardType: TextInputType.number,
+                controller: _qtyController,
+                onChanged: (v) {
+                  item.reqQty = v;
+                  item.rowSource = 'manual';
+                },
+              ),
+              const SizedBox(height: 12),
+              MadInput(
+                labelText: 'Total Qty',
+                hintText: '0',
+                enabled: false,
+                controller: _totalQtyController,
+              ),
+              const SizedBox(height: 12),
+              MadInput(
+                labelText: 'Place of Utilisation',
+                hintText: 'Usage area',
+                controller: _placeController,
+                onChanged: (v) {
+                  item.placeOfUtilisation = v;
+                  item.rowSource = 'manual';
+                },
+              ),
+            ] else ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: MadInput(
+                      labelText: 'Item No.',
+                      hintText: 'Item no.',
+                      controller: _itemNoController,
+                      onChanged: (v) {
+                        item.itemNo = v;
+                        item.itemName = v;
+                        item.rowSource = 'manual';
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: MadSelect<String>(
-                    labelText: 'Unit',
-                    placeholder: 'NOS',
-                    value: item.unit,
-                    options: const [
-                      MadSelectOption(value: 'NOS', label: 'NOS'),
-                      MadSelectOption(value: 'MTR', label: 'MTR'),
-                      MadSelectOption(value: 'KG', label: 'KG'),
-                      MadSelectOption(value: 'LTR', label: 'LTR'),
-                    ],
-                    onChanged: (v) => setState(() => item.unit = v ?? 'NOS'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 4,
+                    child: MadInput(
+                      labelText: 'Material Description *',
+                      hintText: 'Material description',
+                      controller: _materialController,
+                      onChanged: (v) {
+                        item.materialDescription = v;
+                        item.rowSource = 'manual';
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            MadInput(
-              labelText: 'Req Qty *',
-              hintText: '0',
-              keyboardType: TextInputType.number,
-              controller: _qtyController,
-              onChanged: (v) => item.reqQty = v,
-            ),
-            const SizedBox(height: 12),
-            MadInput(
-              labelText: 'Make',
-              hintText: 'Brand / make',
-              controller: _makeController,
-              onChanged: (v) => item.make = v,
-            ),
-            const SizedBox(height: 12),
-            MadInput(
-              labelText: 'Place of Utilisation',
-              hintText: 'Usage area',
-              controller: _placeController,
-              onChanged: (v) => item.placeOfUtilisation = v,
-            ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: MadSelect<String>(
+                      labelText: 'Unit',
+                      placeholder: 'NOS',
+                      value: item.unit,
+                      options: const [
+                        MadSelectOption(value: 'NOS', label: 'NOS'),
+                        MadSelectOption(value: 'MTR', label: 'MTR'),
+                        MadSelectOption(value: 'KG', label: 'KG'),
+                        MadSelectOption(value: 'LTR', label: 'LTR'),
+                      ],
+                      onChanged: (v) => setState(() {
+                        item.unit = v ?? 'NOS';
+                        item.rowSource = 'manual';
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: MadInput(
+                      labelText: 'Qty / Flat *',
+                      hintText: '0',
+                      keyboardType: TextInputType.number,
+                      controller: _qtyController,
+                      onChanged: (v) {
+                        item.reqQty = v;
+                        item.rowSource = 'manual';
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: MadInput(
+                      labelText: 'Total Qty',
+                      hintText: '0',
+                      enabled: false,
+                      controller: _totalQtyController,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              MadInput(
+                labelText: 'Place of Utilisation',
+                hintText: 'Usage area',
+                controller: _placeController,
+                onChanged: (v) {
+                  item.placeOfUtilisation = v;
+                  item.rowSource = 'manual';
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -1068,12 +1230,13 @@ class _PurchaseRequestsPageFullState
   Widget _buildEmptyState(bool isDark) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final paddingValue = (constraints.maxHeight.isFinite
-                ? constraints.maxHeight * 0.15
-                : 48.0)
-            .clamp(16.0, 48.0);
-        final smallLayout = constraints.maxHeight.isFinite &&
-            constraints.maxHeight < 260;
+        final paddingValue =
+            (constraints.maxHeight.isFinite
+                    ? constraints.maxHeight * 0.15
+                    : 48.0)
+                .clamp(16.0, 48.0);
+        final smallLayout =
+            constraints.maxHeight.isFinite && constraints.maxHeight < 260;
         final gapLg = smallLayout ? 16.0 : 24.0;
         final gapSm = smallLayout ? 6.0 : 8.0;
 
@@ -1154,12 +1317,13 @@ class _PurchaseRequestsPageFullState
   Widget _buildErrorState(bool isDark, String message) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final paddingValue = (constraints.maxHeight.isFinite
-                ? constraints.maxHeight * 0.15
-                : 48.0)
-            .clamp(16.0, 48.0);
-        final smallLayout = constraints.maxHeight.isFinite &&
-            constraints.maxHeight < 260;
+        final paddingValue =
+            (constraints.maxHeight.isFinite
+                    ? constraints.maxHeight * 0.15
+                    : 48.0)
+                .clamp(16.0, 48.0);
+        final smallLayout =
+            constraints.maxHeight.isFinite && constraints.maxHeight < 260;
         final gapLg = smallLayout ? 16.0 : 24.0;
         final gapSm = smallLayout ? 6.0 : 8.0;
 
@@ -1475,8 +1639,9 @@ class _PurchaseRequestFormContentState
           : DateFormat('yyyy-MM-dd').format(DateTime.now()),
     );
     _urgency = existing?.urgency ?? 'Medium';
-    _sampleId =
-        (existing?.sampleId?.isNotEmpty == true ? existing!.sampleId! : 'none');
+    _sampleId = (existing?.sampleId?.isNotEmpty == true
+        ? existing!.sampleId!
+        : 'none');
     _mirNo = existing?.mirNo.isNotEmpty == true ? existing!.mirNo : 'none';
     if (_mirNo != 'none') {
       _mirNoController.text = _mirNo;
@@ -1508,20 +1673,20 @@ class _PurchaseRequestFormContentState
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_appliedProjectDefaults) return;
-      final selectedProject = context.appProject.selectedProject;
+    final selectedProject = context.appProject.selectedProject;
     final defaultProjectId = selectedProject?['project_id']?.toString() ?? '';
     final defaultProjectName =
         selectedProject?['project_name']?.toString() ?? '';
-    final defaultWorkOrder = [
-      selectedProject?['wo_number'],
-      selectedProject?['workorder_no'],
-      selectedProject?['work_order_no'],
-      selectedProject?['workOrderNo'],
-      selectedProject?['woNo'],
-    ].map((value) => value?.toString().trim() ?? '').firstWhere(
-      (value) => value.isNotEmpty,
-      orElse: () => '',
-    );
+    final defaultWorkOrder =
+        [
+              selectedProject?['wo_number'],
+              selectedProject?['workorder_no'],
+              selectedProject?['work_order_no'],
+              selectedProject?['workOrderNo'],
+              selectedProject?['woNo'],
+            ]
+            .map((value) => value?.toString().trim() ?? '')
+            .firstWhere((value) => value.isNotEmpty, orElse: () => '');
 
     if (_projectIdController.text.trim().isEmpty &&
         defaultProjectId.isNotEmpty) {
@@ -1531,7 +1696,8 @@ class _PurchaseRequestFormContentState
         defaultProjectName.isNotEmpty) {
       _projectNameController.text = defaultProjectName;
     }
-    if (_workorderController.text.trim().isEmpty && defaultWorkOrder.isNotEmpty) {
+    if (_workorderController.text.trim().isEmpty &&
+        defaultWorkOrder.isNotEmpty) {
       _workorderController.text = defaultWorkOrder;
     }
     if (_projectIdController.text.trim().isNotEmpty) {
@@ -1580,8 +1746,7 @@ class _PurchaseRequestFormContentState
     final mirsRes = await ApiClient.getMirsByProject(projectId);
     if (!mounted) return;
 
-    final samplesData =
-        samplesRes['success'] == true ? samplesRes['data'] : [];
+    final samplesData = samplesRes['success'] == true ? samplesRes['data'] : [];
     final mirsData = mirsRes['success'] == true ? mirsRes['data'] : [];
 
     final sampleList = samplesData is List ? samplesData : const [];
@@ -1599,9 +1764,7 @@ class _PurchaseRequestFormContentState
       _loadingSamples = false;
       _loadingMirs = false;
       if (_sampleId != 'none' &&
-          !_samples.any(
-            (s) => _sampleValue(s) == _sampleId,
-          )) {
+          !_samples.any((s) => _sampleValue(s) == _sampleId)) {
         _sampleId = 'none';
       }
       if (_mirNo != 'none' && !_mirs.any((m) => _mirValue(m) == _mirNo)) {
@@ -1867,14 +2030,13 @@ class _PurchaseRequestFormContentState
               child: MadSelect<String>(
                 labelText: 'Sample ID',
                 value: _sampleId,
-                placeholder:
-                    _loadingSamples ? 'Loading samples...' : 'Optional',
+                placeholder: _loadingSamples
+                    ? 'Loading samples...'
+                    : 'Optional',
                 options: [
                   const MadSelectOption(value: 'none', label: 'None'),
                   if (_sampleId != 'none' &&
-                      !_samples.any(
-                        (s) => _sampleValue(s) == _sampleId,
-                      ))
+                      !_samples.any((s) => _sampleValue(s) == _sampleId))
                     MadSelectOption(
                       value: _sampleId,
                       label: 'Sample #$_sampleId (current)',
@@ -2130,6 +2292,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   bool _loadingMirs = false;
   bool _loadingPrs = false;
   bool _loadingSampleItems = false;
+  bool _prItemSearchOpen = false;
   bool _submitting = false;
   bool _uploadingPr = false;
   bool _uploadingSig = false;
@@ -2143,12 +2306,16 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   String _sampleId = 'none';
   String _mirNo = 'none';
   String _urgency = 'Medium';
+  String _prItemSearch = '';
 
   final TextEditingController _projectNameController = TextEditingController();
   final TextEditingController _prNumberController = TextEditingController();
   final TextEditingController _workorderController = TextEditingController();
+  final TextEditingController _floorNoController = TextEditingController();
+  final TextEditingController _flatNoController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _mirNoController = TextEditingController();
+  final TextEditingController _prItemSearchController = TextEditingController();
   final TextEditingController _dateController = TextEditingController(
     text: DateFormat('yyyy-MM-dd').format(DateTime.now()),
   );
@@ -2161,6 +2328,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   String? _signatureFileName;
 
   final List<_PRWizardItem> _items = [_PRWizardItem()];
+  List<_PRWizardItem> _sampleCatalogItems = [];
 
   bool _appliedInitialProject = false;
 
@@ -2196,8 +2364,11 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     _projectNameController.dispose();
     _prNumberController.dispose();
     _workorderController.dispose();
+    _floorNoController.dispose();
+    _flatNoController.dispose();
     _locationController.dispose();
     _mirNoController.dispose();
+    _prItemSearchController.dispose();
     _dateController.dispose();
     _approvedByController.dispose();
     _remarksController.dispose();
@@ -2264,7 +2435,6 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       _projectNameController.text = name;
     }
     _syncWorkOrderFromProject();
-    _refreshPrNumber();
   }
 
   void _syncWorkOrderFromProject() {
@@ -2275,16 +2445,16 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
           _projectId,
       orElse: () => const {},
     );
-    final workOrder = [
-      match['wo_number'],
-      match['workorder_no'],
-      match['work_order_no'],
-      match['workOrderNo'],
-      match['woNo'],
-    ].map((value) => value?.toString().trim() ?? '').firstWhere(
-      (value) => value.isNotEmpty,
-      orElse: () => '',
-    );
+    final workOrder =
+        [
+              match['wo_number'],
+              match['workorder_no'],
+              match['work_order_no'],
+              match['workOrderNo'],
+              match['woNo'],
+            ]
+            .map((value) => value?.toString().trim() ?? '')
+            .firstWhere((value) => value.isNotEmpty, orElse: () => '');
     if (workOrder.isNotEmpty) {
       _workorderController.text = workOrder;
     }
@@ -2296,10 +2466,13 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       setState(() {
         _samples = [];
         _mirs = [];
+        _sampleCatalogItems = [];
         _sampleId = 'none';
         _mirNo = 'none';
         _mirNoController.clear();
         _workorderController.clear();
+        _floorNoController.clear();
+        _flatNoController.clear();
       });
       return;
     }
@@ -2307,6 +2480,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     setState(() {
       _loadingSamples = true;
       _loadingMirs = true;
+      _sampleCatalogItems = [];
     });
 
     final samplesRes = await ApiClient.getSamplesByProject(projectId);
@@ -2349,7 +2523,6 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       setState(() {
         _prs = [];
       });
-      _refreshPrNumber();
       return;
     }
 
@@ -2373,7 +2546,6 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       if (mounted) {
         setState(() => _loadingPrs = false);
       }
-      _refreshPrNumber();
     }
   }
 
@@ -2386,27 +2558,9 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     return '$yyyy-$mm-$dd';
   }
 
-  String _buildAutoPrNumber() {
-    final project = _parsePositiveIntOrNull(_projectId) ?? 0;
-    final dateToken = _formatDateToken(_dateController.text.trim());
-    final sequence = _prs.where((pr) {
-      final sameProject =
-          (pr['project_id'] ?? pr['projectId'] ?? '').toString() ==
-          project.toString();
-      final sameDate =
-          _formatDateToken((pr['date'] ?? pr['created_at'] ?? '').toString()) ==
-          dateToken;
-      return sameProject && sameDate;
-    }).length + 1;
-    return 'PR-$dateToken-$sequence-$project';
-  }
+  String _buildAutoPrNumber() => _prNumberController.text.trim();
 
-  void _refreshPrNumber() {
-    final next = _buildAutoPrNumber();
-    if (_prNumberController.text != next) {
-      _prNumberController.text = next;
-    }
-  }
+  void _refreshPrNumber() {}
 
   String _projectValue(Map<String, dynamic> p) =>
       (p['project_id'] ?? p['id'] ?? '').toString();
@@ -2458,6 +2612,18 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         .whereType<Map>()
         .map((raw) {
           final item = Map<String, dynamic>.from(raw);
+          final itemNo =
+              (item['item_no'] ??
+                      item['itemNo'] ??
+                      item['item_name'] ??
+                      item['itemName'] ??
+                      item['description'] ??
+                      item['material_description'] ??
+                      item['item'] ??
+                      item['name'] ??
+                      '')
+                  .toString()
+                  .trim();
           final material =
               (item['material_description'] ??
                       item['description'] ??
@@ -2478,6 +2644,8 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
               .trim();
 
           return _PRWizardItem()
+            ..itemNo = itemNo
+            ..itemName = itemNo
             ..materialDescription = material
             ..unit = unit.isEmpty ? 'NOS' : unit
             ..reqQty = reqQty
@@ -2486,11 +2654,78 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         })
         .where(
           (item) =>
-              item.materialDescription.isNotEmpty || item.reqQty.isNotEmpty,
+              item.itemNo.isNotEmpty ||
+              item.materialDescription.isNotEmpty ||
+              item.reqQty.isNotEmpty,
         )
         .toList();
 
     return mapped.isNotEmpty ? mapped : [_PRWizardItem()];
+  }
+
+  _PRWizardItem _cloneWizardItem(_PRWizardItem source) {
+    return _PRWizardItem()
+      ..itemNo = source.itemNo
+      ..itemName = source.itemName
+      ..materialDescription = source.materialDescription
+      ..unit = source.unit
+      ..reqQty = source.reqQty
+      ..make = source.make
+      ..placeOfUtilisation = source.placeOfUtilisation
+      ..rowSource = source.rowSource
+      ..inventoryId = source.inventoryId
+      ..issuedQty = source.issuedQty
+      ..boqId = source.boqId
+      ..boqQty = source.boqQty;
+  }
+
+  bool _matchesPrItemSearch(_PRWizardItem item) {
+    final query = _prItemSearch.trim().toLowerCase();
+    if (query.isEmpty) return true;
+    final itemNo = item.itemNo.toLowerCase();
+    final description = item.materialDescription.toLowerCase();
+    final make = item.make.toLowerCase();
+    final place = item.placeOfUtilisation.toLowerCase();
+    final unit = item.unit.toLowerCase();
+    return itemNo.contains(query) ||
+        description.contains(query) ||
+        make.contains(query) ||
+        place.contains(query) ||
+        unit.contains(query);
+  }
+
+  List<_PRWizardItem> _prItemSuggestions() {
+    final query = _prItemSearch.trim().toLowerCase();
+    final unique = <String, _PRWizardItem>{};
+    for (final item in _sampleCatalogItems) {
+      final key = item.materialDescription.trim().toLowerCase();
+      if (key.isEmpty) continue;
+      unique.putIfAbsent(key, () => item);
+    }
+    final all = unique.values.toList();
+    if (query.isEmpty) {
+      return all.take(10).toList();
+    }
+    return all
+        .where(
+          (item) =>
+              item.materialDescription.toLowerCase().contains(query) ||
+              item.itemNo.toLowerCase().contains(query) ||
+              item.make.toLowerCase().contains(query) ||
+              item.placeOfUtilisation.toLowerCase().contains(query) ||
+              item.unit.toLowerCase().contains(query),
+        )
+        .take(10)
+        .toList();
+  }
+
+  void _addCatalogItemToPr(_PRWizardItem catalogItem) {
+    setState(() {
+      _items.add(_cloneWizardItem(catalogItem));
+      _prItemSearchController.clear();
+      _prItemSearch = '';
+      _prItemSearchOpen = false;
+    });
   }
 
   void _applySampleItems(Map<String, dynamic> sample) {
@@ -2501,6 +2736,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       _items
         ..clear()
         ..addAll(mappedItems);
+      _sampleCatalogItems = mappedItems.map(_cloneWizardItem).toList();
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -2514,7 +2750,10 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   Future<void> _handleSampleChanged(String? value) async {
     final sampleValue = (value ?? '').trim();
     if (sampleValue.isEmpty) {
-      setState(() => _sampleId = 'none');
+      setState(() {
+        _sampleId = 'none';
+        _sampleCatalogItems = [];
+      });
       return;
     }
 
@@ -2639,6 +2878,8 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
       'sample_id': sampleIdInt ?? (sampleIdStr.isEmpty ? null : sampleIdStr),
       'project_name': _projectNameController.text.trim(),
       'workorder_no': _workorderController.text.trim(),
+      'floor_no': _floorNoController.text.trim(),
+      'flat_no': _flatNoController.text.trim(),
       'location': _locationController.text.trim(),
       'mirno': _mirNo == 'none' ? '' : _mirNo,
       'urgency': _urgency,
@@ -2660,6 +2901,22 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         context: context,
         title: 'Missing fields',
         description: 'Project ID, Project Name, and PR Number are required.',
+      );
+      return;
+    }
+    if (_floorNoController.text.trim().isEmpty) {
+      MadDialog.alert(
+        context: context,
+        title: 'Missing fields',
+        description: 'Floor No is required.',
+      );
+      return;
+    }
+    if (_flatNoController.text.trim().isEmpty) {
+      MadDialog.alert(
+        context: context,
+        title: 'Missing fields',
+        description: 'Flat No is required.',
       );
       return;
     }
@@ -2688,6 +2945,12 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final responsive = Responsive(context);
     final isMobile = responsive.isMobile;
+    final visibleItemEntries = _items
+        .asMap()
+        .entries
+        .where((entry) => _matchesPrItemSearch(entry.value))
+        .toList();
+    final prItemSuggestions = _prItemSuggestions();
 
     final projectOptions = _projects
         .map(
@@ -2802,6 +3065,10 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                   _sampleId = 'none';
                                   _mirNo = 'none';
                                   _mirNoController.clear();
+                                  _prItemSearchController.clear();
+                                  _prItemSearch = '';
+                                  _prItemSearchOpen = false;
+                                  _sampleCatalogItems = [];
                                 });
                                 _syncProjectNameFromList();
                                 await _loadSamplesAndMirs();
@@ -2820,7 +3087,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                               controller: _prNumberController,
                               labelText: 'PR Number *',
                               hintText: 'Enter PR number',
-                              enabled: false,
+                              enabled: true,
                             ),
                           ] else
                             Row(
@@ -2842,6 +3109,10 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                         _sampleId = 'none';
                                         _mirNo = 'none';
                                         _mirNoController.clear();
+                                        _prItemSearchController.clear();
+                                        _prItemSearch = '';
+                                        _prItemSearchOpen = false;
+                                        _sampleCatalogItems = [];
                                       });
                                       _syncProjectNameFromList();
                                       await _loadSamplesAndMirs();
@@ -2865,7 +3136,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             controller: _prNumberController,
                             labelText: 'PR Number *',
                             hintText: 'Enter PR number',
-                            enabled: false,
+                            enabled: true,
                           ),
                           const SizedBox(height: 12),
                           if (isMobile) ...[
@@ -2887,7 +3158,9 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             MadInput(
                               controller: _mirNoController,
                               labelText: 'MIR No',
-                              hintText: _loadingMirs ? 'Loading...' : 'Optional',
+                              hintText: _loadingMirs
+                                  ? 'Loading...'
+                                  : 'Optional',
                               onChanged: (v) => setState(() {
                                 _mirNo = v.trim().isEmpty ? 'none' : v.trim();
                               }),
@@ -2919,7 +3192,9 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                         ? 'Loading...'
                                         : 'Optional',
                                     onChanged: (v) => setState(() {
-                                      _mirNo = v.trim().isEmpty ? 'none' : v.trim();
+                                      _mirNo = v.trim().isEmpty
+                                          ? 'none'
+                                          : v.trim();
                                     }),
                                   ),
                                 ),
@@ -2930,8 +3205,30 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             MadInput(
                               controller: _workorderController,
                               labelText: 'Work Order No',
-                              hintText: 'Auto-fetched from project',
-                              enabled: false,
+                              hintText: 'Enter work order no',
+                              enabled: true,
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: MadInput(
+                                    controller: _floorNoController,
+                                    labelText: 'Floor No *',
+                                    hintText: 'e.g. 2',
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: MadInput(
+                                    controller: _flatNoController,
+                                    labelText: 'Flat No *',
+                                    hintText: 'e.g. 7',
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 12),
                             GestureDetector(
@@ -2945,28 +3242,54 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                               ),
                             ),
                           ] else
-                            Row(
+                            Column(
                               children: [
-                                Expanded(
-                                  child: MadInput(
-                                    controller: _workorderController,
-                                    labelText: 'Work Order No',
-                                    hintText: 'Auto-fetched from project',
-                                    enabled: false,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: _pickDate,
-                                    child: AbsorbPointer(
+                                Row(
+                                  children: [
+                                    Expanded(
                                       child: MadInput(
-                                        controller: _dateController,
-                                        labelText: 'Date',
-                                        hintText: 'Select date',
+                                        controller: _workorderController,
+                                        labelText: 'Work Order No',
+                                        hintText: 'Enter work order no',
+                                        enabled: true,
                                       ),
                                     ),
-                                  ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: _pickDate,
+                                        child: AbsorbPointer(
+                                          child: MadInput(
+                                            controller: _dateController,
+                                            labelText: 'Date',
+                                            hintText: 'Select date',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: MadInput(
+                                        controller: _floorNoController,
+                                        labelText: 'Floor No *',
+                                        hintText: 'e.g. 2',
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: MadInput(
+                                        controller: _flatNoController,
+                                        labelText: 'Flat No *',
+                                        hintText: 'e.g. 7',
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -3095,18 +3418,13 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                       : AppTheme.lightForeground,
                                 ),
                               ),
-                              MadButton(
-                                text: 'Add Row',
-                                icon: LucideIcons.plus,
-                                size: ButtonSize.sm,
-                                onPressed: () =>
-                                    setState(() => _items.add(_PRWizardItem())),
-                              ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Add at least one item row.',
+                            _loadingSampleItems
+                                ? 'Loading items from selected sample...'
+                                : 'Items can be loaded from a selected sample or entered manually.',
                             style: TextStyle(
                               fontSize: 12,
                               color: isDark
@@ -3115,20 +3433,148 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          ...List.generate(_items.length, (i) {
-                            final item = _items[i];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: _PRItemRow(
-                                key: ObjectKey(item),
-                                item: item,
-                                index: i,
-                                canRemove: _items.length > 1,
-                                onRemove: () =>
-                                    setState(() => _items.removeAt(i)),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: MadInput(
+                                  controller: _prItemSearchController,
+                                  labelText: 'Search Items',
+                                  hintText:
+                                      'Search by description, make, place, or unit...',
+                                  onChanged: (value) => setState(() {
+                                    _prItemSearch = value;
+                                    _prItemSearchOpen = value.trim().isNotEmpty;
+                                  }),
+                                ),
                               ),
-                            );
-                          }),
+                              const SizedBox(width: 12),
+                              MadButton(
+                                text: 'Add Row',
+                                icon: LucideIcons.plus,
+                                size: ButtonSize.sm,
+                                onPressed: () => setState(() {
+                                  _items.add(_PRWizardItem());
+                                  _prItemSearchOpen = false;
+                                }),
+                              ),
+                            ],
+                          ),
+                          if (_prItemSearchOpen &&
+                              prItemSuggestions.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              constraints: const BoxConstraints(maxHeight: 220),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isDark
+                                      ? AppTheme.darkBorder
+                                      : AppTheme.lightBorder,
+                                ),
+                              ),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                itemCount: prItemSuggestions.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  color: isDark
+                                      ? AppTheme.darkBorder
+                                      : AppTheme.lightBorder,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final suggestion = prItemSuggestions[index];
+                                  final subtitleParts = [
+                                    suggestion.itemNo.isNotEmpty
+                                        ? 'Item No: ${suggestion.itemNo}'
+                                        : '',
+                                    suggestion.unit.isNotEmpty
+                                        ? 'Unit: ${suggestion.unit}'
+                                        : '',
+                                    suggestion.placeOfUtilisation.isNotEmpty
+                                        ? 'Place: ${suggestion.placeOfUtilisation}'
+                                        : '',
+                                  ].where((part) => part.isNotEmpty).toList();
+                                  return InkWell(
+                                    onTap: () =>
+                                        _addCatalogItemToPr(suggestion),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            suggestion.materialDescription
+                                                    .trim()
+                                                    .isNotEmpty
+                                                ? suggestion.materialDescription
+                                                      .trim()
+                                                : '-',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (subtitleParts.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              subtitleParts.join(' | '),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? AppTheme
+                                                          .darkMutedForeground
+                                                    : AppTheme
+                                                          .lightMutedForeground,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          if (_prItemSearch.trim().isNotEmpty &&
+                              visibleItemEntries.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                'No matching items. Add a row to continue.',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppTheme.darkMutedForeground
+                                      : AppTheme.lightMutedForeground,
+                                ),
+                              ),
+                            ),
+                          if (visibleItemEntries.isNotEmpty)
+                            ...visibleItemEntries.map((entry) {
+                              final index = entry.key;
+                              final item = entry.value;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: _PRItemRow(
+                                  key: ObjectKey(item),
+                                  item: item,
+                                  index: index,
+                                  canRemove: _items.length > 1,
+                                  onRemove: () =>
+                                      setState(() => _items.removeAt(index)),
+                                ),
+                              );
+                            }),
                         ],
                       ),
                     ),
@@ -3234,8 +3680,7 @@ class _PurchaseRequestEmailDialogState
         if (!mounted) return;
         final contentType = res.headers['content-type'] ?? '';
         final isPdf = _isPdfFile(name) || contentType.contains('pdf');
-        final isImage =
-            _isImageFile(name) || contentType.startsWith('image/');
+        final isImage = _isImageFile(name) || contentType.startsWith('image/');
         setState(() {
           _autoAttachments = [file];
           _signatureFileName = name;
@@ -3261,15 +3706,16 @@ class _PurchaseRequestEmailDialogState
       if (result['success'] == true) {
         final data = result['data'];
         final list = data is List ? data : const [];
-        final officers = list
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .map((e) => User.fromJson(e))
-            .where((u) => u.role == 'po_officer')
-            .toList()
-          ..sort(
-            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-          );
+        final officers =
+            list
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .map((e) => User.fromJson(e))
+                .where((u) => u.role == 'po_officer')
+                .toList()
+              ..sort(
+                (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+              );
         final firstOfficer = officers.isNotEmpty ? officers.first : null;
         setState(() {
           _poOfficers = officers;
@@ -3358,19 +3804,11 @@ class _PurchaseRequestEmailDialogState
       if (file != null) {
         showToast(context, 'PDF saved to ${file.path}');
       } else {
-        showToast(
-          context,
-          'Failed to save PDF',
-          variant: ToastVariant.error,
-        );
+        showToast(context, 'Failed to save PDF', variant: ToastVariant.error);
       }
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        context,
-        'Could not generate PDF',
-        variant: ToastVariant.error,
-      );
+      showToast(context, 'Could not generate PDF', variant: ToastVariant.error);
     } finally {
       if (mounted) setState(() => _downloading = false);
     }
@@ -3392,11 +3830,7 @@ class _PurchaseRequestEmailDialogState
     try {
       final pr = widget.pr;
       if (pr.id.isEmpty) {
-        showToast(
-          context,
-          'Missing PR id',
-          variant: ToastVariant.error,
-        );
+        showToast(context, 'Missing PR id', variant: ToastVariant.error);
         return;
       }
       final attachmentFiles = [..._autoAttachments, ..._attachments];
@@ -3427,11 +3861,7 @@ class _PurchaseRequestEmailDialogState
       );
     } catch (e) {
       if (!mounted) return;
-      showToast(
-        context,
-        'Failed to send email',
-        variant: ToastVariant.error,
-      );
+      showToast(context, 'Failed to send email', variant: ToastVariant.error);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -3503,7 +3933,9 @@ class _PurchaseRequestEmailDialogState
                           children: [
                             Text(
                               'PR: ${_formatPrNumber(pr)}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             Text(
@@ -3534,10 +3966,11 @@ class _PurchaseRequestEmailDialogState
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: border.withOpacity(0.8)),
-                          color: (isDark
-                                  ? AppTheme.darkMuted
-                                  : AppTheme.lightMuted)
-                              .withOpacity(0.15),
+                          color:
+                              (isDark
+                                      ? AppTheme.darkMuted
+                                      : AppTheme.lightMuted)
+                                  .withOpacity(0.15),
                         ),
                         child: Column(
                           children: [
@@ -3570,10 +4003,11 @@ class _PurchaseRequestEmailDialogState
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: border.withOpacity(0.6)),
-                            color: (isDark
-                                    ? AppTheme.darkMuted
-                                    : AppTheme.lightMuted)
-                                .withOpacity(0.25),
+                            color:
+                                (isDark
+                                        ? AppTheme.darkMuted
+                                        : AppTheme.lightMuted)
+                                    .withOpacity(0.25),
                           ),
                           child: Row(
                             children: [
@@ -3641,10 +4075,11 @@ class _PurchaseRequestEmailDialogState
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: border.withOpacity(0.7)),
-                          color: (isDark
-                                  ? AppTheme.darkMuted
-                                  : AppTheme.lightMuted)
-                              .withOpacity(0.2),
+                          color:
+                              (isDark
+                                      ? AppTheme.darkMuted
+                                      : AppTheme.lightMuted)
+                                  .withOpacity(0.2),
                         ),
                         child: Image.memory(
                           _signatureBytes!,
@@ -3682,10 +4117,11 @@ class _PurchaseRequestEmailDialogState
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: border.withOpacity(0.6)),
-                            color: (isDark
-                                    ? AppTheme.darkMuted
-                                    : AppTheme.lightMuted)
-                                .withOpacity(0.2),
+                            color:
+                                (isDark
+                                        ? AppTheme.darkMuted
+                                        : AppTheme.lightMuted)
+                                    .withOpacity(0.2),
                           ),
                           child: Row(
                             children: [
@@ -3770,7 +4206,8 @@ class _PurchaseRequestEmailDialogState
                   MadButton(
                     text: _sending ? 'Sending...' : 'Send Email',
                     icon: LucideIcons.mail,
-                    disabled: _sending || _poEmailController.text.trim().isEmpty,
+                    disabled:
+                        _sending || _poEmailController.text.trim().isEmpty,
                     onPressed: _sendEmail,
                   ),
                 ],
