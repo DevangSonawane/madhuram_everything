@@ -473,10 +473,7 @@ class _BOQPageState extends State<BOQPage> {
                         .clamp(0.0, double.infinity)
                         .toDouble()
                   : 0));
-    final remaining = usedFromSamples > 0
-        ? (originalQty - used).clamp(0.0, double.infinity).toDouble()
-        : (remainingFromApi ??
-              (originalQty - used).clamp(0.0, double.infinity).toDouble());
+    final remaining = originalQty - used;
     return {'total': originalQty, 'used': used, 'remaining': remaining};
   }
 

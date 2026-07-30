@@ -555,10 +555,7 @@ export default function BOQ() {
       usedFromSamples > 0
         ? usedFromSamples
         : usedFromApi ?? (remainingFromApi != null ? Math.max(0, originalQty - remainingFromApi) : 0);
-    const remaining =
-      usedFromSamples > 0
-        ? Math.max(0, originalQty - computedUsed)
-        : remainingFromApi ?? Math.max(0, originalQty - computedUsed);
+    const remaining = originalQty - computedUsed;
     return {
       used: computedUsed,
       remaining,
