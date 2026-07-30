@@ -17,6 +17,7 @@ import '../services/file_service.dart';
 import '../services/pdf_service.dart';
 import '../models/user.dart';
 import '../utils/responsive.dart';
+import '../utils/app_navigation.dart';
 import '../providers/legacy_session_providers.dart';
 import '../utils/riverpod_context.dart';
 
@@ -113,6 +114,8 @@ class PurchaseRequest {
   final String? sampleId;
   final String? poId;
   final String workorderNo;
+  final String floorNo;
+  final String flatNo;
   final String location;
   final String mirNo;
   final String urgency;
@@ -131,6 +134,8 @@ class PurchaseRequest {
     required this.sampleId,
     required this.poId,
     required this.workorderNo,
+    required this.floorNo,
+    required this.flatNo,
     required this.location,
     required this.mirNo,
     required this.urgency,
@@ -172,6 +177,8 @@ class PurchaseRequest {
       poId: poId,
       projectName: (json['project_name'] ?? '-').toString(),
       workorderNo: (json['workorder_no'] ?? '-').toString(),
+      floorNo: (json['floor_no'] ?? json['floorNo'] ?? '-').toString(),
+      flatNo: (json['flat_no'] ?? json['flatNo'] ?? '-').toString(),
       location: (json['location'] ?? '-').toString(),
       mirNo: (json['mirno'] ?? '').toString(),
       urgency: (json['urgency'] ?? 'Medium').toString(),
@@ -196,6 +203,793 @@ String _formatPrNumber(PurchaseRequest pr) {
   final sequence = pr.id.isEmpty ? '0' : pr.id;
   final project = pr.projectId.isEmpty ? '0' : pr.projectId;
   return 'PR-$datePart-$sequence-$project';
+}
+
+String _previewDisplayText(dynamic value, {String fallback = '-'}) {
+  if (value == null) return fallback;
+  final text = value.toString().trim();
+  if (text.isEmpty || text.toLowerCase() == 'null') return fallback;
+  return text;
+}
+
+DateTime? _tryParsePreviewDate(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final direct = DateTime.tryParse(trimmed);
+  if (direct != null) return direct;
+
+  for (final pattern in const ['dd/MM/yyyy', 'dd-MM-yyyy', 'dd.MM.yyyy']) {
+    try {
+      return DateFormat(pattern).parseStrict(trimmed);
+    } catch (_) {
+      // Keep trying fallback patterns.
+    }
+  }
+  return null;
+}
+
+String _formatPreviewDate(String? value) {
+  if (value == null || value.trim().isEmpty) return '-';
+  final parsed = _tryParsePreviewDate(value);
+  if (parsed == null) return value.trim();
+  return DateFormat('dd/MM/yyyy').format(parsed);
+}
+
+String _attachmentUrl(String path) {
+  final trimmed = path.trim();
+  if (trimmed.isEmpty) return '';
+  return trimmed.startsWith('http')
+      ? trimmed
+      : ApiClient.getApiFileUrl(trimmed);
+}
+
+Future<void> _openPreviewAttachment(BuildContext context, String path) async {
+  if (path.trim().isEmpty) return;
+  final uri = Uri.parse(
+    path.startsWith('http') ? path : ApiClient.getApiFileUrl(path),
+  );
+  if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+      context.mounted) {
+    showToast(
+      context,
+      'Could not open attachment',
+      variant: ToastVariant.error,
+    );
+  }
+}
+
+bool _isImageAttachment(String path) {
+  final lower = path.toLowerCase();
+  return lower.endsWith('.png') ||
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.webp') ||
+      lower.endsWith('.gif');
+}
+
+Iterable<Map<String, dynamic>> _asMapIterable(dynamic value) {
+  if (value is Map) {
+    return [Map<String, dynamic>.from(value)];
+  }
+  if (value is List) {
+    return value.whereType<Map>().map((e) => Map<String, dynamic>.from(e));
+  }
+  return const <Map<String, dynamic>>[];
+}
+
+List<Map<String, dynamic>> _extractBackpathRecords(
+  dynamic payload,
+  String key,
+  String chainKey,
+) {
+  final candidates = <dynamic>[
+    if (payload is Map) payload[key],
+    if (payload is Map) payload['data'] is Map ? payload['data'][key] : null,
+    if (payload is Map)
+      payload['upstream_chain'] is Map
+          ? payload['upstream_chain'][chainKey] ??
+                payload['upstream_chain'][key] ??
+                payload['upstream_chain'][key.endsWith('s')
+                    ? key.substring(0, key.length - 1)
+                    : key]
+          : null,
+    if (payload is Map)
+      payload['data'] is Map && payload['data']['upstream_chain'] is Map
+          ? payload['data']['upstream_chain'][chainKey] ??
+                payload['data']['upstream_chain'][key] ??
+                payload['data']['upstream_chain'][key.endsWith('s')
+                    ? key.substring(0, key.length - 1)
+                    : key]
+          : null,
+    if (payload is Map) payload['chain'] is Map ? payload['chain'][key] : null,
+    if (payload is Map)
+      payload['data'] is Map && payload['data']['chain'] is Map
+          ? payload['data']['chain'][key]
+          : null,
+  ];
+
+  final records = <Map<String, dynamic>>[];
+  for (final candidate in candidates) {
+    if (candidate == null) continue;
+    records.addAll(_asMapIterable(candidate));
+  }
+
+  final deduped = <String, Map<String, dynamic>>{};
+  for (final record in records) {
+    final key = _recordIdentity(record) ?? record.toString();
+    deduped.putIfAbsent(key, () => record);
+  }
+  return deduped.values.toList();
+}
+
+String? _recordIdentity(Map<String, dynamic> record) {
+  final candidates = [
+    'id',
+    'po_id',
+    'poId',
+    'dc_id',
+    'dcId',
+    'challan_id',
+    'challanId',
+    'order_no',
+    'orderNo',
+    'challan_number',
+    'challanNumber',
+    'challan_no',
+    'dc_number',
+    'dc_no',
+  ];
+  for (final field in candidates) {
+    final value = record[field];
+    final text = value?.toString().trim() ?? '';
+    if (text.isNotEmpty) return text;
+  }
+  return null;
+}
+
+String _recordDate(Map<String, dynamic> record) {
+  final raw =
+      record['created_at'] ??
+      record['createdAt'] ??
+      record['date'] ??
+      record['po_date'] ??
+      record['poDate'] ??
+      record['challan_date'] ??
+      record['challanDate'];
+  return _formatPreviewDate(raw?.toString());
+}
+
+String _recordStatus(Map<String, dynamic> record, {String fallback = '-'}) {
+  final raw = record['status']?.toString().trim();
+  if (raw == null || raw.isEmpty) return fallback;
+  return raw;
+}
+
+class _PurchaseRequestPreviewDialogBody extends StatefulWidget {
+  final PurchaseRequest pr;
+
+  const _PurchaseRequestPreviewDialogBody({required this.pr});
+
+  @override
+  State<_PurchaseRequestPreviewDialogBody> createState() =>
+      _PurchaseRequestPreviewDialogBodyState();
+}
+
+class _PurchaseRequestPreviewDialogBodyState
+    extends State<_PurchaseRequestPreviewDialogBody> {
+  bool _backpathLoading = true;
+  List<Map<String, dynamic>> _linkedPos = [];
+  List<Map<String, dynamic>> _linkedDcs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBackpath();
+  }
+
+  Future<void> _loadBackpath() async {
+    final prId = widget.pr.id.trim();
+    if (prId.isEmpty) {
+      if (!mounted) return;
+      setState(() => _backpathLoading = false);
+      return;
+    }
+
+    try {
+      final result = await ApiClient.getBackpathByPr(
+        prId,
+        params: const {'page': 1, 'limit': 200},
+      );
+      final payload = result['success'] == true
+          ? (result['data'] ?? result)
+          : null;
+      final pos = _extractBackpathRecords(payload, 'pos', 'po');
+      final dcs = _extractBackpathRecords(payload, 'dcs', 'dc');
+      if (!mounted) return;
+      setState(() {
+        _linkedPos = pos;
+        _linkedDcs = dcs;
+        _backpathLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _linkedPos = [];
+        _linkedDcs = [];
+        _backpathLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
+    final mutedColor = isDark
+        ? AppTheme.darkMutedForeground
+        : AppTheme.lightMutedForeground;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 720;
+        final gap = 14.0;
+        final fieldWidth = isNarrow
+            ? constraints.maxWidth
+            : (constraints.maxWidth - (gap * 2)) / 3;
+
+        Widget labelValueCard(String label, String value, {Widget? child}) {
+          return SizedBox(
+            width: fieldWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 12, color: mutedColor)),
+                const SizedBox(height: 6),
+                child ??
+                    Text(
+                      value,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+              ],
+            ),
+          );
+        }
+
+        Widget fullWidthCard(String label, String value) {
+          return SizedBox(
+            width: constraints.maxWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 12, color: mutedColor)),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          );
+        }
+
+        Widget signatureBox() {
+          final signaturePath = widget.pr.signatureFilePath.trim();
+          final signatureUrl = signaturePath.isEmpty
+              ? ''
+              : _attachmentUrl(signaturePath);
+          final isImage =
+              signaturePath.isNotEmpty && _isImageAttachment(signaturePath);
+          return SizedBox(
+            width: fieldWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Approved By',
+                  style: TextStyle(fontSize: 12, color: mutedColor),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 88,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: borderColor),
+                    color: isDark ? AppTheme.darkBackground : Colors.white,
+                  ),
+                  child: signaturePath.isEmpty
+                      ? Center(
+                          child: Text(
+                            _previewDisplayText(widget.pr.approvedBy),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: mutedColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      : isImage
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            signatureUrl,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Center(
+                                child: MadButton(
+                                  text: 'View Signature',
+                                  variant: ButtonVariant.outline,
+                                  size: ButtonSize.sm,
+                                  icon: LucideIcons.signature,
+                                  onPressed: () => _openPreviewAttachment(
+                                    context,
+                                    signaturePath,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                      : Center(
+                          child: MadButton(
+                            text: 'View Signature',
+                            variant: ButtonVariant.outline,
+                            size: ButtonSize.sm,
+                            icon: LucideIcons.signature,
+                            onPressed: () =>
+                                _openPreviewAttachment(context, signaturePath),
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 4),
+                Center(
+                  child: Text(
+                    'Approved By',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: mutedColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        Widget attachmentButtons() {
+          final buttons = <Widget>[];
+          if (widget.pr.prFilePath.trim().isNotEmpty) {
+            buttons.add(
+              MadButton(
+                text: 'View PR File',
+                variant: ButtonVariant.outline,
+                size: ButtonSize.sm,
+                icon: LucideIcons.fileText,
+                onPressed: () =>
+                    _openPreviewAttachment(context, widget.pr.prFilePath),
+              ),
+            );
+          }
+          if (widget.pr.signatureFilePath.trim().isNotEmpty) {
+            buttons.add(
+              MadButton(
+                text: 'View Signature',
+                variant: ButtonVariant.outline,
+                size: ButtonSize.sm,
+                icon: LucideIcons.signature,
+                onPressed: () => _openPreviewAttachment(
+                  context,
+                  widget.pr.signatureFilePath,
+                ),
+              ),
+            );
+          }
+
+          if (buttons.isEmpty) {
+            return Text(
+              'No uploaded documents.',
+              style: TextStyle(color: mutedColor),
+            );
+          }
+
+          return Wrap(spacing: 8, runSpacing: 8, children: buttons);
+        }
+
+        Widget buildTableHeader(List<String> headers, double columnWidth) {
+          return Container(
+            color: isDark ? AppTheme.darkMuted : AppTheme.lightMuted,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: headers
+                  .map(
+                    (header) => SizedBox(
+                      width: columnWidth,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          header,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: mutedColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          );
+        }
+
+        Widget buildTableRow(
+          List<Widget> cells, {
+          bool alternate = false,
+          required double columnWidth,
+        }) {
+          return Container(
+            color: alternate
+                ? (isDark
+                      ? AppTheme.darkMuted.withOpacity(0.35)
+                      : AppTheme.lightMuted.withOpacity(0.45))
+                : Colors.transparent,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: cells
+                  .map(
+                    (cell) => SizedBox(
+                      width: columnWidth,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: cell,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          );
+        }
+
+        Widget buildRecordsTable({
+          required List<String> headers,
+          required List<List<Widget>> rows,
+          required double minWidth,
+          Widget? emptyState,
+        }) {
+          if (rows.isEmpty) {
+            return emptyState ??
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    'No records found.',
+                    style: TextStyle(color: mutedColor),
+                  ),
+                );
+          }
+
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: minWidth),
+              child: Column(
+                children: [
+                  buildTableHeader(headers, minWidth / headers.length),
+                  ...rows.asMap().entries.map(
+                    (entry) => buildTableRow(
+                      entry.value,
+                      alternate: entry.key.isOdd,
+                      columnWidth: minWidth / headers.length,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final itemRows = widget.pr.items.map((item) {
+          final itemNo = _previewDisplayText(
+            item.itemNo,
+            fallback: _previewDisplayText(item.itemName),
+          );
+          final description = _previewDisplayText(
+            item.materialDescription,
+            fallback: _previewDisplayText(item.itemName),
+          );
+          return [
+            Text(itemNo, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(description),
+            Text(_previewDisplayText(item.unit)),
+            Text(_previewDisplayText(item.reqQty)),
+            Text(_previewDisplayText(item.placeOfUtilisation)),
+          ];
+        }).toList();
+
+        final poRows = _linkedPos.map((po) {
+          return [
+            Text(
+              _previewDisplayText(
+                po['order_no'] ??
+                    po['orderNo'] ??
+                    po['po_no'] ??
+                    po['poNo'] ??
+                    po['po_id'] ??
+                    po['id'],
+              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Text(_recordDate(po)),
+            Text(_recordStatus(po)),
+          ];
+        }).toList();
+
+        final dcRows = _linkedDcs.map((dc) {
+          return [
+            Text(
+              _previewDisplayText(
+                dc['challan_number'] ??
+                    dc['challanNumber'] ??
+                    dc['dc_number'] ??
+                    dc['dcNo'] ??
+                    dc['dc_no'] ??
+                    dc['dc_id'] ??
+                    dc['id'],
+              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Text(_recordDate(dc)),
+            Text(_recordStatus(dc)),
+          ];
+        }).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                labelValueCard(
+                  'Project',
+                  _previewDisplayText(widget.pr.projectName),
+                ),
+                labelValueCard(
+                  'Work Order',
+                  _previewDisplayText(widget.pr.workorderNo),
+                ),
+                labelValueCard(
+                  'Floor No',
+                  _previewDisplayText(widget.pr.floorNo),
+                ),
+                labelValueCard(
+                  'Flat No',
+                  _previewDisplayText(widget.pr.flatNo),
+                ),
+                labelValueCard('MIR No', _previewDisplayText(widget.pr.mirNo)),
+                labelValueCard('Date', _formatPreviewDate(widget.pr.date)),
+                labelValueCard(
+                  'Urgency',
+                  _previewDisplayText(widget.pr.urgency),
+                ),
+                signatureBox(),
+                fullWidthCard(
+                  'Location',
+                  _previewDisplayText(widget.pr.location),
+                ),
+                if (widget.pr.remarks.trim().isNotEmpty)
+                  fullWidthCard(
+                    'Remarks',
+                    _previewDisplayText(widget.pr.remarks),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            attachmentButtons(),
+            const SizedBox(height: 16),
+            MadCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MadCardHeader(
+                    title: const MadCardTitle('Items'),
+                    subtitle: Text(
+                      'Items (${widget.pr.items.length})',
+                      style: TextStyle(color: mutedColor),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                  ),
+                  MadCardContent(
+                    padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: widget.pr.items.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Text(
+                                'No items.',
+                                style: TextStyle(color: mutedColor),
+                              ),
+                            )
+                          : buildRecordsTable(
+                              headers: const [
+                                'Item No',
+                                'Description',
+                                'Unit',
+                                'Qty',
+                                'Place',
+                              ],
+                              rows: itemRows,
+                              minWidth: 760,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            MadCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MadCardHeader(
+                    title: const MadCardTitle('Linked Purchase Orders'),
+                    subtitle: Text(
+                      '${_linkedPos.length} PO(s)',
+                      style: TextStyle(color: mutedColor),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                  ),
+                  MadCardContent(
+                    padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: _backpathLoading
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: isDark
+                                          ? AppTheme.darkForeground
+                                          : AppTheme.lightForeground,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Loading linked records…',
+                                    style: TextStyle(color: mutedColor),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : _linkedPos.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: borderColor.withOpacity(0.7),
+                                  ),
+                                ),
+                                child: Text(
+                                  'No PO linked to this PR.',
+                                  style: TextStyle(color: mutedColor),
+                                ),
+                              ),
+                            )
+                          : buildRecordsTable(
+                              headers: const ['PO No', 'Created', 'Status'],
+                              rows: poRows,
+                              minWidth: 520,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            MadCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MadCardHeader(
+                    title: const MadCardTitle('Linked Delivery Challans (DC)'),
+                    subtitle: Text(
+                      '${_linkedDcs.length} DC(s)',
+                      style: TextStyle(color: mutedColor),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                  ),
+                  MadCardContent(
+                    padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: _backpathLoading
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: isDark
+                                          ? AppTheme.darkForeground
+                                          : AppTheme.lightForeground,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Loading linked records…',
+                                    style: TextStyle(color: mutedColor),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : _linkedDcs.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: borderColor.withOpacity(0.7),
+                                  ),
+                                ),
+                                child: Text(
+                                  'No DC linked to this PR.',
+                                  style: TextStyle(color: mutedColor),
+                                ),
+                              ),
+                            )
+                          : buildRecordsTable(
+                              headers: const ['DC No', 'Created', 'Status'],
+                              rows: dcRows,
+                              minWidth: 520,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 int? _parsePositiveIntOrNull(String value) {
@@ -482,9 +1276,6 @@ class _PurchaseRequestsPageFullState
   int _currentPage = 1;
   final int _itemsPerPage = 10;
   final _searchController = TextEditingController();
-  String _urgencyFilter = 'all';
-  String _sampleFilter = '';
-  final _sampleController = TextEditingController();
 
   @override
   void initState() {
@@ -497,7 +1288,6 @@ class _PurchaseRequestsPageFullState
   @override
   void dispose() {
     _searchController.dispose();
-    _sampleController.dispose();
     super.dispose();
   }
 
@@ -513,10 +1303,7 @@ class _PurchaseRequestsPageFullState
           projectSession.selectedProjectId;
 
       Map<String, dynamic> result;
-      final sampleId = _sampleFilter.trim();
-      if (sampleId.isNotEmpty) {
-        result = await ApiClient.getPrsBySample(sampleId);
-      } else if (selectedProjectId != null && selectedProjectId.isNotEmpty) {
+      if (selectedProjectId != null && selectedProjectId.isNotEmpty) {
         result = await ApiClient.getPrsByProject(selectedProjectId);
       } else {
         result = await ApiClient.getPrs();
@@ -567,15 +1354,8 @@ class _PurchaseRequestsPageFullState
             r.workorderNo.toLowerCase().contains(query) ||
             r.location.toLowerCase().contains(query) ||
             r.mirNo.toLowerCase().contains(query) ||
-            r.urgency.toLowerCase().contains(query) ||
-            (r.sampleId?.toLowerCase().contains(query) ?? false);
+            r.urgency.toLowerCase().contains(query);
       }).toList();
-    }
-
-    if (_urgencyFilter != 'all') {
-      result = result
-          .where((r) => r.urgency.toLowerCase() == _urgencyFilter)
-          .toList();
     }
 
     return result;
@@ -646,9 +1426,9 @@ class _PurchaseRequestsPageFullState
                   text: 'New Request',
                   icon: LucideIcons.plus,
                   onPressed: () async {
-                    final result = await Navigator.of(
-                      context,
-                    ).pushNamed('/purchase-requests/create');
+                    final result = await context.appPush(
+                      '/purchase-requests/create',
+                    );
                     if (!mounted) return;
                     if (result == true) {
                       _loadRequests();
@@ -718,42 +1498,14 @@ class _PurchaseRequestsPageFullState
                   }),
                 ),
               ),
-              SizedBox(
-                width: isMobile ? double.infinity : 180,
-                child: MadSelect<String>(
-                  value: _urgencyFilter,
-                  placeholder: 'Urgency',
-                  options: const [
-                    MadSelectOption(value: 'all', label: 'All Urgency'),
-                    MadSelectOption(value: 'high', label: 'High'),
-                    MadSelectOption(value: 'medium', label: 'Medium'),
-                    MadSelectOption(value: 'low', label: 'Low'),
-                  ],
-                  onChanged: (value) => setState(() {
-                    _urgencyFilter = value ?? 'all';
-                    _currentPage = 1;
-                  }),
-                ),
-              ),
-              SizedBox(
-                width: isMobile ? double.infinity : 180,
-                child: MadInput(
-                  controller: _sampleController,
-                  labelText: 'Sample ID',
-                  hintText: 'Optional',
-                  onChanged: (value) => setState(() {
-                    _sampleFilter = value;
-                  }),
-                ),
-              ),
               if (isMobile)
                 MadButton(
                   icon: LucideIcons.plus,
                   text: 'New',
                   onPressed: () async {
-                    final result = await Navigator.of(
-                      context,
-                    ).pushNamed('/purchase-requests/create');
+                    final result = await context.appPush(
+                      '/purchase-requests/create',
+                    );
                     if (!mounted) return;
                     if (result == true) {
                       _loadRequests();
@@ -1405,64 +2157,18 @@ class _PurchaseRequestsPageFullState
   void _showDetailsDialog(PurchaseRequest pr) {
     MadDialog.show(
       context: context,
-      title: 'Purchase Request',
-      description: _formatPrNumber(pr),
-      content: Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _detailRow('Project', '${pr.projectId} - ${pr.projectName}'),
-            _detailRow(
-              'Sample ID',
-              pr.sampleId?.isNotEmpty == true ? pr.sampleId! : '-',
-            ),
-            _detailRow('Work Order', pr.workorderNo),
-            _detailRow('Location', pr.location),
-            _detailRow('MIR No', pr.mirNo.isEmpty ? '-' : pr.mirNo),
-            _detailRow('Urgency', pr.urgency),
-            _detailRow('Date', pr.date ?? '-'),
-            _detailRow('Approved By', pr.approvedBy),
-            _detailRow('PR File', pr.prFilePath.isEmpty ? '-' : pr.prFilePath),
-            _detailRow(
-              'Signature File',
-              pr.signatureFilePath.isEmpty ? '-' : pr.signatureFilePath,
-            ),
-            _detailRow('Remarks', pr.remarks.isEmpty ? '-' : pr.remarks),
-            const SizedBox(height: 16),
-            Text(
-              'Items (${pr.items.length})',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            if (pr.items.isEmpty)
-              Text(
-                '-',
-                style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? AppTheme.darkMutedForeground
-                      : AppTheme.lightMutedForeground,
-                ),
-              )
-            else
-              ...pr.items.map((item) {
-                final qtyLabel = item.reqQty.isEmpty
-                    ? ''
-                    : ' (${item.reqQty} ${item.unit})';
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    '${item.materialDescription.isEmpty ? '-' : item.materialDescription}$qtyLabel',
-                  ),
-                );
-              }),
-          ],
+      title: _formatPrNumber(pr),
+      description: 'Request details and uploaded documents.',
+      maxWidth: 980,
+      content: SizedBox(
+        width: double.infinity,
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(top: 8),
+          child: _PurchaseRequestPreviewDialogBody(pr: pr),
         ),
       ),
-      actions: [
-        MadButton(text: 'Close', onPressed: () => Navigator.of(context).pop()),
-      ],
+      actions: const [],
     );
   }
 
@@ -1639,9 +2345,6 @@ class _PurchaseRequestFormContentState
           : DateFormat('yyyy-MM-dd').format(DateTime.now()),
     );
     _urgency = existing?.urgency ?? 'Medium';
-    _sampleId = (existing?.sampleId?.isNotEmpty == true
-        ? existing!.sampleId!
-        : 'none');
     _mirNo = existing?.mirNo.isNotEmpty == true ? existing!.mirNo : 'none';
     if (_mirNo != 'none') {
       _mirNoController.text = _mirNo;
@@ -1730,7 +2433,6 @@ class _PurchaseRequestFormContentState
       setState(() {
         _samples = [];
         _mirs = [];
-        _sampleId = 'none';
         _mirNo = 'none';
         _mirNoController.clear();
       });
@@ -1763,32 +2465,11 @@ class _PurchaseRequestFormContentState
           .toList();
       _loadingSamples = false;
       _loadingMirs = false;
-      if (_sampleId != 'none' &&
-          !_samples.any((s) => _sampleValue(s) == _sampleId)) {
-        _sampleId = 'none';
-      }
       if (_mirNo != 'none' && !_mirs.any((m) => _mirValue(m) == _mirNo)) {
         _mirNo = 'none';
         _mirNoController.clear();
       }
     });
-  }
-
-  String _sampleValue(Map<String, dynamic> s) =>
-      (s['sample_id'] ?? s['id'] ?? '').toString();
-
-  String _sampleLabel(Map<String, dynamic> s) {
-    final id = _sampleValue(s);
-    final label =
-        (s['work_done'] ??
-                s['site_name'] ??
-                s['building_name'] ??
-                s['name'] ??
-                '')
-            .toString();
-    if (id.isEmpty) return label.isEmpty ? '-' : label;
-    if (label.isEmpty) return '#$id';
-    return '#$id - $label';
   }
 
   String _mirValue(Map<String, dynamic> m) =>
@@ -1888,8 +2569,8 @@ class _PurchaseRequestFormContentState
 
   Map<String, dynamic> _buildPayload() {
     final projectIdStr = _projectIdController.text.trim();
-    final sampleIdStr = _sampleId == 'none' ? '' : _sampleId.trim();
     final projectIdInt = _parsePositiveIntOrNull(projectIdStr);
+    final sampleIdStr = _sampleId == 'none' ? '' : _sampleId.trim();
     final sampleIdInt = _parsePositiveIntOrNull(sampleIdStr);
     return {
       'project_id': projectIdInt ?? projectIdStr,
@@ -2019,51 +2700,6 @@ class _PurchaseRequestFormContentState
                 controller: _projectNameController,
                 labelText: 'Project Name *',
                 hintText: 'Project name',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: MadSelect<String>(
-                labelText: 'Sample ID',
-                value: _sampleId,
-                placeholder: _loadingSamples
-                    ? 'Loading samples...'
-                    : 'Optional',
-                options: [
-                  const MadSelectOption(value: 'none', label: 'None'),
-                  if (_sampleId != 'none' &&
-                      !_samples.any((s) => _sampleValue(s) == _sampleId))
-                    MadSelectOption(
-                      value: _sampleId,
-                      label: 'Sample #$_sampleId (current)',
-                    ),
-                  ..._samples.map(
-                    (sample) => MadSelectOption(
-                      value: _sampleValue(sample),
-                      label: _sampleLabel(sample),
-                    ),
-                  ),
-                ],
-                disabled: _loadingSamples,
-                onChanged: (v) => setState(() => _sampleId = v ?? 'none'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: MadSelect<String>(
-                labelText: 'Urgency',
-                value: _urgency,
-                placeholder: 'Select urgency',
-                options: const [
-                  MadSelectOption(value: 'High', label: 'High'),
-                  MadSelectOption(value: 'Medium', label: 'Medium'),
-                  MadSelectOption(value: 'Low', label: 'Low'),
-                ],
-                onChanged: (v) => setState(() => _urgency = v ?? 'Medium'),
               ),
             ),
           ],
@@ -2310,6 +2946,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
 
   final TextEditingController _projectNameController = TextEditingController();
   final TextEditingController _prNumberController = TextEditingController();
+  final TextEditingController _sampleIdController = TextEditingController();
   final TextEditingController _workorderController = TextEditingController();
   final TextEditingController _floorNoController = TextEditingController();
   final TextEditingController _flatNoController = TextEditingController();
@@ -2363,6 +3000,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
   void dispose() {
     _projectNameController.dispose();
     _prNumberController.dispose();
+    _sampleIdController.dispose();
     _workorderController.dispose();
     _floorNoController.dispose();
     _flatNoController.dispose();
@@ -2468,6 +3106,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         _mirs = [];
         _sampleCatalogItems = [];
         _sampleId = 'none';
+        _sampleIdController.clear();
         _mirNo = 'none';
         _mirNoController.clear();
         _workorderController.clear();
@@ -2509,6 +3148,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
             (s) => (s['sample_id'] ?? s['id']).toString() == _sampleId,
           )) {
         _sampleId = 'none';
+        _sampleIdController.clear();
       }
       if (_mirNo != 'none' && !_mirs.any((m) => _mirValue(m) == _mirNo)) {
         _mirNo = 'none';
@@ -2752,12 +3392,16 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
     if (sampleValue.isEmpty) {
       setState(() {
         _sampleId = 'none';
+        _sampleIdController.clear();
         _sampleCatalogItems = [];
       });
       return;
     }
 
-    setState(() => _sampleId = sampleValue);
+    setState(() {
+      _sampleId = sampleValue;
+      _sampleIdController.text = sampleValue;
+    });
 
     final selectedSample = _samples.cast<Map<String, dynamic>?>().firstWhere(
       (s) => (s?['sample_id'] ?? s?['id'] ?? '').toString() == sampleValue,
@@ -2870,7 +3514,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
 
   Map<String, dynamic> _buildPayload() {
     final projectIdInt = _parsePositiveIntOrNull(_projectId);
-    final sampleIdStr = _sampleId == 'none' ? '' : _sampleId;
+    final sampleIdStr = _sampleId.trim();
     final sampleIdInt = _parsePositiveIntOrNull(sampleIdStr);
     return {
       'pr_number': _prNumberController.text.trim(),
@@ -2961,7 +3605,6 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
         )
         .where((o) => o.value.isNotEmpty)
         .toList();
-
     final sampleOptions = _samples
         .map(
           (s) => MadSelectOption<String>(
@@ -3063,6 +3706,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                 setState(() {
                                   _projectId = v ?? '';
                                   _sampleId = 'none';
+                                  _sampleIdController.clear();
                                   _mirNo = 'none';
                                   _mirNoController.clear();
                                   _prItemSearchController.clear();
@@ -3082,13 +3726,6 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                               hintText: 'Project name',
                               enabled: false,
                             ),
-                            const SizedBox(height: 12),
-                            MadInput(
-                              controller: _prNumberController,
-                              labelText: 'PR Number *',
-                              hintText: 'Enter PR number',
-                              enabled: true,
-                            ),
                           ] else
                             Row(
                               children: [
@@ -3107,6 +3744,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                       setState(() {
                                         _projectId = v ?? '';
                                         _sampleId = 'none';
+                                        _sampleIdController.clear();
                                         _mirNo = 'none';
                                         _mirNoController.clear();
                                         _prItemSearchController.clear();
@@ -3139,22 +3777,68 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             enabled: true,
                           ),
                           const SizedBox(height: 12),
-                          if (isMobile) ...[
-                            MadSelect<String>(
-                              labelText: 'Sample ID',
-                              placeholder: _loadingSamples
-                                  ? 'Loading...'
-                                  : 'Optional',
-                              value: _sampleId == 'none' ? null : _sampleId,
-                              options: sampleOptions,
-                              clearable: true,
-                              onChanged: _handleSampleChanged,
+                          MadInput(
+                            controller: _sampleIdController,
+                            labelText: 'Sample ID',
+                            hintText: 'Enter sample id',
+                            onChanged: (v) => setState(
+                              () => _sampleId = v.trim().isEmpty
+                                  ? 'none'
+                                  : v.trim(),
                             ),
-                            if (_loadingSampleItems) ...[
-                              const SizedBox(height: 8),
-                              const Text('Loading sample items...'),
+                            onSubmitted: (v) => _handleSampleChanged(v),
+                          ),
+                          const SizedBox(height: 8),
+                          MadSelect<String>(
+                            value: _sampleId == 'none' ? null : _sampleId,
+                            placeholder: _loadingSamples
+                                ? 'Loading samples...'
+                                : 'Pick from samples',
+                            options: [
+                              const MadSelectOption(
+                                value: 'none',
+                                label: 'None',
+                              ),
+                              if (_sampleId != 'none' &&
+                                  !_samples.any(
+                                    (s) =>
+                                        (s['sample_id'] ?? s['id'])
+                                            .toString() ==
+                                        _sampleId,
+                                  ))
+                                MadSelectOption(
+                                  value: _sampleId,
+                                  label: 'Sample #$_sampleId (current)',
+                                ),
+                              ...sampleOptions,
                             ],
-                            const SizedBox(height: 12),
+                            disabled: _loadingSamples,
+                            searchable: true,
+                            onChanged: (v) {
+                              final next = v ?? 'none';
+                              setState(() {
+                                _sampleId = next == 'none' ? 'none' : next;
+                                _sampleIdController.text = next == 'none'
+                                    ? ''
+                                    : next;
+                              });
+                              _handleSampleChanged(next == 'none' ? '' : next);
+                            },
+                          ),
+                          if (_loadingSampleItems) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Loading sample items...',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          if (isMobile) ...[
                             MadInput(
                               controller: _mirNoController,
                               labelText: 'MIR No',
@@ -3165,25 +3849,25 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                 _mirNo = v.trim().isEmpty ? 'none' : v.trim();
                               }),
                             ),
+                            const SizedBox(height: 12),
+                            MadSelect<String>(
+                              labelText: 'Urgency',
+                              value: _urgency,
+                              placeholder: 'Select urgency',
+                              options: const [
+                                MadSelectOption(value: 'High', label: 'High'),
+                                MadSelectOption(
+                                  value: 'Medium',
+                                  label: 'Medium',
+                                ),
+                                MadSelectOption(value: 'Low', label: 'Low'),
+                              ],
+                              onChanged: (v) =>
+                                  setState(() => _urgency = v ?? 'Medium'),
+                            ),
                           ] else
                             Row(
                               children: [
-                                Expanded(
-                                  child: MadSelect<String>(
-                                    labelText: 'Sample ID',
-                                    placeholder: _loadingSamples
-                                        ? 'Loading...'
-                                        : 'Optional',
-                                    value: _sampleId == 'none'
-                                        ? null
-                                        : _sampleId,
-                                    options: sampleOptions,
-                                    clearable: true,
-                                    searchable: true,
-                                    onChanged: _handleSampleChanged,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
                                 Expanded(
                                   child: MadInput(
                                     controller: _mirNoController,
@@ -3198,6 +3882,31 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                     }),
                                   ),
                                 ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: MadSelect<String>(
+                                    labelText: 'Urgency',
+                                    value: _urgency,
+                                    placeholder: 'Select urgency',
+                                    options: const [
+                                      MadSelectOption(
+                                        value: 'High',
+                                        label: 'High',
+                                      ),
+                                      MadSelectOption(
+                                        value: 'Medium',
+                                        label: 'Medium',
+                                      ),
+                                      MadSelectOption(
+                                        value: 'Low',
+                                        label: 'Low',
+                                      ),
+                                    ],
+                                    onChanged: (v) => setState(
+                                      () => _urgency = v ?? 'Medium',
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           const SizedBox(height: 12),
@@ -3205,7 +3914,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                             MadInput(
                               controller: _workorderController,
                               labelText: 'Work Order No',
-                              hintText: 'Enter work order no',
+                              hintText: '6100023325',
                               enabled: true,
                             ),
                             const SizedBox(height: 12),
@@ -3237,7 +3946,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                 child: MadInput(
                                   controller: _dateController,
                                   labelText: 'Date',
-                                  hintText: 'Select date',
+                                  hintText: '30/07/2026',
                                 ),
                               ),
                             ),
@@ -3250,8 +3959,30 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                       child: MadInput(
                                         controller: _workorderController,
                                         labelText: 'Work Order No',
-                                        hintText: 'Enter work order no',
+                                        hintText: '6100023325',
                                         enabled: true,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: MadInput(
+                                        controller: _floorNoController,
+                                        labelText: 'Floor No *',
+                                        hintText: 'e.g. 2',
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: MadInput(
+                                        controller: _flatNoController,
+                                        labelText: 'Flat No *',
+                                        hintText: 'e.g. 7',
+                                        keyboardType: TextInputType.number,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -3262,31 +3993,9 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                                           child: MadInput(
                                             controller: _dateController,
                                             labelText: 'Date',
-                                            hintText: 'Select date',
+                                            hintText: '30/07/2026',
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: MadInput(
-                                        controller: _floorNoController,
-                                        labelText: 'Floor No *',
-                                        hintText: 'e.g. 2',
-                                        keyboardType: TextInputType.number,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: MadInput(
-                                        controller: _flatNoController,
-                                        labelText: 'Flat No *',
-                                        hintText: 'e.g. 7',
-                                        keyboardType: TextInputType.number,
                                       ),
                                     ),
                                   ],
@@ -3297,32 +4006,19 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                           MadInput(
                             controller: _locationController,
                             labelText: 'Location',
-                            hintText: 'Location',
-                          ),
-                          const SizedBox(height: 12),
-                          MadSelect<String>(
-                            labelText: 'Urgency',
-                            value: _urgency,
-                            placeholder: 'Select urgency',
-                            options: const [
-                              MadSelectOption(value: 'High', label: 'High'),
-                              MadSelectOption(value: 'Medium', label: 'Medium'),
-                              MadSelectOption(value: 'Low', label: 'Low'),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _urgency = v ?? 'Medium'),
+                            hintText: 'Site / location',
                           ),
                           const SizedBox(height: 12),
                           MadInput(
                             controller: _approvedByController,
                             labelText: 'Approved By',
-                            hintText: 'Optional',
+                            hintText: 'Approver name',
                           ),
                           const SizedBox(height: 12),
                           MadTextarea(
                             controller: _remarksController,
                             labelText: 'Remarks',
-                            hintText: 'Remarks',
+                            hintText: 'Optional notes',
                             minLines: 3,
                           ),
                         ],
@@ -3422,9 +4118,7 @@ class _PurchaseRequestCreatePageState extends State<PurchaseRequestCreatePage> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            _loadingSampleItems
-                                ? 'Loading items from selected sample...'
-                                : 'Items can be loaded from a selected sample or entered manually.',
+                            'Items can be entered manually.',
                             style: TextStyle(
                               fontSize: 12,
                               color: isDark

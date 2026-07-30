@@ -20,12 +20,12 @@ class ChallanItemsDetailPage extends StatefulWidget {
 
 class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
   static const _emptyItem = {
+    'itemNo': '',
     'name': '',
     'description': '',
     'width': '',
     'length': '',
     'quantity': '',
-    'price': '',
   };
 
   late final List<_DetailItemControllers> _deliveryItems;
@@ -50,12 +50,12 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
 
   bool _hasItemValue(Map<String, String> item) {
     const keys = [
+      'itemNo',
       'name',
       'description',
       'width',
       'length',
       'quantity',
-      'price',
     ];
     return keys.any((key) => (item[key] ?? '').trim().isNotEmpty);
   }
@@ -67,6 +67,9 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
     final parsedQty = double.tryParse((item['quantity'] ?? '').trim());
     final qty = parsedQty == null ? '' : (parsedQty / 2).toString();
     return {
+      'itemNo': (item['itemNo'] ?? '').isNotEmpty
+          ? item['itemNo']!
+          : 'Item ${index + 1}',
       'name': (item['name'] ?? '').isNotEmpty
           ? item['name']!
           : ((item['description'] ?? '').isNotEmpty
@@ -76,7 +79,6 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
       'width': item['width'] ?? '',
       'length': item['length'] ?? '',
       'quantity': qty,
-      'price': item['price'] ?? '',
     };
   }
 
@@ -108,9 +110,6 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
         break;
       case 'quantity':
         item.quantity.text = value;
-        break;
-      case 'price':
-        item.price.text = value;
         break;
     }
   }
@@ -380,8 +379,7 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                             Text(
                               'W: ${(item['width'] ?? '').isEmpty ? '-' : item['width']} | '
                               'L: ${(item['length'] ?? '').isEmpty ? '-' : item['length']} | '
-                              'Qty: ${(item['quantity'] ?? '').isEmpty ? '-' : item['quantity']} | '
-                              'Price: ${(item['price'] ?? '').isEmpty ? '-' : item['price']}',
+                              'Qty: ${(item['quantity'] ?? '').isEmpty ? '-' : item['quantity']}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark
@@ -410,8 +408,8 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    (item['name'] ?? '').isNotEmpty
-                                        ? item['name']!
+                                    (item['itemNo'] ?? '').isNotEmpty
+                                        ? item['itemNo']!
                                         : 'Item ${index + 1}',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w600,
@@ -427,8 +425,7 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                                   Text(
                                     'W: ${(item['width'] ?? '').isEmpty ? '-' : item['width']} | '
                                     'L: ${(item['length'] ?? '').isEmpty ? '-' : item['length']} | '
-                                    'Qty: ${(item['quantity'] ?? '').isEmpty ? '-' : item['quantity']} | '
-                                    'Price: ${(item['price'] ?? '').isEmpty ? '-' : item['price']}',
+                                    'Qty: ${(item['quantity'] ?? '').isEmpty ? '-' : item['quantity']}',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: isDark
@@ -517,6 +514,13 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     MadInput(
+                      hintText: 'Item No',
+                      controller: item.itemNo,
+                      onChanged: (value) =>
+                          _updateDeliveryItem(index, 'itemNo', value),
+                    ),
+                    const SizedBox(height: 8),
+                    MadInput(
                       hintText: 'Name',
                       controller: item.name,
                       onChanged: (value) =>
@@ -584,13 +588,6 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                                 _updateDeliveryItem(index, 'quantity', value),
                           ),
                           const SizedBox(height: 8),
-                          MadInput(
-                            hintText: 'Price',
-                            controller: item.price,
-                            onChanged: (value) =>
-                                _updateDeliveryItem(index, 'price', value),
-                          ),
-                          const SizedBox(height: 8),
                           Align(
                             alignment: Alignment.centerRight,
                             child: MadButton(
@@ -614,15 +611,6 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: MadInput(
-                              hintText: 'Price',
-                              controller: item.price,
-                              onChanged: (value) =>
-                                  _updateDeliveryItem(index, 'price', value),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
                           MadButton(
                             icon: LucideIcons.minus,
                             variant: ButtonVariant.outline,
@@ -643,53 +631,53 @@ class _ChallanItemsDetailPageState extends State<ChallanItemsDetailPage> {
 }
 
 class _DetailItemControllers {
+  final TextEditingController itemNo;
   final TextEditingController name;
   final TextEditingController description;
   final TextEditingController width;
   final TextEditingController length;
   final TextEditingController quantity;
-  final TextEditingController price;
 
   _DetailItemControllers({
+    String itemNo = '',
     String name = '',
     String description = '',
     String width = '',
     String length = '',
     String quantity = '',
-    String price = '',
-  }) : name = TextEditingController(text: name),
+  }) : itemNo = TextEditingController(text: itemNo),
+       name = TextEditingController(text: name),
        description = TextEditingController(text: description),
        width = TextEditingController(text: width),
        length = TextEditingController(text: length),
-       quantity = TextEditingController(text: quantity),
-       price = TextEditingController(text: price);
+       quantity = TextEditingController(text: quantity);
 
   factory _DetailItemControllers.fromMap(Map<String, String> map) {
     return _DetailItemControllers(
+      itemNo: map['itemNo'] ?? '',
       name: map['name'] ?? '',
       description: map['description'] ?? '',
       width: map['width'] ?? '',
       length: map['length'] ?? '',
       quantity: map['quantity'] ?? '',
-      price: map['price'] ?? '',
     );
   }
 
   Map<String, String> toMap() => {
+    'itemNo': itemNo.text,
     'name': name.text,
     'description': description.text,
     'width': width.text,
     'length': length.text,
     'quantity': quantity.text,
-    'price': price.text,
   };
 
   void dispose() {
+    itemNo.dispose();
     name.dispose();
     description.dispose();
     width.dispose();
     length.dispose();
     quantity.dispose();
-    price.dispose();
   }
 }

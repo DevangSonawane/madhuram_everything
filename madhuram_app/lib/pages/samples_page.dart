@@ -1,17 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../utils/responsive.dart';
 import '../services/api_client.dart';
-import '../services/file_service.dart';
 import '../utils/app_navigation.dart';
 import '../providers/legacy_session_providers.dart';
 
@@ -32,18 +29,20 @@ class FloorConfig {
   });
 
   Map<String, dynamic> toJson() => {
-        'floor': floor,
-        'config': config,
-        'qty': qty,
-        'unit': unit,
-        'status': status,
-      };
+    'floor': floor,
+    'config': config,
+    'qty': qty,
+    'unit': unit,
+    'status': status,
+  };
 
   static FloorConfig fromJson(Map<String, dynamic> json) {
     return FloorConfig(
       floor: json['floor'] as String? ?? '',
       config: json['config'] as String? ?? '',
-      qty: (json['qty'] is int) ? json['qty'] as int : int.tryParse(json['qty']?.toString() ?? '0') ?? 0,
+      qty: (json['qty'] is int)
+          ? json['qty'] as int
+          : int.tryParse(json['qty']?.toString() ?? '0') ?? 0,
       unit: json['unit'] as String? ?? 'Points',
       status: json['status'] as String? ?? 'Draft',
     );
@@ -62,16 +61,38 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
   static const String _prefKey = 'samples_floor_config';
 
   static final List<FloorConfig> _initialFloorData = [
-    FloorConfig(floor: 'Ground', config: 'CPVC 20mm - 5 points', qty: 5, unit: 'Points', status: 'Locked'),
-    FloorConfig(floor: '1st', config: 'CPVC 25mm - 8 points', qty: 8, unit: 'Points', status: 'Draft'),
-    FloorConfig(floor: '2nd', config: 'CPVC 20mm - 6 points', qty: 6, unit: 'Points', status: 'Draft'),
-    FloorConfig(floor: '3rd', config: 'CPVC 32mm - 4 points', qty: 4, unit: 'Points', status: 'Locked'),
+    FloorConfig(
+      floor: 'Ground',
+      config: 'CPVC 20mm - 5 points',
+      qty: 5,
+      unit: 'Points',
+      status: 'Locked',
+    ),
+    FloorConfig(
+      floor: '1st',
+      config: 'CPVC 25mm - 8 points',
+      qty: 8,
+      unit: 'Points',
+      status: 'Draft',
+    ),
+    FloorConfig(
+      floor: '2nd',
+      config: 'CPVC 20mm - 6 points',
+      qty: 6,
+      unit: 'Points',
+      status: 'Draft',
+    ),
+    FloorConfig(
+      floor: '3rd',
+      config: 'CPVC 32mm - 4 points',
+      qty: 4,
+      unit: 'Points',
+      status: 'Locked',
+    ),
   ];
 
   String _workTypeFilter = 'CPVC'; // CPVC | Suspended
   List<FloorConfig> _floorConfigs = List.from(_initialFloorData);
-  File? _uploadedFile;
-  bool _isExtracting = false;
   bool _loadingServer = false;
   List<Map<String, dynamic>> _serverSamples = [];
   List<Map<String, dynamic>> _inventoryItems = [];
@@ -79,8 +100,6 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
   bool _inventoryLoadScheduled = false;
   String _inventorySearch = '';
   final Map<String, String> _pendingInventoryQty = {};
-  List<String> _uploadFilePaths = [];
-  String _selectedUploadedFile = '';
   String _searchQuery = '';
   String _projectId = '';
   String _itemFieldKey = '';
@@ -94,7 +113,13 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
     'sample_file': '',
     'location': {'floor': '', 'block': '', 'wing': '', 'coordinates': ''},
     'item_description': [
-      {'sr_no': '', 'description': '', 'quantity': '', 'value': '', 'add_fields': []}
+      {
+        'sr_no': '',
+        'description': '',
+        'quantity': '',
+        'value': '',
+        'add_fields': [],
+      },
     ],
     'add_fields': [],
   };
@@ -116,7 +141,10 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
           .join(' ')
           .toLowerCase();
 
-      return building.contains(query) || site.contains(query) || work.contains(query) || items.contains(query);
+      return building.contains(query) ||
+          site.contains(query) ||
+          work.contains(query) ||
+          items.contains(query);
     }).toList();
   }
 
@@ -127,7 +155,9 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
       final id = (item['inventory_id'] ?? item['id'] ?? '').toString();
       final brand = (item['brand'] ?? '').toString().toLowerCase();
       final name = (item['name'] ?? '').toString().toLowerCase();
-      return id.contains(query) || brand.contains(query) || name.contains(query);
+      return id.contains(query) ||
+          brand.contains(query) ||
+          name.contains(query);
     }).toList();
   }
 
@@ -141,32 +171,13 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
     return int.tryParse(raw?.toString() ?? '') ?? 0;
   }
 
-  Future<void> _pickFile() async {
-    final file = await FileService.pickFileWithSource(
-      context: context,
-      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
-    );
-    if (file == null) return;
-    setState(() {
-      _uploadedFile = file;
-    });
-  }
-
-  void _extractPlaceholder() {
-    setState(() => _isExtracting = true);
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        setState(() => _isExtracting = false);
-        showToast(context, 'Extraction placeholder – PDF extraction would run here');
-      }
-    });
-  }
-
   void _toggleLock(FloorConfig row) {
     setState(() {
       final idx = _floorConfigs.indexWhere((e) => e.floor == row.floor);
       if (idx >= 0) {
-        _floorConfigs[idx].status = _floorConfigs[idx].status == 'Locked' ? 'Draft' : 'Locked';
+        _floorConfigs[idx].status = _floorConfigs[idx].status == 'Locked'
+            ? 'Draft'
+            : 'Locked';
       }
     });
   }
@@ -183,12 +194,13 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          MadInput(labelText: 'Floor', controller: TextEditingController(text: row.floor), enabled: false),
-          const SizedBox(height: 16),
           MadInput(
-            labelText: 'Configuration',
-            controller: configCtrl,
+            labelText: 'Floor',
+            controller: TextEditingController(text: row.floor),
+            enabled: false,
           ),
+          const SizedBox(height: 16),
+          MadInput(labelText: 'Configuration', controller: configCtrl),
           const SizedBox(height: 16),
           MadInput(
             labelText: 'Qty',
@@ -196,11 +208,19 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
             keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 16),
-          MadInput(labelText: 'Unit', controller: TextEditingController(text: row.unit), enabled: false),
+          MadInput(
+            labelText: 'Unit',
+            controller: TextEditingController(text: row.unit),
+            enabled: false,
+          ),
         ],
       ),
       actions: [
-        MadButton(text: 'Cancel', variant: ButtonVariant.outline, onPressed: () => Navigator.pop(context)),
+        MadButton(
+          text: 'Cancel',
+          variant: ButtonVariant.outline,
+          onPressed: () => Navigator.pop(context),
+        ),
         MadButton(
           text: 'Save',
           onPressed: () {
@@ -208,7 +228,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
               final idx = _floorConfigs.indexWhere((e) => e.floor == row.floor);
               if (idx >= 0) {
                 _floorConfigs[idx].config = configCtrl.text;
-                _floorConfigs[idx].qty = int.tryParse(qtyCtrl.text) ?? _floorConfigs[idx].qty;
+                _floorConfigs[idx].qty =
+                    int.tryParse(qtyCtrl.text) ?? _floorConfigs[idx].qty;
               }
             });
             Navigator.pop(context);
@@ -219,7 +240,10 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
   }
 
   void _exportToExcel() {
-    showToast(context, 'Export to Excel – placeholder (data would be exported here)');
+    showToast(
+      context,
+      'Export to Excel – placeholder (data would be exported here)',
+    );
   }
 
   Future<void> _saveConfiguration() async {
@@ -229,7 +253,12 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
       await prefs.setString(_prefKey, jsonEncode(list));
       if (mounted) showToast(context, 'Configuration saved successfully');
     } catch (_) {
-      if (mounted) showToast(context, 'Failed to save configuration', variant: ToastVariant.error);
+      if (mounted)
+        showToast(
+          context,
+          'Failed to save configuration',
+          variant: ToastVariant.error,
+        );
     }
   }
 
@@ -247,7 +276,12 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
         if (mounted) showToast(context, 'No saved configuration found');
       }
     } catch (_) {
-      if (mounted) showToast(context, 'Failed to load configuration', variant: ToastVariant.error);
+      if (mounted)
+        showToast(
+          context,
+          'Failed to load configuration',
+          variant: ToastVariant.error,
+        );
     }
   }
 
@@ -262,12 +296,16 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
           child: Text(
             'Diagram viewer – extracted data would appear here',
             style: TextStyle(
-              color: Theme.of(context).brightness == Brightness.dark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
             ),
           ),
         ),
       ),
-      actions: [MadButton(text: 'Close', onPressed: () => Navigator.pop(context))],
+      actions: [
+        MadButton(text: 'Close', onPressed: () => Navigator.pop(context)),
+      ],
     );
   }
 
@@ -283,7 +321,12 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
         }
       }
       if (raw['location'] is! Map) {
-        raw['location'] = {'floor': '', 'block': '', 'wing': '', 'coordinates': ''};
+        raw['location'] = {
+          'floor': '',
+          'block': '',
+          'wing': '',
+          'coordinates': '',
+        };
       }
       if (raw['item_description'] is! List) {
         raw['item_description'] = [];
@@ -297,7 +340,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
 
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
-    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(fn);
       });
@@ -465,40 +509,6 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
     showToast(context, 'Item added and inventory updated.');
   }
 
-  Future<void> _uploadSampleFiles() async {
-    final files = await FileService.pickMultipleFilesWithSource(context: context);
-    if (files.isEmpty) return;
-    final res = await ApiClient.uploadSampleFiles(files);
-    if (!mounted) return;
-    if (res['success'] == true) {
-      final data = res['data'] as Map?;
-      final filePaths = (data?['filePaths'] as List?)?.map((e) => e.toString()).toList() ?? [];
-      setState(() {
-        _uploadFilePaths = filePaths;
-        if (filePaths.isNotEmpty) {
-          _selectedUploadedFile = filePaths.first;
-          _createForm['sample_file'] = filePaths.first;
-        }
-      });
-      showToast(context, 'Uploaded ${filePaths.length} file(s)');
-    } else {
-      showToast(context, res['error']?.toString() ?? 'Upload failed', variant: ToastVariant.error);
-    }
-  }
-
-  String _fileNameFromPath(String path) {
-    final parts = path.split(RegExp(r'[/\\]'));
-    if (parts.isEmpty) return path;
-    return parts.last.isEmpty ? path : parts.last;
-  }
-
-  Future<void> _openUploadedFile(String path) async {
-    final uri = Uri.parse(ApiClient.getApiFileUrl(path));
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
-      showToast(context, 'Could not open file', variant: ToastVariant.error);
-    }
-  }
-
   Future<void> _saveSample() async {
     if (_projectId.isEmpty) {
       showToast(context, 'Select a project first', variant: ToastVariant.error);
@@ -518,16 +528,25 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
           'sample_file': '',
           'location': {'floor': '', 'block': '', 'wing': '', 'coordinates': ''},
           'item_description': [
-            {'sr_no': '', 'description': '', 'quantity': '', 'value': '', 'add_fields': []}
+            {
+              'sr_no': '',
+              'description': '',
+              'quantity': '',
+              'value': '',
+              'add_fields': [],
+            },
           ],
           'add_fields': [],
         };
-        _selectedUploadedFile = '';
         _createFormVersion++;
       });
       _loadServerSamples();
     } else {
-      showToast(context, res['error']?.toString() ?? 'Create failed', variant: ToastVariant.error);
+      showToast(
+        context,
+        res['error']?.toString() ?? 'Create failed',
+        variant: ToastVariant.error,
+      );
     }
   }
 
@@ -540,7 +559,11 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
       showToast(context, 'Sample deleted');
       _loadServerSamples();
     } else {
-      showToast(context, res['error']?.toString() ?? 'Delete failed', variant: ToastVariant.error);
+      showToast(
+        context,
+        res['error']?.toString() ?? 'Delete failed',
+        variant: ToastVariant.error,
+      );
     }
   }
 
@@ -567,19 +590,31 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
         ],
       ),
       actions: [
-        MadButton(text: 'Cancel', variant: ButtonVariant.outline, onPressed: () => Navigator.pop(context)),
+        MadButton(
+          text: 'Cancel',
+          variant: ButtonVariant.outline,
+          onPressed: () => Navigator.pop(context),
+        ),
         MadButton(
           text: 'Add',
           onPressed: () {
             final key = _itemFieldKey.trim();
             final value = _itemFieldValue.trim();
             if (key.isEmpty || value.isEmpty || _itemFieldRowIndex == null) {
-              showToast(context, 'Enter both key and value', variant: ToastVariant.error);
+              showToast(
+                context,
+                'Enter both key and value',
+                variant: ToastVariant.error,
+              );
               return;
             }
-            final items = List<Map<String, dynamic>>.from(_createForm['item_description'] as List);
+            final items = List<Map<String, dynamic>>.from(
+              _createForm['item_description'] as List,
+            );
             final item = Map<String, dynamic>.from(items[_itemFieldRowIndex!]);
-            final fields = List<Map<String, dynamic>>.from(item['add_fields'] as List? ?? []);
+            final fields = List<Map<String, dynamic>>.from(
+              item['add_fields'] as List? ?? [],
+            );
             fields.add({'key': key, 'value': value});
             item['add_fields'] = fields;
             items[_itemFieldRowIndex!] = item;
@@ -592,10 +627,14 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
   }
 
   void _removeItemField(int rowIndex, int fieldIndex) {
-    final items = List<Map<String, dynamic>>.from(_createForm['item_description'] as List);
+    final items = List<Map<String, dynamic>>.from(
+      _createForm['item_description'] as List,
+    );
     if (rowIndex < 0 || rowIndex >= items.length) return;
     final item = Map<String, dynamic>.from(items[rowIndex]);
-    final fields = List<Map<String, dynamic>>.from(item['add_fields'] as List? ?? []);
+    final fields = List<Map<String, dynamic>>.from(
+      item['add_fields'] as List? ?? [],
+    );
     if (fieldIndex < 0 || fieldIndex >= fields.length) return;
     fields.removeAt(fieldIndex);
     item['add_fields'] = fields;
@@ -635,18 +674,38 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
     );
   }
 
-  Widget _buildHeaderCell(String text, {required int flex, required bool isDark}) {
+  Widget _buildHeaderCell(
+    String text, {
+    required int flex,
+    required bool isDark,
+  }) {
     return Expanded(
       flex: flex,
       child: Text(
         text,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: isDark
+              ? AppTheme.darkMutedForeground
+              : AppTheme.lightMutedForeground,
+        ),
       ),
     );
   }
 
-  Widget _buildMetricChip(String label, String value, IconData icon, bool isDark, Responsive responsive) {
-    final chipWidth = responsive.value(mobile: 160.0, tablet: 180.0, desktop: 200.0);
+  Widget _buildMetricChip(
+    String label,
+    String value,
+    IconData icon,
+    bool isDark,
+    Responsive responsive,
+  ) {
+    final chipWidth = responsive.value(
+      mobile: 160.0,
+      tablet: 180.0,
+      desktop: 200.0,
+    );
     return SizedBox(
       width: chipWidth,
       child: MadCard(
@@ -660,8 +719,25 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: TextStyle(fontSize: 11, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
-                    Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark
+                            ? AppTheme.darkMutedForeground
+                            : AppTheme.lightMutedForeground,
+                      ),
+                    ),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -684,7 +760,9 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
             const SizedBox(height: 8),
@@ -693,87 +771,6 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
               selectedTab: _workTypeFilter,
               onTabChanged: (v) => setState(() => _workTypeFilter = v),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUploadCard(bool isDark, bool isMobile) {
-    return MadCard(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Floor Plan Upload',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Upload PDF or image reference. Extract parses supported files.',
-              style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
-            ),
-            const SizedBox(height: 12),
-            if (isMobile) ...[
-              SizedBox(
-                width: double.infinity,
-                child: MadButton(
-                  text: 'Upload File',
-                  icon: LucideIcons.upload,
-                  variant: ButtonVariant.outline,
-                  onPressed: _pickFile,
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: MadButton(
-                  text: 'Extract',
-                  icon: _isExtracting ? null : LucideIcons.fileSearch,
-                  onPressed: _uploadedFile != null && !_isExtracting ? _extractPlaceholder : null,
-                  loading: _isExtracting,
-                ),
-              ),
-            ] else
-              Row(
-                children: [
-                  MadButton(
-                    text: 'Upload File',
-                    icon: LucideIcons.upload,
-                    variant: ButtonVariant.outline,
-                    onPressed: _pickFile,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _uploadedFile?.path.split(RegExp(r'[/\\]')).last ?? 'No file selected',
-                      style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  MadButton(
-                    text: 'Extract',
-                    icon: _isExtracting ? null : LucideIcons.fileSearch,
-                    onPressed: _uploadedFile != null && !_isExtracting ? _extractPlaceholder : null,
-                    loading: _isExtracting,
-                  ),
-                ],
-              ),
-            if (isMobile && _uploadedFile != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _uploadedFile!.path.split(RegExp(r'[/\\]')).last,
-                style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
           ],
         ),
       ),
@@ -799,13 +796,17 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
                         ),
                       ),
                     ),
                     MadBadge(
                       text: row.status,
-                      variant: isLocked ? BadgeVariant.default_ : BadgeVariant.outline,
+                      variant: isLocked
+                          ? BadgeVariant.default_
+                          : BadgeVariant.outline,
                     ),
                   ],
                 ),
@@ -814,14 +815,36 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                   row.config,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                    color: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
                   ),
                 ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Expanded(child: Text('Qty: ${row.qty}', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground))),
-                    Expanded(child: Text('Unit: ${row.unit}', style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground))),
+                    Expanded(
+                      child: Text(
+                        'Qty: ${row.qty}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Unit: ${row.unit}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -830,7 +853,9 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                     Expanded(
                       child: MadButton(
                         text: isLocked ? 'Unlock' : 'Lock',
-                        icon: isLocked ? LucideIcons.lockOpen : LucideIcons.lock,
+                        icon: isLocked
+                            ? LucideIcons.lockOpen
+                            : LucideIcons.lock,
                         variant: ButtonVariant.outline,
                         size: ButtonSize.sm,
                         onPressed: () => _toggleLock(row),
@@ -855,10 +880,48 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Expanded(flex: 1, child: Text(row.floor, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)),
-          Expanded(flex: 2, child: Text(row.config, style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground), overflow: TextOverflow.ellipsis)),
-          Expanded(flex: 1, child: Text('${row.qty}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
-          Expanded(flex: 1, child: Text(row.unit, style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground), overflow: TextOverflow.ellipsis)),
+          Expanded(
+            flex: 1,
+            child: Text(
+              row.floor,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              row.config,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Text(
+              '${row.qty}',
+              style: const TextStyle(fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Text(
+              row.unit,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           Expanded(
             flex: 1,
             child: MadBadge(
@@ -888,16 +951,11 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
   Widget _buildServerSamplesSection(bool isDark, bool isMobile) {
     final visibleSamples = _filteredServerSamples;
     final totalSamples = _serverSamples.length;
-    final hiddenCount = (totalSamples - visibleSamples.length).clamp(0, totalSamples);
-    final availableUploadedFiles = <String>{
-      ..._uploadFilePaths,
-      ..._serverSamples
-          .map((sample) => (sample['sample_file'] ?? '').toString().trim())
-          .where((path) => path.isNotEmpty),
-    }.toList();
     final surfaceColor = isDark ? AppTheme.darkCard : AppTheme.lightCard;
-    final mutedSurface = (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.35);
-    final borderColor = (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.65);
+    final mutedSurface = (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+        .withValues(alpha: 0.35);
+    final borderColor = (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+        .withValues(alpha: 0.65);
 
     Widget buildStateBody() {
       if (_loadingServer) {
@@ -911,7 +969,11 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
           padding: const EdgeInsets.all(24),
           child: Text(
             'Select a project to view samples.',
-            style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+            style: TextStyle(
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
+            ),
           ),
         );
       }
@@ -920,7 +982,11 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
           padding: const EdgeInsets.all(24),
           child: Text(
             'No samples match the current filters.',
-            style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+            style: TextStyle(
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
+            ),
           ),
         );
       }
@@ -935,7 +1001,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
           itemBuilder: (context, index) {
             final sample = visibleSamples[index];
             final items = sample['item_description'] as List? ?? [];
-            final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-').toString();
+            final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-')
+                .toString();
             return Container(
               decoration: BoxDecoration(
                 color: surfaceColor,
@@ -952,28 +1019,58 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                         Expanded(
                           child: Text(
                             (sample['building_name'] ?? '-').toString(),
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
+                            ),
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: mutedSurface,
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             '#$sampleId',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? AppTheme.darkMutedForeground
+                                  : AppTheme.lightMutedForeground,
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    _buildSampleInfoLine('Site', (sample['site_name'] ?? '-').toString(), isDark, icon: LucideIcons.mapPin),
+                    _buildSampleInfoLine(
+                      'Site',
+                      (sample['site_name'] ?? '-').toString(),
+                      isDark,
+                      icon: LucideIcons.mapPin,
+                    ),
                     const SizedBox(height: 6),
-                    _buildSampleInfoLine('Work', (sample['work_done'] ?? '-').toString(), isDark, icon: LucideIcons.briefcaseBusiness),
+                    _buildSampleInfoLine(
+                      'Work',
+                      (sample['work_done'] ?? '-').toString(),
+                      isDark,
+                      icon: LucideIcons.briefcaseBusiness,
+                    ),
                     const SizedBox(height: 6),
-                    _buildSampleInfoLine('Items', '${items.length}', isDark, icon: LucideIcons.boxes),
+                    _buildSampleInfoLine(
+                      'Items',
+                      '${items.length}',
+                      isDark,
+                      icon: LucideIcons.boxes,
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -1013,7 +1110,9 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
             decoration: BoxDecoration(
               color: mutedSurface,
               border: Border(bottom: BorderSide(color: borderColor)),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
             ),
             child: Row(
               children: [
@@ -1029,23 +1128,32 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: visibleSamples.length,
-            separatorBuilder: (context, index) => Divider(
-              height: 1,
-              color: borderColor,
-            ),
+            separatorBuilder: (context, index) =>
+                Divider(height: 1, color: borderColor),
             itemBuilder: (context, index) {
               final sample = visibleSamples[index];
-              final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-').toString();
+              final sampleId = (sample['sample_id'] ?? sample['id'] ?? '-')
+                  .toString();
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                color: index.isEven ? surfaceColor : mutedSurface.withValues(alpha: 0.45),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                color: index.isEven
+                    ? surfaceColor
+                    : mutedSurface.withValues(alpha: 0.45),
                 child: Row(
                   children: [
                     Expanded(
                       flex: 1,
                       child: Text(
                         sampleId,
-                        style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1053,7 +1161,10 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                       flex: 2,
                       child: Text(
                         (sample['building_name'] ?? '-').toString(),
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1061,7 +1172,12 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                       flex: 2,
                       child: Text(
                         (sample['site_name'] ?? '-').toString(),
-                        style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1069,7 +1185,12 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                       flex: 2,
                       child: Text(
                         (sample['work_done'] ?? '-').toString(),
-                        style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1114,12 +1235,23 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                 if (isMobile) ...[
                   Text(
                     'Server Samples',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: isDark
+                          ? AppTheme.darkForeground
+                          : AppTheme.lightForeground,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Manage project-linked sample records and previews.',
-                    style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -1130,7 +1262,10 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                       variant: ButtonVariant.outline,
                       size: ButtonSize.sm,
                       onPressed: () async {
-                        final created = await context.appPush('/samples/create', extra: _projectId);
+                        final created = await context.appPush(
+                          '/samples/create',
+                          extra: _projectId,
+                        );
                         if (created == true && mounted) {
                           _loadServerSamples();
                         }
@@ -1146,12 +1281,23 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                           children: [
                             Text(
                               'Server Samples',
-                              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w700,
+                                color: isDark
+                                    ? AppTheme.darkForeground
+                                    : AppTheme.lightForeground,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               'Manage project-linked sample records and previews.',
-                              style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark
+                                    ? AppTheme.darkMutedForeground
+                                    : AppTheme.lightMutedForeground,
+                              ),
                             ),
                           ],
                         ),
@@ -1162,7 +1308,10 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                         variant: ButtonVariant.outline,
                         size: ButtonSize.sm,
                         onPressed: () async {
-                          final created = await context.appPush('/samples/create', extra: _projectId);
+                          final created = await context.appPush(
+                            '/samples/create',
+                            extra: _projectId,
+                          );
                           if (created == true && mounted) {
                             _loadServerSamples();
                           }
@@ -1171,60 +1320,6 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                     ],
                   ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _buildSamplesQuickStat('Total', '$totalSamples', LucideIcons.database, isDark),
-                    _buildSamplesQuickStat('Visible', '${visibleSamples.length}', LucideIcons.search, isDark),
-                    _buildSamplesQuickStat('Hidden', '$hiddenCount', LucideIcons.eyeOff, isDark),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (isMobile) ...[
-                  MadSelect<String>(
-                    value: _selectedUploadedFile.isEmpty ? null : _selectedUploadedFile,
-                    placeholder: 'Select uploaded file',
-                    options: availableUploadedFiles
-                        .map((path) => MadSelectOption(value: path, label: _fileNameFromPath(path)))
-                        .toList(),
-                    onChanged: (value) => setState(() => _selectedUploadedFile = value ?? ''),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: MadButton(
-                      text: 'Preview Uploaded File',
-                      icon: LucideIcons.eye,
-                      variant: ButtonVariant.outline,
-                      size: ButtonSize.sm,
-                      onPressed: _selectedUploadedFile.isEmpty ? null : () => _openUploadedFile(_selectedUploadedFile),
-                    ),
-                  ),
-                ] else
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 320,
-                        child: MadSelect<String>(
-                          value: _selectedUploadedFile.isEmpty ? null : _selectedUploadedFile,
-                          placeholder: 'Select uploaded file',
-                          options: availableUploadedFiles
-                              .map((path) => MadSelectOption(value: path, label: _fileNameFromPath(path)))
-                              .toList(),
-                          onChanged: (value) => setState(() => _selectedUploadedFile = value ?? ''),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      MadButton(
-                        text: 'Preview Uploaded File',
-                        icon: LucideIcons.eye,
-                        variant: ButtonVariant.outline,
-                        size: ButtonSize.sm,
-                        onPressed: _selectedUploadedFile.isEmpty ? null : () => _openUploadedFile(_selectedUploadedFile),
-                      ),
-                    ],
-                  ),
                 if (_projectId.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   MadInput(
@@ -1237,7 +1332,9 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                     '${visibleSamples.length} of $totalSamples sample(s)',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                      color: isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground,
                     ),
                   ),
                 ],
@@ -1259,16 +1356,26 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
     );
   }
 
-  Widget _buildSamplesQuickStat(String label, String value, IconData icon, bool isDark) {
-    final mutedColor = isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground;
+  Widget _buildSamplesQuickStat(
+    String label,
+    String value,
+    IconData icon,
+    bool isDark,
+  ) {
+    final mutedColor = isDark
+        ? AppTheme.darkMutedForeground
+        : AppTheme.lightMutedForeground;
     return Container(
       constraints: const BoxConstraints(minWidth: 108),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.5),
+        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(
+          alpha: 0.5,
+        ),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.6),
+          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+              .withValues(alpha: 0.6),
         ),
       ),
       child: Row(
@@ -1285,7 +1392,9 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                  color: isDark
+                      ? AppTheme.darkForeground
+                      : AppTheme.lightForeground,
                 ),
               ),
             ],
@@ -1295,16 +1404,29 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
     );
   }
 
-  Widget _buildSampleInfoLine(String label, String value, bool isDark, {required IconData icon}) {
+  Widget _buildSampleInfoLine(
+    String label,
+    String value,
+    bool isDark, {
+    required IconData icon,
+  }) {
     return Row(
       children: [
-        Icon(icon, size: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+        Icon(
+          icon,
+          size: 13,
+          color: isDark
+              ? AppTheme.darkMutedForeground
+              : AppTheme.lightMutedForeground,
+        ),
         const SizedBox(width: 6),
         Text(
           '$label: ',
           style: TextStyle(
             fontSize: 12,
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+            color: isDark
+                ? AppTheme.darkMutedForeground
+                : AppTheme.lightMutedForeground,
           ),
         ),
         Expanded(
@@ -1313,7 +1435,9 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+              color: isDark
+                  ? AppTheme.darkForeground
+                  : AppTheme.lightForeground,
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -1324,8 +1448,12 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
 
   Widget _buildCreateForm(bool isDark, bool isMobile) {
     final location = Map<String, dynamic>.from(_createForm['location'] as Map);
-    final items = List<Map<String, dynamic>>.from(_createForm['item_description'] as List);
-    final additional = List<Map<String, dynamic>>.from(_createForm['add_fields'] as List);
+    final items = List<Map<String, dynamic>>.from(
+      _createForm['item_description'] as List,
+    );
+    final additional = List<Map<String, dynamic>>.from(
+      _createForm['add_fields'] as List,
+    );
     return MadCard(
       key: ValueKey('create-form-$_createFormVersion'),
       child: Padding(
@@ -1335,7 +1463,13 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
           children: [
             Text(
               'Create Sample',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
             ),
             const SizedBox(height: 12),
             if (isMobile) ...[
@@ -1463,41 +1597,13 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
               ),
             const SizedBox(height: 16),
             Text(
-              'Sample file',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: MadSelect<String>(
-                    value: _selectedUploadedFile.isEmpty ? null : _selectedUploadedFile,
-                    placeholder: _uploadFilePaths.isEmpty ? 'Upload files first' : 'Select uploaded file',
-                    options: _uploadFilePaths.map((e) => MadSelectOption(value: e, label: e)).toList(),
-                    onChanged: (v) {
-                      setState(() {
-                        _selectedUploadedFile = v ?? '';
-                        _createForm['sample_file'] = _selectedUploadedFile;
-                      });
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                MadButton(
-                  text: 'Pick File',
-                  icon: LucideIcons.upload,
-                  variant: ButtonVariant.outline,
-                  onPressed: _uploadSampleFiles,
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Text(
               'Inventory Items',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
             const SizedBox(height: 8),
@@ -1515,10 +1621,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                   color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
                       .withValues(alpha: 0.6),
                 ),
-                color:
-                    (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(
-                  alpha: 0.35,
-                ),
+                color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+                    .withValues(alpha: 0.35),
               ),
               child: _loadingInventory
                   ? const Padding(
@@ -1526,122 +1630,133 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                       child: Center(child: CircularProgressIndicator()),
                     )
                   : _filteredInventoryItems.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            'No inventory items found.',
-                            style: TextStyle(
-                              color: isDark
-                                  ? AppTheme.darkMutedForeground
-                                  : AppTheme.lightMutedForeground,
-                            ),
-                          ),
-                        )
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          itemCount: _filteredInventoryItems.length,
-                          separatorBuilder: (_, __) => Divider(
-                            height: 1,
-                            color: (isDark ? Colors.white : Colors.black)
-                                .withValues(alpha: 0.06),
-                          ),
-                          itemBuilder: (context, index) {
-                            final item = _filteredInventoryItems[index];
-                            final id = _inventoryId(item);
-                            final qty = _inventoryQty(item);
-                            final selectedQty =
-                                int.tryParse(_pendingInventoryQty[id] ?? '') ??
-                                1;
-                            return Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                  ? Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'No inventory items found.',
+                        style: TextStyle(
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _filteredInventoryItems.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withValues(alpha: 0.06),
+                      ),
+                      itemBuilder: (context, index) {
+                        final item = _filteredInventoryItems[index];
+                        final id = _inventoryId(item);
+                        final qty = _inventoryQty(item);
+                        final selectedQty =
+                            int.tryParse(_pendingInventoryQty[id] ?? '') ?? 1;
+                        return Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (item['name'] ?? '-').toString(),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? AppTheme.darkForeground
+                                      : AppTheme.lightForeground,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${(item['brand'] ?? '-')} • #$id • Qty $qty',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? AppTheme.darkMutedForeground
+                                      : AppTheme.lightMutedForeground,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
                                 children: [
+                                  MadButton(
+                                    icon: LucideIcons.minus,
+                                    size: ButtonSize.icon,
+                                    variant: ButtonVariant.outline,
+                                    onPressed: () {
+                                      final current =
+                                          int.tryParse(
+                                            _pendingInventoryQty[id] ?? '1',
+                                          ) ??
+                                          1;
+                                      final next = (current - 1).clamp(1, qty);
+                                      setState(() {
+                                        _pendingInventoryQty[id] = next
+                                            .toString();
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
                                   Text(
-                                    (item['name'] ?? '-').toString(),
+                                    selectedQty.toString(),
                                     style: TextStyle(
+                                      fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                       color: isDark
                                           ? AppTheme.darkForeground
                                           : AppTheme.lightForeground,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${(item['brand'] ?? '-')} • #$id • Qty $qty',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? AppTheme.darkMutedForeground
-                                          : AppTheme.lightMutedForeground,
-                                    ),
+                                  const SizedBox(width: 8),
+                                  MadButton(
+                                    icon: LucideIcons.plus,
+                                    size: ButtonSize.icon,
+                                    variant: ButtonVariant.outline,
+                                    onPressed: () {
+                                      final current =
+                                          int.tryParse(
+                                            _pendingInventoryQty[id] ?? '1',
+                                          ) ??
+                                          1;
+                                      final next = (current + 1).clamp(1, qty);
+                                      setState(() {
+                                        _pendingInventoryQty[id] = next
+                                            .toString();
+                                      });
+                                    },
                                   ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      MadButton(
-                                        icon: LucideIcons.minus,
-                                        size: ButtonSize.icon,
-                                        variant: ButtonVariant.outline,
-                                        onPressed: () {
-                                          final current =
-                                              int.tryParse(_pendingInventoryQty[id] ?? '1') ?? 1;
-                                          final next =
-                                              (current - 1).clamp(1, qty);
-                                          setState(() {
-                                            _pendingInventoryQty[id] = next.toString();
-                                          });
-                                        },
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        selectedQty.toString(),
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: isDark
-                                              ? AppTheme.darkForeground
-                                              : AppTheme.lightForeground,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      MadButton(
-                                        icon: LucideIcons.plus,
-                                        size: ButtonSize.icon,
-                                        variant: ButtonVariant.outline,
-                                        onPressed: () {
-                                          final current =
-                                              int.tryParse(_pendingInventoryQty[id] ?? '1') ?? 1;
-                                          final next =
-                                              (current + 1).clamp(1, qty);
-                                          setState(() {
-                                            _pendingInventoryQty[id] = next.toString();
-                                          });
-                                        },
-                                      ),
-                                      const SizedBox(width: 12),
-                                      MadButton(
-                                        text: 'Add',
-                                        size: ButtonSize.sm,
-                                        onPressed: qty <= 0
-                                            ? null
-                                            : () => _addInventoryToSample(
-                                                  item,
-                                                  selectedQty,
-                                                ),
-                                      ),
-                                    ],
+                                  const SizedBox(width: 12),
+                                  MadButton(
+                                    text: 'Add',
+                                    size: ButtonSize.sm,
+                                    onPressed: qty <= 0
+                                        ? null
+                                        : () => _addInventoryToSample(
+                                            item,
+                                            selectedQty,
+                                          ),
                                   ),
                                 ],
                               ),
-                            );
-                          },
-                        ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
             ),
             const SizedBox(height: 20),
             Text(
               'Item Description',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
             ),
             const SizedBox(height: 12),
             Column(
@@ -1665,7 +1780,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                               labelText: 'Sr No',
                                               onChanged: (v) {
                                                 items[i]['sr_no'] = v;
-                                                _createForm['item_description'] = items;
+                                                _createForm['item_description'] =
+                                                    items;
                                               },
                                             ),
                                             const SizedBox(height: 10),
@@ -1673,7 +1789,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                               labelText: 'Qty',
                                               onChanged: (v) {
                                                 items[i]['quantity'] = v;
-                                                _createForm['item_description'] = items;
+                                                _createForm['item_description'] =
+                                                    items;
                                               },
                                             ),
                                             const SizedBox(height: 10),
@@ -1681,21 +1798,25 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                               labelText: 'Value',
                                               onChanged: (v) {
                                                 items[i]['value'] = v;
-                                                _createForm['item_description'] = items;
+                                                _createForm['item_description'] =
+                                                    items;
                                               },
                                             ),
                                             if (items.length > 1) ...[
                                               const SizedBox(height: 10),
                                               Align(
-                                                alignment: Alignment.centerRight,
+                                                alignment:
+                                                    Alignment.centerRight,
                                                 child: MadButton(
                                                   icon: LucideIcons.trash2,
-                                                  variant: ButtonVariant.outline,
+                                                  variant:
+                                                      ButtonVariant.outline,
                                                   size: ButtonSize.sm,
                                                   onPressed: () {
                                                     setState(() {
                                                       items.removeAt(i);
-                                                      _createForm['item_description'] = items;
+                                                      _createForm['item_description'] =
+                                                          items;
                                                     });
                                                   },
                                                 ),
@@ -1711,7 +1832,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                           labelText: 'Sr No',
                                           onChanged: (v) {
                                             items[i]['sr_no'] = v;
-                                            _createForm['item_description'] = items;
+                                            _createForm['item_description'] =
+                                                items;
                                           },
                                         ),
                                       ),
@@ -1721,7 +1843,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                           labelText: 'Qty',
                                           onChanged: (v) {
                                             items[i]['quantity'] = v;
-                                            _createForm['item_description'] = items;
+                                            _createForm['item_description'] =
+                                                items;
                                           },
                                         ),
                                       ),
@@ -1731,7 +1854,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                           labelText: 'Value',
                                           onChanged: (v) {
                                             items[i]['value'] = v;
-                                            _createForm['item_description'] = items;
+                                            _createForm['item_description'] =
+                                                items;
                                           },
                                         ),
                                       ),
@@ -1744,7 +1868,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                           onPressed: () {
                                             setState(() {
                                               items.removeAt(i);
-                                              _createForm['item_description'] = items;
+                                              _createForm['item_description'] =
+                                                  items;
                                             });
                                           },
                                         ),
@@ -1772,12 +1897,19 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                   variant: ButtonVariant.outline,
                                   onPressed: () => _openItemFieldDialog(i),
                                 ),
-                                for (int fieldIndex = 0; fieldIndex < (items[i]['add_fields'] as List? ?? []).length; fieldIndex++)
+                                for (
+                                  int fieldIndex = 0;
+                                  fieldIndex <
+                                      (items[i]['add_fields'] as List? ?? [])
+                                          .length;
+                                  fieldIndex++
+                                )
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       MadBadge(
-                                        text: '${(items[i]['add_fields'] as List)[fieldIndex]['key'] ?? ''}: ${(items[i]['add_fields'] as List)[fieldIndex]['value'] ?? ''}',
+                                        text:
+                                            '${(items[i]['add_fields'] as List)[fieldIndex]['key'] ?? ''}: ${(items[i]['add_fields'] as List)[fieldIndex]['value'] ?? ''}',
                                         variant: BadgeVariant.outline,
                                       ),
                                       const SizedBox(width: 4),
@@ -1785,7 +1917,8 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                                         icon: LucideIcons.x,
                                         size: ButtonSize.sm,
                                         variant: ButtonVariant.outline,
-                                        onPressed: () => _removeItemField(i, fieldIndex),
+                                        onPressed: () =>
+                                            _removeItemField(i, fieldIndex),
                                       ),
                                     ],
                                   ),
@@ -1804,7 +1937,13 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
                     variant: ButtonVariant.outline,
                     onPressed: () {
                       setState(() {
-                        items.add({'sr_no': '', 'description': '', 'quantity': '', 'value': '', 'add_fields': []});
+                        items.add({
+                          'sr_no': '',
+                          'description': '',
+                          'quantity': '',
+                          'value': '',
+                          'add_fields': [],
+                        });
                         _createForm['item_description'] = items;
                       });
                     },
@@ -1815,7 +1954,13 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
             const SizedBox(height: 16),
             Text(
               'Additional Fields',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
             ),
             const SizedBox(height: 8),
             Column(
@@ -1878,7 +2023,11 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
             const SizedBox(height: 16),
             Row(
               children: [
-                MadButton(text: 'Save Sample', icon: LucideIcons.save, onPressed: _saveSample),
+                MadButton(
+                  text: 'Save Sample',
+                  icon: LucideIcons.save,
+                  onPressed: _saveSample,
+                ),
               ],
             ),
           ],
@@ -1893,7 +2042,11 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
       title: 'Delete Sample',
       description: 'This action cannot be undone.',
       actions: [
-        MadButton(text: 'Cancel', variant: ButtonVariant.outline, onPressed: () => Navigator.pop(context)),
+        MadButton(
+          text: 'Cancel',
+          variant: ButtonVariant.outline,
+          onPressed: () => Navigator.pop(context),
+        ),
         MadButton(
           text: 'Delete',
           variant: ButtonVariant.destructive,
@@ -1905,5 +2058,4 @@ class _SamplesPageFullState extends ConsumerState<SamplesPageFull> {
       ],
     );
   }
-
 }

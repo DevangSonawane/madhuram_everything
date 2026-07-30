@@ -332,7 +332,7 @@ Map<String, dynamic> _normalizePoForPreview(Map<String, dynamic> raw) {
   };
 }
 
-/// Purchase Orders page with full implementation (tabbed: Upload & Extract, Manual Entry, Recent POs)
+/// Purchase Orders page with full implementation (Create, Recent POs)
 class PurchaseOrdersPageFull extends StatefulWidget {
   const PurchaseOrdersPageFull({super.key});
 
@@ -347,40 +347,6 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
   String _lastLoadedProjectId = '';
   int _currentPage = 1;
   final int _itemsPerPage = 10;
-
-  // Upload & Extract tab
-  String _extractionMessage = '';
-  bool _isUploading = false;
-
-  Future<void> _pickAndUploadPOFile() async {
-    if (_isUploading) return;
-    final picked = await FileService.pickFile(
-      context: context,
-      allowedExtensions: ['pdf'],
-    );
-    if (picked == null || !mounted) return;
-
-    setState(() {
-      _extractionMessage = '';
-      _isUploading = true;
-    });
-
-    final result = await ApiClient.uploadPOFile(picked);
-    if (!mounted) return;
-
-    setState(() => _isUploading = false);
-    if (result['success'] == true) {
-      await _loadOrders();
-      if (!mounted) return;
-      setState(() {
-        _extractionMessage = 'Upload successful.';
-      });
-    } else {
-      setState(() {
-        _extractionMessage = result['error']?.toString() ?? 'Upload failed.';
-      });
-    }
-  }
 
   @override
   void initState() {
@@ -585,7 +551,7 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Upload and manage purchase orders.',
+                      'Create and manage purchase orders.',
                       style: TextStyle(
                         fontSize: responsive.value(
                           mobile: 13,
@@ -614,7 +580,7 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Create / Extract PO',
+                            'Create PO',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -625,7 +591,7 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Upload a PO file directly from camera, gallery, or files.',
+                            'Create a purchase order manually.',
                             style: TextStyle(
                               color: isDark
                                   ? AppTheme.darkMutedForeground
@@ -633,38 +599,11 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
                             ),
                           ),
                           const SizedBox(height: 14),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              MadButton(
-                                text: _isUploading ? 'Uploading...' : 'Upload',
-                                icon: LucideIcons.upload,
-                                loading: _isUploading,
-                                onPressed: _isUploading
-                                    ? null
-                                    : _pickAndUploadPOFile,
-                              ),
-                              MadButton(
-                                text: 'Manual Entry',
-                                icon: LucideIcons.filePenLine,
-                                variant: ButtonVariant.outline,
-                                onPressed: _openCreatePOPage,
-                              ),
-                            ],
+                          MadButton(
+                            text: 'Create',
+                            icon: LucideIcons.filePenLine,
+                            onPressed: _openCreatePOPage,
                           ),
-                          if (_extractionMessage.isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Text(
-                              _extractionMessage,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: isDark
-                                    ? AppTheme.darkMutedForeground
-                                    : AppTheme.lightMutedForeground,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -677,20 +616,6 @@ class _PurchaseOrdersPageFullState extends State<PurchaseOrdersPageFull> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildManualEntryTab(bool isDark, bool isMobile, {Key? key}) {
-    final projectId =
-        context.appProject.selectedProjectId ??
-        context.appProject.selectedProject?['project_id']?.toString() ??
-        '';
-    return _ManualPOForm(
-      key: key,
-      projectId: projectId,
-      isDark: isDark,
-      onPreview: (data) => _showPOPreview(data),
-      onSubmitted: _loadOrders,
     );
   }
 
@@ -1903,58 +1828,6 @@ class _POViewPageState extends State<_POViewPage> {
     );
   }
 
-  Future<void> _downloadPdf() async {
-    final data = _poData;
-    if (data == null) return;
-    try {
-      final doc = await PdfService.generatePurchaseOrderPdf(data);
-      final filename =
-          'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.pdf';
-      final savedPath = await PdfService.exportPurchaseOrderPdf(doc, filename);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            savedPath == null
-                ? 'PDF export failed.'
-                : 'PDF saved successfully.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
-    }
-  }
-
-  Future<void> _downloadExcel() async {
-    final data = _poData;
-    if (data == null) return;
-    try {
-      final workbook = await ExcelService.exportPurchaseOrderToExcel(data);
-      final filename =
-          'PO_${data['orderNo']?.toString().isNotEmpty == true ? data['orderNo'] : data['poId']}.xlsx';
-      final savedPath = await ExcelService.exportExcel(workbook, filename);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            savedPath == null
-                ? 'Excel export failed.'
-                : 'Excel saved successfully.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Excel export failed: $e')));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1963,18 +1836,6 @@ class _POViewPageState extends State<_POViewPage> {
       appBar: AppBar(
         title: const Text('Purchase Order Preview'),
         actions: [
-          if (!_isLoading && data != null)
-            IconButton(
-              tooltip: 'Download PDF',
-              onPressed: _downloadPdf,
-              icon: const Icon(LucideIcons.fileText),
-            ),
-          if (!_isLoading && data != null)
-            IconButton(
-              tooltip: 'Download Excel',
-              onPressed: _downloadExcel,
-              icon: const Icon(LucideIcons.fileSpreadsheet),
-            ),
           if (!_isLoading && data != null)
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -2173,7 +2034,7 @@ class _CreatePOFullPage extends StatelessWidget {
   }
 }
 
-/// Manual PO entry form (company, order, vendor, items, totals, additional)
+/// Create PO form (company, order, vendor, items, totals, additional)
 class _ManualPOForm extends StatefulWidget {
   final String projectId;
   final bool isDark;

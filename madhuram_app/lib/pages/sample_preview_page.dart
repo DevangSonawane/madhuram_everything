@@ -1032,23 +1032,78 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
   Widget _buildBoqUsageTable(List<_SampleBoqRow> rows, bool isDark) {
     const widths = [140.0, 140.0, 280.0, 100.0, 80.0, 80.0, 80.0, 80.0, 80.0];
     final tableWidth = widths.fold<double>(0, (sum, width) => sum + width) + 24;
+    final baseBorderColor = isDark ? AppTheme.darkBorder : AppTheme.lightBorder;
+    final headerBg = isDark
+        ? (AppTheme.darkMuted).withValues(alpha: 0.35)
+        : (AppTheme.lightMuted).withValues(alpha: 0.35);
+    final usageStyles = <int, ({Color bg, Color fg})>{
+      3: (
+        bg: isDark
+            ? const Color(0xFF06371D).withValues(alpha: 0.35)
+            : const Color(0xFFDDF7E6),
+        fg: isDark ? const Color(0xFFD7FDE6) : const Color(0xFF14532D),
+      ),
+      4: (
+        bg: isDark
+            ? const Color(0xFF2E1052).withValues(alpha: 0.35)
+            : const Color(0xFFF2E7FE),
+        fg: isDark ? const Color(0xFFE9D5FF) : const Color(0xFF5B21B6),
+      ),
+      5: (
+        bg: isDark
+            ? const Color(0xFF4A2C04).withValues(alpha: 0.35)
+            : const Color(0xFFFFF1D6),
+        fg: isDark ? const Color(0xFFFEF3C7) : const Color(0xFF92400E),
+      ),
+      6: (
+        bg: isDark
+            ? const Color(0xFF56111C).withValues(alpha: 0.35)
+            : const Color(0xFFFEE4E7),
+        fg: isDark ? const Color(0xFFFECDD6) : const Color(0xFF9F1239),
+      ),
+      7: (
+        bg: isDark
+            ? const Color(0xFF4A2600).withValues(alpha: 0.35)
+            : const Color(0xFFFFEDD5),
+        fg: isDark ? const Color(0xFFFED7AA) : const Color(0xFFC2410C),
+      ),
+      8: (
+        bg: isDark
+            ? const Color(0xFF0B3552).withValues(alpha: 0.35)
+            : const Color(0xFFDFF0FF),
+        fg: isDark ? const Color(0xFFBAE6FD) : const Color(0xFF0F4C81),
+      ),
+    };
 
     Widget headerCell(
       String text,
       double width, {
       TextAlign align = TextAlign.left,
+      Color? backgroundColor,
+      Color? foregroundColor,
     }) {
       return SizedBox(
         width: width,
-        child: Text(
-          text,
-          textAlign: align,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: isDark
-                ? AppTheme.darkMutedForeground
-                : AppTheme.lightMutedForeground,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: backgroundColor ?? headerBg,
+            border: Border(
+              left: BorderSide(color: baseBorderColor.withValues(alpha: 0.7)),
+            ),
+          ),
+          child: Text(
+            text,
+            textAlign: align,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color:
+                  foregroundColor ??
+                  (isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground),
+            ),
           ),
         ),
       );
@@ -1058,14 +1113,41 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
       String text,
       double width, {
       TextAlign align = TextAlign.left,
+      Color? backgroundColor,
+      Color? foregroundColor,
+      FontWeight fontWeight = FontWeight.w500,
+      bool addLeftBorder = false,
     }) {
       return SizedBox(
         width: width,
-        child: Text(
-          text.isEmpty ? '-' : text,
-          textAlign: align,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 2,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          decoration: BoxDecoration(
+            color:
+                backgroundColor ??
+                (isDark ? AppTheme.darkCard : Colors.white),
+            border: Border(
+              left: BorderSide(
+                color: addLeftBorder
+                    ? baseBorderColor.withValues(alpha: 0.7)
+                    : Colors.transparent,
+              ),
+              top: BorderSide(color: baseBorderColor.withValues(alpha: 0.25)),
+            ),
+          ),
+          child: Text(
+            text.isEmpty ? '-' : text,
+            textAlign: align,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: fontWeight,
+              color:
+                  foregroundColor ??
+                  (isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+            ),
+          ),
         ),
       );
     }
@@ -1084,13 +1166,9 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
+                padding: const EdgeInsets.only(left: 0, right: 0),
                 decoration: BoxDecoration(
-                  color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                      .withValues(alpha: 0.35),
+                  color: headerBg,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(14),
                   ),
@@ -1100,12 +1178,48 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
                     headerCell('BOQ Item No', widths[0]),
                     headerCell('Item Code', widths[1]),
                     headerCell('Item Description', widths[2]),
-                    headerCell('Samples', widths[3], align: TextAlign.center),
-                    headerCell('PR', widths[4], align: TextAlign.center),
-                    headerCell('PO', widths[5], align: TextAlign.center),
-                    headerCell('DC', widths[6], align: TextAlign.center),
-                    headerCell('MIR', widths[7], align: TextAlign.center),
-                    headerCell('ITR', widths[8], align: TextAlign.center),
+                    headerCell(
+                      'Samples',
+                      widths[3],
+                      align: TextAlign.center,
+                      backgroundColor: usageStyles[3]!.bg,
+                      foregroundColor: usageStyles[3]!.fg,
+                    ),
+                    headerCell(
+                      'PR',
+                      widths[4],
+                      align: TextAlign.center,
+                      backgroundColor: usageStyles[4]!.bg,
+                      foregroundColor: usageStyles[4]!.fg,
+                    ),
+                    headerCell(
+                      'PO',
+                      widths[5],
+                      align: TextAlign.center,
+                      backgroundColor: usageStyles[5]!.bg,
+                      foregroundColor: usageStyles[5]!.fg,
+                    ),
+                    headerCell(
+                      'DC',
+                      widths[6],
+                      align: TextAlign.center,
+                      backgroundColor: usageStyles[6]!.bg,
+                      foregroundColor: usageStyles[6]!.fg,
+                    ),
+                    headerCell(
+                      'MIR',
+                      widths[7],
+                      align: TextAlign.center,
+                      backgroundColor: usageStyles[7]!.bg,
+                      foregroundColor: usageStyles[7]!.fg,
+                    ),
+                    headerCell(
+                      'ITR',
+                      widths[8],
+                      align: TextAlign.center,
+                      backgroundColor: usageStyles[8]!.bg,
+                      foregroundColor: usageStyles[8]!.fg,
+                    ),
                   ],
                 ),
               ),
@@ -1124,53 +1238,89 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
               else
                 ...rows.asMap().entries.map((entry) {
                   final row = entry.value;
+                  final rowBg = isDark ? AppTheme.darkCard : Colors.white;
                   return Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
                     decoration: BoxDecoration(
+                      color: rowBg,
                       border: Border(
                         top: BorderSide(
-                          color: (isDark ? Colors.white : Colors.black)
-                              .withValues(alpha: 0.06),
+                          color: baseBorderColor.withValues(alpha: 0.2),
                         ),
                       ),
                     ),
                     child: Row(
                       children: [
-                        dataCell(row.itemNo, widths[0]),
-                        dataCell(row.itemCode, widths[1]),
-                        dataCell(row.description, widths[2]),
+                        dataCell(
+                          row.itemNo,
+                          widths[0],
+                          fontWeight: FontWeight.w600,
+                        ),
+                        dataCell(
+                          row.itemCode,
+                          widths[1],
+                          fontWeight: FontWeight.w600,
+                          foregroundColor: AppTheme.primaryColor,
+                        ),
+                        dataCell(
+                          row.description,
+                          widths[2],
+                          foregroundColor: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                         dataCell(
                           row.samples.toString(),
                           widths[3],
                           align: TextAlign.center,
+                          backgroundColor: usageStyles[3]!.bg,
+                          foregroundColor: usageStyles[3]!.fg,
+                          fontWeight: FontWeight.w600,
+                          addLeftBorder: true,
                         ),
                         dataCell(
                           row.pr.toString(),
                           widths[4],
                           align: TextAlign.center,
+                          backgroundColor: usageStyles[4]!.bg,
+                          foregroundColor: usageStyles[4]!.fg,
+                          fontWeight: FontWeight.w600,
+                          addLeftBorder: true,
                         ),
                         dataCell(
                           row.po.toString(),
                           widths[5],
                           align: TextAlign.center,
+                          backgroundColor: usageStyles[5]!.bg,
+                          foregroundColor: usageStyles[5]!.fg,
+                          fontWeight: FontWeight.w600,
+                          addLeftBorder: true,
                         ),
                         dataCell(
                           row.dc.toString(),
                           widths[6],
                           align: TextAlign.center,
+                          backgroundColor: usageStyles[6]!.bg,
+                          foregroundColor: usageStyles[6]!.fg,
+                          fontWeight: FontWeight.w600,
+                          addLeftBorder: true,
                         ),
                         dataCell(
                           row.mir.toString(),
                           widths[7],
                           align: TextAlign.center,
+                          backgroundColor: usageStyles[7]!.bg,
+                          foregroundColor: usageStyles[7]!.fg,
+                          fontWeight: FontWeight.w600,
+                          addLeftBorder: true,
                         ),
                         dataCell(
                           row.itr.toString(),
                           widths[8],
                           align: TextAlign.center,
+                          backgroundColor: usageStyles[8]!.bg,
+                          foregroundColor: usageStyles[8]!.fg,
+                          fontWeight: FontWeight.w600,
+                          addLeftBorder: true,
                         ),
                       ],
                     ),

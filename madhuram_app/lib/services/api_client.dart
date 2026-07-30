@@ -755,9 +755,7 @@ class ApiClient {
     String? category,
     String? client,
   }) async {
-    final fields = <String, String>{
-      'save': save.toString(),
-    };
+    final fields = <String, String>{'save': save.toString()};
     if ((projectId ?? '').trim().isNotEmpty) {
       fields['project_id'] = projectId!.trim();
     }
@@ -780,9 +778,7 @@ class ApiClient {
     String? projectId,
     bool save = false,
   }) async {
-    final fields = <String, String>{
-      'save': save.toString(),
-    };
+    final fields = <String, String>{'save': save.toString()};
     if ((projectId ?? '').trim().isNotEmpty) {
       fields['project_id'] = projectId!.trim();
     }
@@ -846,10 +842,22 @@ class ApiClient {
   ) async {
     final fields = <String, String>{
       'project_id': (data['project_id'] ?? '').toString(),
-      'description': (data['description'] ?? data['item_description'] ?? '').toString(),
+      'description': (data['description'] ?? data['item_description'] ?? '')
+          .toString(),
     };
 
-    for (final key in ['section', 'item_no', 'hsn', 'unit', 'qty', 'rate', 'amount', 'project_name', 'category', 'floor']) {
+    for (final key in [
+      'section',
+      'item_no',
+      'hsn',
+      'unit',
+      'qty',
+      'rate',
+      'amount',
+      'project_name',
+      'category',
+      'floor',
+    ]) {
       final value = data[key];
       if (value != null && value.toString().isNotEmpty) {
         fields[key] = value.toString();
@@ -875,10 +883,22 @@ class ApiClient {
   ) async {
     final fields = <String, String>{
       'project_id': (data['project_id'] ?? '').toString(),
-      'description': (data['description'] ?? data['service_description'] ?? '').toString(),
+      'description': (data['description'] ?? data['service_description'] ?? '')
+          .toString(),
     };
 
-    for (final key in ['section', 'item_no', 'sac_code', 'uom', 'order_qty', 'unit_price', 'value', 'project_name', 'category', 'floor']) {
+    for (final key in [
+      'section',
+      'item_no',
+      'sac_code',
+      'uom',
+      'order_qty',
+      'unit_price',
+      'value',
+      'project_name',
+      'category',
+      'floor',
+    ]) {
       final value = data[key];
       if (value != null && value.toString().isNotEmpty) {
         fields[key] = value.toString();
@@ -1083,10 +1103,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/api/boq/save-items');
     final res = await _post(
       uri,
-      headers: {
-        ..._authHeaders(token),
-        'Content-Type': 'application/json',
-      },
+      headers: {..._authHeaders(token), 'Content-Type': 'application/json'},
       body: jsonEncode({
         'project_id': projectId,
         if ((boqFileName ?? '').isNotEmpty) 'boq_file_name': boqFileName,
@@ -1312,7 +1329,11 @@ class ApiClient {
       return double.tryParse(text);
     }
 
-    dynamic fieldValue(Map<String, dynamic> item, List<dynamic> addFields, String key) {
+    dynamic fieldValue(
+      Map<String, dynamic> item,
+      List<dynamic> addFields,
+      String key,
+    ) {
       for (final field in addFields) {
         if (field is! Map) continue;
         if (field['key']?.toString().trim() == key) {
@@ -1327,7 +1348,9 @@ class ApiClient {
       final item = Map<String, dynamic>.from(rawItem);
       final addFieldsRaw = item['add_fields'] ?? item['addFields'];
       final addFieldsParsed = parseMaybeJson(addFieldsRaw, <dynamic>[]);
-      final addFields = addFieldsParsed is List ? List<dynamic>.from(addFieldsParsed) : <dynamic>[];
+      final addFields = addFieldsParsed is List
+          ? List<dynamic>.from(addFieldsParsed)
+          : <dynamic>[];
 
       final itemNameRaw =
           item['item_name'] ??
@@ -1353,13 +1376,32 @@ class ApiClient {
           fieldValue(item, addFields, 'qty') ??
           fieldValue(item, addFields, 'req_qty') ??
           '';
-      final valueRaw = item['value'] ?? fieldValue(item, addFields, 'value') ?? fieldValue(item, addFields, 'amount') ?? '';
+      final valueRaw =
+          item['value'] ??
+          fieldValue(item, addFields, 'value') ??
+          fieldValue(item, addFields, 'amount') ??
+          '';
       final rateRaw = fieldValue(item, addFields, 'rate');
-      final hsnRaw = fieldValue(item, addFields, 'hsn') ?? fieldValue(item, addFields, 'item_code') ?? '';
-      final unitRaw = fieldValue(item, addFields, 'unit') ?? fieldValue(item, addFields, 'uom') ?? fieldValue(item, addFields, 'UOM') ?? '';
+      final hsnRaw =
+          fieldValue(item, addFields, 'hsn') ??
+          fieldValue(item, addFields, 'item_code') ??
+          '';
+      final unitRaw =
+          fieldValue(item, addFields, 'unit') ??
+          fieldValue(item, addFields, 'uom') ??
+          fieldValue(item, addFields, 'UOM') ??
+          '';
 
       final normalized = <String, dynamic>{
-        'sr_no': toIntOrNull(item['sr_no'] ?? item['srNo'] ?? item['sr'] ?? fieldValue(item, addFields, 'sr_no') ?? fieldValue(item, addFields, 'srno')) ?? 0,
+        'sr_no':
+            toIntOrNull(
+              item['sr_no'] ??
+                  item['srNo'] ??
+                  item['sr'] ??
+                  fieldValue(item, addFields, 'sr_no') ??
+                  fieldValue(item, addFields, 'srno'),
+            ) ??
+            0,
         'item_name': itemNameRaw.toString().trim(),
         'description': descriptionRaw.toString().trim(),
         'quantity': toDoubleOrNull(qtyRaw),
@@ -1369,38 +1411,56 @@ class ApiClient {
       final hsn = hsnRaw.toString().trim();
       if (hsn.isNotEmpty) normalized['hsn'] = hsn;
 
-      final unit = (item['unit'] ?? item['uom'] ?? item['UOM'] ?? unitRaw ?? '').toString().trim();
+      final unit = (item['unit'] ?? item['uom'] ?? item['UOM'] ?? unitRaw ?? '')
+          .toString()
+          .trim();
       if (unit.isNotEmpty) normalized['unit'] = unit;
 
       final rate = toDoubleOrNull(item['rate'] ?? rateRaw);
       if (rate != null) normalized['rate'] = rate;
 
-      final inventoryIdRaw = item['inventory_id'] ?? item['inventoryId'] ?? fieldValue(item, addFields, 'inventory_id') ?? fieldValue(item, addFields, 'inventoryId');
+      final inventoryIdRaw =
+          item['inventory_id'] ??
+          item['inventoryId'] ??
+          fieldValue(item, addFields, 'inventory_id') ??
+          fieldValue(item, addFields, 'inventoryId');
       final inventoryId = toIntOrNull(inventoryIdRaw);
       if (inventoryId != null) normalized['inventory_id'] = inventoryId;
 
       final issuedQty = toDoubleOrNull(item['issued_qty'] ?? item['issuedQty']);
       if (issuedQty != null) normalized['issued_qty'] = issuedQty;
 
-      return normalized['description'].toString().trim().isNotEmpty ? normalized : null;
+      return normalized['description'].toString().trim().isNotEmpty
+          ? normalized
+          : null;
     }
 
     final payload = <String, dynamic>{};
 
     if (data.containsKey('sample_id')) {
-      payload['sample_id'] = toIntOrNull(data['sample_id']) ?? data['sample_id'];
+      payload['sample_id'] =
+          toIntOrNull(data['sample_id']) ?? data['sample_id'];
     }
     if (data.containsKey('project_id')) {
-      payload['project_id'] = toIntOrNull(data['project_id']) ?? data['project_id'];
+      payload['project_id'] =
+          toIntOrNull(data['project_id']) ?? data['project_id'];
     }
-    for (final key in ['building_name', 'site_name', 'work_done', 'sample_file']) {
+    for (final key in [
+      'building_name',
+      'site_name',
+      'work_done',
+      'sample_file',
+    ]) {
       if (data.containsKey(key)) payload[key] = data[key];
     }
 
     if (data.containsKey('location')) {
       final loc = parseMaybeJson(data['location'], {});
-      final locMap = loc is Map ? Map<String, dynamic>.from(loc) : <String, dynamic>{};
-      final coordinates = (locMap['coordinates'] ?? locMap['cooordinates'] ?? '').toString();
+      final locMap = loc is Map
+          ? Map<String, dynamic>.from(loc)
+          : <String, dynamic>{};
+      final coordinates =
+          (locMap['coordinates'] ?? locMap['cooordinates'] ?? '').toString();
       payload['location'] = {
         'floor': (locMap['floor'] ?? '').toString(),
         'block': (locMap['block'] ?? '').toString(),
@@ -1411,15 +1471,22 @@ class ApiClient {
     }
 
     if (data.containsKey('item_description') || data.containsKey('items')) {
-      final itemRaw = data.containsKey('item_description') ? data['item_description'] : data['items'];
+      final itemRaw = data.containsKey('item_description')
+          ? data['item_description']
+          : data['items'];
       final parsed = parseMaybeJson(itemRaw, <dynamic>[]);
       final list = parsed is List ? parsed : <dynamic>[];
-      payload['item_description'] = list.map(normalizeItem).whereType<Map<String, dynamic>>().toList();
+      payload['item_description'] = list
+          .map(normalizeItem)
+          .whereType<Map<String, dynamic>>()
+          .toList();
     }
 
     if (data.containsKey('add_fields')) {
       final parsed = parseMaybeJson(data['add_fields'], <dynamic>[]);
-      payload['add_fields'] = parsed is List ? List<dynamic>.from(parsed) : <dynamic>[];
+      payload['add_fields'] = parsed is List
+          ? List<dynamic>.from(parsed)
+          : <dynamic>[];
     }
 
     if (stringifyJsonFields) {
@@ -1758,9 +1825,9 @@ class ApiClient {
     if (prNo != null && prNo.trim().isNotEmpty) {
       query['pr_no'] = prNo.trim();
     }
-    final uri = Uri.parse('$baseUrl/api/vendor-comparison').replace(
-      queryParameters: query.isEmpty ? null : query,
-    );
+    final uri = Uri.parse(
+      '$baseUrl/api/vendor-comparison',
+    ).replace(queryParameters: query.isEmpty ? null : query);
     final res = await _get(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
@@ -2651,6 +2718,72 @@ class ApiClient {
   static Future<Map<String, dynamic>> getChallansByPO(String poId) async {
     final token = await _getToken();
     final uri = Uri.parse('$baseUrl/api/dc/po/$poId');
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  // ============================================================================
+  // Backpath / relationship graph
+  // ============================================================================
+  static Future<Map<String, dynamic>> getBackpathByPr(
+    String prId, {
+    Map<String, dynamic>? params,
+  }) async {
+    final token = await _getToken();
+    final query = (params ?? const {}).entries
+        .where(
+          (entry) => entry.value != null && entry.value.toString().isNotEmpty,
+        )
+        .map(
+          (entry) =>
+              '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value.toString())}',
+        )
+        .join('&');
+    final uri = Uri.parse(
+      '$baseUrl/api/backpath/pr/$prId${query.isEmpty ? '' : '?$query'}',
+    );
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getBackpathBySample(
+    String sampleId, {
+    Map<String, dynamic>? params,
+  }) async {
+    final token = await _getToken();
+    final query = (params ?? const {}).entries
+        .where(
+          (entry) => entry.value != null && entry.value.toString().isNotEmpty,
+        )
+        .map(
+          (entry) =>
+              '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value.toString())}',
+        )
+        .join('&');
+    final uri = Uri.parse(
+      '$baseUrl/api/backpath/sample/$sampleId${query.isEmpty ? '' : '?$query'}',
+    );
+    final res = await _get(uri, headers: _authHeaders(token));
+    return _handleResponse(res);
+  }
+
+  static Future<Map<String, dynamic>> getBackpathByPo(
+    String poId, {
+    Map<String, dynamic>? params,
+  }) async {
+    final token = await _getToken();
+    final query = (params ?? const {}).entries
+        .where(
+          (entry) => entry.value != null && entry.value.toString().isNotEmpty,
+        )
+        .map(
+          (entry) =>
+              '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value.toString())}',
+        )
+        .join('&');
+    final uri = Uri.parse(
+      '$baseUrl/api/backpath/po/$poId${query.isEmpty ? '' : '?$query'}',
+    );
     final res = await _get(uri, headers: _authHeaders(token));
     return _handleResponse(res);
   }
