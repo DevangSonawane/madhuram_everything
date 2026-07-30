@@ -237,10 +237,15 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
       ]);
       final sampleUsage = _getUsageValue(usage, 'samples');
       final fallbackSampleUsage = _toDouble(
-        row['total_qty'] ??
-            row['quantity'] ??
-            row['qty_per_flat'] ??
+        row['quantity'] ??
+            row['qty'] ??
+            row['boq_total_quantity'] ??
+            row['boqTotalQuantity'] ??
+            row['boq_qty'] ??
+            row['boqQty'] ??
+            row['total_qty'] ??
             row['selected_qty'] ??
+            row['qty_per_flat'] ??
             row['issued_qty'] ??
             row['boq_issued_qty'],
       ).toInt();
@@ -1124,8 +1129,7 @@ class _SamplePreviewPageState extends State<SamplePreviewPage> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
           decoration: BoxDecoration(
             color:
-                backgroundColor ??
-                (isDark ? AppTheme.darkCard : Colors.white),
+                backgroundColor ?? (isDark ? AppTheme.darkCard : Colors.white),
             border: Border(
               left: BorderSide(
                 color: addLeftBorder
