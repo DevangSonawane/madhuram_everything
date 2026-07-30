@@ -137,7 +137,9 @@ class _MIRPageFullState extends State<MIRPageFull> {
 
   String _inspectionDate(MIR mir) {
     final value =
-        mir.inspectionDateTime ?? mir.clientSubmissionDate ?? mir.createdAt?.toIso8601String();
+        mir.inspectionDateTime ??
+        mir.clientSubmissionDate ??
+        mir.createdAt?.toIso8601String();
     if (value == null || value.trim().isEmpty) return '-';
     final parsed = DateTime.tryParse(value);
     if (parsed == null) return value;
@@ -205,7 +207,10 @@ class _MIRPageFullState extends State<MIRPageFull> {
             Expanded(
               child: Text(
                 value.isEmpty ? '-' : value,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
@@ -228,7 +233,10 @@ class _MIRPageFullState extends State<MIRPageFull> {
                   children: [
                     const Text(
                       'MIR Preview',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
@@ -251,7 +259,10 @@ class _MIRPageFullState extends State<MIRPageFull> {
                         row('Vendor Code', mir.vendorCode ?? ''),
                         row('Material Code', mir.materialCode ?? ''),
                         row('Inspection Date', _inspectionDate(mir)),
-                        row('Client Submission Date', mir.clientSubmissionDate ?? ''),
+                        row(
+                          'Client Submission Date',
+                          mir.clientSubmissionDate ?? '',
+                        ),
                         row('Status', _statusLabel(mir)),
                       ],
                     ),
@@ -267,8 +278,12 @@ class _MIRPageFullState extends State<MIRPageFull> {
 
   void _showEditDialog(MIR mir) {
     final mirRefController = TextEditingController(text: mir.mirRefNo);
-    final materialCodeController = TextEditingController(text: mir.materialCode ?? '');
-    final clientNameController = TextEditingController(text: mir.clientName ?? '');
+    final materialCodeController = TextEditingController(
+      text: mir.materialCode ?? '',
+    );
+    final clientNameController = TextEditingController(
+      text: mir.clientName ?? '',
+    );
     String? selectedStatus = mir.status;
 
     MadFormDialog.show(
@@ -344,7 +359,10 @@ class _MIRPageFullState extends State<MIRPageFull> {
               showToast(context, 'MIR updated');
               await _loadMIRs();
             } else {
-              showToast(context, result['error']?.toString() ?? 'Failed to update MIR');
+              showToast(
+                context,
+                result['error']?.toString() ?? 'Failed to update MIR',
+              );
             }
           },
         ),
@@ -374,8 +392,16 @@ class _MIRPageFullState extends State<MIRPageFull> {
               ),
               gradient: LinearGradient(
                 colors: isDark
-                    ? const [Color(0xFF0F172A), Color(0xFF111827), Color(0xFF1E293B)]
-                    : const [Color(0xFFECFEFF), Color(0xFFE0F2FE), Colors.white],
+                    ? const [
+                        Color(0xFF0F172A),
+                        Color(0xFF111827),
+                        Color(0xFF1E293B),
+                      ]
+                    : const [
+                        Color(0xFFECFEFF),
+                        Color(0xFFE0F2FE),
+                        Colors.white,
+                      ],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               ),
@@ -383,7 +409,9 @@ class _MIRPageFullState extends State<MIRPageFull> {
             child: Flex(
               direction: isMobile ? Axis.vertical : Axis.horizontal,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+              crossAxisAlignment: isMobile
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.end,
               children: [
                 Expanded(
                   flex: isMobile ? 0 : 1,
@@ -393,16 +421,24 @@ class _MIRPageFullState extends State<MIRPageFull> {
                       Text(
                         'Create MIR',
                         style: TextStyle(
-                          fontSize: responsive.value(mobile: 22, tablet: 26, desktop: 28),
+                          fontSize: responsive.value(
+                            mobile: 22,
+                            tablet: 26,
+                            desktop: 28,
+                          ),
                           fontWeight: FontWeight.bold,
-                          color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Create and manage material inspection reports.',
                         style: TextStyle(
-                          color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
                         ),
                       ),
                     ],
@@ -414,9 +450,7 @@ class _MIRPageFullState extends State<MIRPageFull> {
                   icon: LucideIcons.plus,
                   onPressed: () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const MIRCreatePage(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const MIRCreatePage()),
                   ),
                 ),
               ],
@@ -445,48 +479,18 @@ class _MIRPageFullState extends State<MIRPageFull> {
     );
   }
 
-  Widget _buildMetricPill({
-    required bool isDark,
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withValues(alpha: 0.55),
-        border: Border.all(
-          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.7),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '$label: $value',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildMirCardContent({
     required bool isDark,
     required bool isMobile,
     required bool shrinkWrap,
   }) {
+    final visibleMIRs = _filteredMIRs;
+    final surfaceColor = isDark ? AppTheme.darkCard : AppTheme.lightCard;
+    final mutedSurface = (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
+        .withValues(alpha: 0.35);
+    final borderColor = (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+        .withValues(alpha: 0.65);
+
     Widget buildList() {
       if (_isLoading) {
         return const Center(child: CircularProgressIndicator());
@@ -494,154 +498,270 @@ class _MIRPageFullState extends State<MIRPageFull> {
       if (_error != null) {
         return _buildErrorState(isDark, _error!);
       }
-      if (_filteredMIRs.isEmpty) {
+      if (visibleMIRs.isEmpty) {
         return _buildEmptyState(isDark);
       }
 
-      final listView = ListView.separated(
-        shrinkWrap: shrinkWrap,
-        physics: shrinkWrap
-            ? const NeverScrollableScrollPhysics()
-            : const AlwaysScrollableScrollPhysics(),
-        itemCount: _paginatedMIRs.length,
-        separatorBuilder: (_, __) => Divider(
-          height: 1,
-          color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
-              .withValues(alpha: 0.5),
-        ),
-        itemBuilder: (context, index) {
-          final mir = _paginatedMIRs[index];
-          final statusText = _statusLabel(mir);
-          final statusVariant = _statusVariant(mir);
-          final isDeleting = _deletingMirId == mir.id;
+      if (isMobile) {
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(12),
+          itemCount: visibleMIRs.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final mir = visibleMIRs[index];
+            final statusText = _statusLabel(mir);
+            final statusVariant = _statusVariant(mir);
+            final isDeleting = _deletingMirId == mir.id;
 
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    mir.mirReferenceNo.isEmpty ? 'MIR-${mir.id}' : mir.mirReferenceNo,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'monospace',
+            return Container(
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: borderColor),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            mir.mirReferenceNo.isEmpty
+                                ? 'MIR-${mir.id}'
+                                : mir.mirReferenceNo,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        MadBadge(text: statusText, variant: statusVariant),
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-                if (!isMobile)
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      mir.projectName?.isNotEmpty == true ? mir.projectName! : '-',
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                    const SizedBox(height: 10),
+                    _buildMirInfoLine(
+                      'Project',
+                      mir.projectName?.isNotEmpty == true
+                          ? mir.projectName!
+                          : '-',
+                      isDark,
+                      icon: LucideIcons.folderKanban,
                     ),
-                  ),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    mir.materialCode ?? '-',
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-                if (!isMobile)
-                  Expanded(
-                    flex: 2,
-                    child: Text(
+                    const SizedBox(height: 6),
+                    _buildMirInfoLine(
+                      'Material',
+                      mir.materialCode?.isNotEmpty == true
+                          ? mir.materialCode!
+                          : '-',
+                      isDark,
+                      icon: LucideIcons.boxes,
+                    ),
+                    const SizedBox(height: 6),
+                    _buildMirInfoLine(
+                      'Inspection Date',
                       _inspectionDate(mir),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                      isDark,
+                      icon: LucideIcons.calendarDays,
                     ),
-                  ),
-                Expanded(
-                  flex: 1,
-                  child: MadBadge(text: statusText, variant: statusVariant),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: MadButton(
+                            text: 'Preview',
+                            icon: LucideIcons.eye,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.outline,
+                            onPressed: () => _showPreview(mir),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: MadButton(
+                            text: 'Edit',
+                            icon: LucideIcons.pencil,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.outline,
+                            onPressed: () => _showEditDialog(mir),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: MadButton(
+                            text: isDeleting ? 'Deleting...' : 'Delete',
+                            icon: LucideIcons.trash2,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.destructive,
+                            loading: isDeleting,
+                            disabled: isDeleting,
+                            onPressed: () => _handleDelete(mir),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                if (isMobile)
-                  MadDropdownMenuButton(
-                    items: [
-                      MadMenuItem(
-                        label: 'Preview',
-                        icon: LucideIcons.eye,
-                        onTap: () => _showPreview(mir),
-                      ),
-                      MadMenuItem(
-                        label: 'Edit',
-                        icon: LucideIcons.pencil,
-                        onTap: () => _showEditDialog(mir),
-                      ),
-                      MadMenuItem(
-                        label: isDeleting ? 'Deleting...' : 'Delete',
-                        icon: LucideIcons.trash2,
-                        destructive: true,
-                        disabled: isDeleting,
-                        onTap: () => _handleDelete(mir),
-                      ),
-                    ],
-                  )
-                else
-                  Row(
-                    children: [
-                      MadButton(
-                        text: 'Preview',
-                        icon: LucideIcons.eye,
-                        size: ButtonSize.sm,
-                        variant: ButtonVariant.outline,
-                        onPressed: () => _showPreview(mir),
-                      ),
-                      const SizedBox(width: 8),
-                      MadButton(
-                        text: 'Edit',
-                        icon: LucideIcons.pencil,
-                        size: ButtonSize.sm,
-                        variant: ButtonVariant.outline,
-                        onPressed: () => _showEditDialog(mir),
-                      ),
-                      const SizedBox(width: 8),
-                      MadButton(
-                        text: isDeleting ? 'Deleting...' : 'Delete',
-                        icon: LucideIcons.trash2,
-                        size: ButtonSize.sm,
-                        variant: ButtonVariant.destructive,
-                        loading: isDeleting,
-                        disabled: isDeleting,
-                        onPressed: () => _handleDelete(mir),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          );
-        },
-      );
+              ),
+            );
+          },
+        );
+      }
 
       return Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color:
-                  (isDark ? AppTheme.darkMuted : AppTheme.lightMuted)
-                      .withValues(alpha: 0.3),
+              color: mutedSurface,
+              border: Border(bottom: BorderSide(color: borderColor)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
             ),
             child: Row(
               children: [
                 _buildHeaderCell('MIR No', flex: 2, isDark: isDark),
-                if (!isMobile) _buildHeaderCell('Project', flex: 2, isDark: isDark),
+                _buildHeaderCell('Project', flex: 2, isDark: isDark),
                 _buildHeaderCell('Material', flex: 2, isDark: isDark),
-                if (!isMobile)
-                  _buildHeaderCell('Inspection Date', flex: 2, isDark: isDark),
+                _buildHeaderCell('Inspection Date', flex: 2, isDark: isDark),
                 _buildHeaderCell('Status', flex: 1, isDark: isDark),
-                SizedBox(width: isMobile ? 48 : 260),
+                const SizedBox(width: 260),
               ],
             ),
           ),
-          if (shrinkWrap) listView else Expanded(child: listView),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _paginatedMIRs.length,
+            separatorBuilder: (context, index) =>
+                Divider(height: 1, color: borderColor),
+            itemBuilder: (context, index) {
+              final mir = _paginatedMIRs[index];
+              final statusText = _statusLabel(mir);
+              final statusVariant = _statusVariant(mir);
+              final isDeleting = _deletingMirId == mir.id;
+
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                color: index.isEven
+                    ? surfaceColor
+                    : mutedSurface.withValues(alpha: 0.45),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        mir.mirReferenceNo.isEmpty
+                            ? 'MIR-${mir.id}'
+                            : mir.mirReferenceNo,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        mir.projectName?.isNotEmpty == true
+                            ? mir.projectName!
+                            : '-',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        mir.materialCode?.isNotEmpty == true
+                            ? mir.materialCode!
+                            : '-',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        _inspectionDate(mir),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 1,
+                      child: MadBadge(text: statusText, variant: statusVariant),
+                    ),
+                    SizedBox(
+                      width: 260,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          MadButton(
+                            text: 'Preview',
+                            icon: LucideIcons.eye,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.outline,
+                            onPressed: () => _showPreview(mir),
+                          ),
+                          const SizedBox(width: 8),
+                          MadButton(
+                            text: 'Edit',
+                            icon: LucideIcons.pencil,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.outline,
+                            onPressed: () => _showEditDialog(mir),
+                          ),
+                          const SizedBox(width: 8),
+                          MadButton(
+                            text: isDeleting ? 'Deleting...' : 'Delete',
+                            icon: LucideIcons.trash2,
+                            size: ButtonSize.sm,
+                            variant: ButtonVariant.destructive,
+                            loading: isDeleting,
+                            disabled: isDeleting,
+                            onPressed: () => _handleDelete(mir),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           if (_totalPages > 1) _buildPagination(isDark),
         ],
       );
@@ -650,8 +770,12 @@ class _MIRPageFullState extends State<MIRPageFull> {
     return Column(
       children: [
         Container(
-          padding:
-              EdgeInsets.fromLTRB(isMobile ? 16 : 20, 18, isMobile ? 16 : 20, 14),
+          padding: EdgeInsets.fromLTRB(
+            isMobile ? 16 : 20,
+            18,
+            isMobile ? 16 : 20,
+            14,
+          ),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
@@ -700,37 +824,6 @@ class _MIRPageFullState extends State<MIRPageFull> {
               ),
               const SizedBox(height: 12),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildMetricPill(
-                    isDark: isDark,
-                    icon: LucideIcons.fileSearch,
-                    label: 'Total',
-                    value: _mirs.length.toString(),
-                  ),
-                  _buildMetricPill(
-                    isDark: isDark,
-                    icon: LucideIcons.send,
-                    label: 'Submitted',
-                    value: _mirs
-                        .where((m) => _statusLabel(m) == 'Submitted')
-                        .length
-                        .toString(),
-                  ),
-                  _buildMetricPill(
-                    isDark: isDark,
-                    icon: LucideIcons.filePenLine,
-                    label: 'Draft',
-                    value: _mirs
-                        .where((m) => _statusLabel(m) == 'Draft')
-                        .length
-                        .toString(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: [
@@ -758,6 +851,16 @@ class _MIRPageFullState extends State<MIRPageFull> {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              Text(
+                '${_filteredMIRs.length} of ${_mirs.length} MIR(s)',
+                style: TextStyle(
+                  color: isDark
+                      ? AppTheme.darkMutedForeground
+                      : AppTheme.lightMutedForeground,
+                  fontSize: 12,
+                ),
+              ),
             ],
           ),
         ),
@@ -766,7 +869,11 @@ class _MIRPageFullState extends State<MIRPageFull> {
     );
   }
 
-  Widget _buildHeaderCell(String text, {required int flex, required bool isDark}) {
+  Widget _buildHeaderCell(
+    String text, {
+    required int flex,
+    required bool isDark,
+  }) {
     return Expanded(
       flex: flex,
       child: Text(
@@ -774,9 +881,44 @@ class _MIRPageFullState extends State<MIRPageFull> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+          color: isDark
+              ? AppTheme.darkMutedForeground
+              : AppTheme.lightMutedForeground,
         ),
       ),
+    );
+  }
+
+  Widget _buildMirInfoLine(
+    String label,
+    String value,
+    bool isDark, {
+    required IconData icon,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          size: 14,
+          color: isDark
+              ? AppTheme.darkMutedForeground
+              : AppTheme.lightMutedForeground,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            '$label: ${value.isEmpty ? '-' : value}',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
@@ -786,7 +928,8 @@ class _MIRPageFullState extends State<MIRPageFull> {
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(
-            color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withValues(alpha: 0.5),
+            color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+                .withValues(alpha: 0.5),
           ),
         ),
       ),
@@ -797,7 +940,9 @@ class _MIRPageFullState extends State<MIRPageFull> {
             'Page $_currentPage of $_totalPages',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
             ),
           ),
           Row(
@@ -834,7 +979,11 @@ class _MIRPageFullState extends State<MIRPageFull> {
             Icon(
               LucideIcons.fileSearch,
               size: 64,
-              color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withValues(alpha: 0.3),
+              color:
+                  (isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground)
+                      .withValues(alpha: 0.3),
             ),
             const SizedBox(height: 24),
             Text(
@@ -842,7 +991,9 @@ class _MIRPageFullState extends State<MIRPageFull> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
             const SizedBox(height: 16),
@@ -851,9 +1002,7 @@ class _MIRPageFullState extends State<MIRPageFull> {
               icon: LucideIcons.plus,
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const MIRCreatePage(),
-                ),
+                MaterialPageRoute(builder: (_) => const MIRCreatePage()),
               ),
             ),
           ],
@@ -880,7 +1029,9 @@ class _MIRPageFullState extends State<MIRPageFull> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
             const SizedBox(height: 8),
@@ -888,7 +1039,9 @@ class _MIRPageFullState extends State<MIRPageFull> {
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
             ),
             const SizedBox(height: 24),
