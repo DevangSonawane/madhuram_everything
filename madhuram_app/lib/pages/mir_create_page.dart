@@ -1191,13 +1191,18 @@ class _MIRCreatePageState extends State<MIRCreatePage> {
                         ),
                       ),
                     ),
-                    MadSelect<String>(
-                      value: _mirFormat,
-                      options: formatOptions,
-                      onChanged: (value) {
-                        if (value == null || value == _mirFormat) return;
-                        setState(() => _mirFormat = value);
-                      },
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 150,
+                      child: MadSelect<String>(
+                        value: _mirFormat,
+                        options: formatOptions,
+                        width: 150,
+                        onChanged: (value) {
+                          if (value == null || value == _mirFormat) return;
+                          setState(() => _mirFormat = value);
+                        },
+                      ),
                     ),
                   ],
                 ),

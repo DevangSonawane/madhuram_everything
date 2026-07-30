@@ -119,10 +119,24 @@ String? _projectSelectionRedirect({
   return null;
 }
 
+Map<String, dynamic> _routeArgsWithManualOnly(Object? extra) {
+  final args = extra is Map<String, dynamic>
+      ? Map<String, dynamic>.from(extra)
+      : <String, dynamic>{};
+  args['manualOnly'] = true;
+  return args;
+}
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = _GoRouterRefreshNotifier();
-  ref.listen(authSessionProvider, (previous, next) => refreshNotifier.refresh());
-  ref.listen(projectSessionProvider, (previous, next) => refreshNotifier.refresh());
+  ref.listen(
+    authSessionProvider,
+    (previous, next) => refreshNotifier.refresh(),
+  );
+  ref.listen(
+    projectSessionProvider,
+    (previous, next) => refreshNotifier.refresh(),
+  );
   ref.onDispose(refreshNotifier.dispose);
 
   return GoRouter(
@@ -140,54 +154,165 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return next;
     },
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const SizedBox.shrink(),
-      ),
+      GoRoute(path: '/', builder: (context, state) => const SizedBox.shrink()),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
-      GoRoute(path: '/projects', builder: (context, state) => const ProjectSelectionPage()),
-      GoRoute(path: '/dashboard', builder: (context, state) => const DashboardPage()),
-      GoRoute(path: '/attendance', builder: (context, state) => const AttendancePage()),
-      GoRoute(path: '/attendance/my', builder: (context, state) => const MyAttendancePage()),
+      GoRoute(
+        path: '/projects',
+        builder: (context, state) => const ProjectSelectionPage(),
+      ),
+      GoRoute(
+        path: '/dashboard',
+        builder: (context, state) => const DashboardPage(),
+      ),
+      GoRoute(
+        path: '/attendance',
+        builder: (context, state) => const AttendancePage(),
+      ),
+      GoRoute(
+        path: '/attendance/my',
+        builder: (context, state) => const MyAttendancePage(),
+      ),
       GoRoute(path: '/boq', builder: (context, state) => const BOQPage()),
-      GoRoute(path: '/samples', builder: (context, state) => const SamplesPageFull()),
-      GoRoute(path: '/projects/quotes/add', builder: (context, state) => const QuotesListPage()),
-      GoRoute(path: '/purchase-requests', builder: (context, state) => const PurchaseRequestsPageFull()),
-      GoRoute(path: '/purchase-requests/create', builder: (context, state) => const PurchaseRequestCreatePage()),
-      GoRoute(path: '/vendor-comparison', builder: (context, state) => const VendorComparisonPageFull()),
-      GoRoute(path: '/purchase-orders', builder: (context, state) => const PurchaseOrdersPageFull()),
-      GoRoute(path: '/vendors', builder: (context, state) => const VendorsPageFull()),
-      GoRoute(path: '/vendors/new', builder: (context, state) => const VendorCreatePage()),
-      GoRoute(path: '/challans', builder: (context, state) => const ChallansPageFull()),
-      GoRoute(path: '/challans/new', builder: (context, state) => const NewChallanPage()),
+      GoRoute(
+        path: '/samples',
+        builder: (context, state) => const SamplesPageFull(),
+      ),
+      GoRoute(
+        path: '/projects/quotes/add',
+        builder: (context, state) => const QuotesListPage(),
+      ),
+      GoRoute(
+        path: '/purchase-requests',
+        builder: (context, state) => const PurchaseRequestsPageFull(),
+      ),
+      GoRoute(
+        path: '/purchase-requests/create',
+        builder: (context, state) => const PurchaseRequestCreatePage(),
+      ),
+      GoRoute(
+        path: '/vendor-comparison',
+        builder: (context, state) => const VendorComparisonPageFull(),
+      ),
+      GoRoute(
+        path: '/purchase-orders',
+        builder: (context, state) => const PurchaseOrdersPageFull(),
+      ),
+      GoRoute(
+        path: '/vendors',
+        builder: (context, state) => const VendorsPageFull(),
+      ),
+      GoRoute(
+        path: '/vendors/new',
+        builder: (context, state) => const VendorCreatePage(),
+      ),
+      GoRoute(
+        path: '/challans',
+        builder: (context, state) => const ChallansPageFull(),
+      ),
+      GoRoute(
+        path: '/challans/new',
+        builder: (context, state) => const NewChallanPage(),
+      ),
       GoRoute(path: '/mer', builder: (context, state) => const MERPageFull()),
       GoRoute(path: '/mir', builder: (context, state) => const MIRPageFull()),
-      GoRoute(path: '/mir/create', builder: (context, state) => const MIRCreatePage()),
-      GoRoute(path: '/itr', builder: (context, state) => const ITRPageFull()),
-      GoRoute(path: '/billing', builder: (context, state) => const BillingPageFull()),
-      GoRoute(path: '/stock-areas', builder: (context, state) => const StockAreasPage()),
-      GoRoute(path: '/materials', builder: (context, state) => const MaterialsPage()),
-      GoRoute(path: '/inventory/add', builder: (context, state) => const AddInventoryPage()),
-      GoRoute(path: '/inventory', builder: (context, state) => const AddInventoryPage()),
-      GoRoute(path: '/projects/inventory/add', builder: (context, state) => const AddInventoryPage()),
-      GoRoute(path: '/projects/inventory/full', builder: (context, state) => const AddInventoryPage(fullScreen: true)),
-      GoRoute(path: '/projects/inventory/history', builder: (context, state) => const InventoryHistoryPage()),
-      GoRoute(path: '/projects/quotes/search', builder: (context, state) => const QuotesSearchPage()),
-      GoRoute(path: '/stock-transfers', builder: (context, state) => const StockTransfersPage()),
-      GoRoute(path: '/consumption', builder: (context, state) => const ConsumptionPage()),
-      GoRoute(path: '/returns', builder: (context, state) => const ReturnsPage()),
-      GoRoute(path: '/documents', builder: (context, state) => const DocumentsPageFull()),
-      GoRoute(path: '/reports', builder: (context, state) => const ReportsPageFull()),
-      GoRoute(path: '/audit-logs', builder: (context, state) => const AuditLogsPageFull()),
-      GoRoute(path: '/profile', builder: (context, state) => const ProfilePage()),
+      GoRoute(
+        path: '/mir/create',
+        builder: (context, state) => const MIRCreatePage(),
+      ),
+      GoRoute(
+        path: '/itr',
+        builder: (context, state) => ITRPageFull(initialArgs: state.extra),
+      ),
+      GoRoute(
+        path: '/itr/create',
+        builder: (context, state) =>
+            ITRPageFull(initialArgs: _routeArgsWithManualOnly(state.extra)),
+      ),
+      GoRoute(
+        path: '/billing',
+        builder: (context, state) => const BillingPageFull(),
+      ),
+      GoRoute(
+        path: '/stock-areas',
+        builder: (context, state) => const StockAreasPage(),
+      ),
+      GoRoute(
+        path: '/materials',
+        builder: (context, state) => const MaterialsPage(),
+      ),
+      GoRoute(
+        path: '/inventory/add',
+        builder: (context, state) => const AddInventoryPage(),
+      ),
+      GoRoute(
+        path: '/inventory',
+        builder: (context, state) => const AddInventoryPage(),
+      ),
+      GoRoute(
+        path: '/projects/inventory/add',
+        builder: (context, state) => const AddInventoryPage(),
+      ),
+      GoRoute(
+        path: '/projects/inventory/full',
+        builder: (context, state) => const AddInventoryPage(fullScreen: true),
+      ),
+      GoRoute(
+        path: '/projects/inventory/history',
+        builder: (context, state) => const InventoryHistoryPage(),
+      ),
+      GoRoute(
+        path: '/projects/quotes/search',
+        builder: (context, state) => const QuotesSearchPage(),
+      ),
+      GoRoute(
+        path: '/stock-transfers',
+        builder: (context, state) => const StockTransfersPage(),
+      ),
+      GoRoute(
+        path: '/consumption',
+        builder: (context, state) => const ConsumptionPage(),
+      ),
+      GoRoute(
+        path: '/returns',
+        builder: (context, state) => const ReturnsPage(),
+      ),
+      GoRoute(
+        path: '/documents',
+        builder: (context, state) => const DocumentsPageFull(),
+      ),
+      GoRoute(
+        path: '/reports',
+        builder: (context, state) => const ReportsPageFull(),
+      ),
+      GoRoute(
+        path: '/audit-logs',
+        builder: (context, state) => const AuditLogsPageFull(),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfilePage(),
+      ),
       GoRoute(path: '/users', builder: (context, state) => const ProfilePage()),
-      GoRoute(path: '/settings', builder: (context, state) => const ProfilePage()),
-      GoRoute(path: '/purchase-orders/preview', builder: (context, state) => const PurchaseOrdersPageFull()),
-      GoRoute(path: '/mir/preview', builder: (context, state) => const MIRPageFull()),
-      GoRoute(path: '/itr/preview', builder: (context, state) => const ITRPageFull()),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const ProfilePage(),
+      ),
+      GoRoute(
+        path: '/purchase-orders/preview',
+        builder: (context, state) => const PurchaseOrdersPageFull(),
+      ),
+      GoRoute(
+        path: '/mir/preview',
+        builder: (context, state) => const MIRPageFull(),
+      ),
+      GoRoute(
+        path: '/itr/preview',
+        builder: (context, state) => ITRPageFull(initialArgs: state.extra),
+      ),
       GoRoute(
         path: '/challans/detail',
-        builder: (context, state) => ChallanDetailPage(challanId: (state.extra as String?) ?? ''),
+        builder: (context, state) =>
+            ChallanDetailPage(challanId: (state.extra as String?) ?? ''),
       ),
       GoRoute(
         path: '/challans/new/details',
@@ -228,17 +353,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/samples/preview',
-        builder: (context, state) => SamplePreviewPage(sampleId: (state.extra as String?) ?? ''),
+        builder: (context, state) =>
+            SamplePreviewPage(sampleId: (state.extra as String?) ?? ''),
       ),
       GoRoute(
         path: '/samples/edit',
-        builder: (context, state) => SampleEditPage(sampleId: (state.extra as String?) ?? ''),
+        builder: (context, state) =>
+            SampleEditPage(sampleId: (state.extra as String?) ?? ''),
       ),
       GoRoute(
         path: '/samples/create',
-        builder: (context, state) => SampleCreatePage(
-          initialProjectId: (state.extra as String?) ?? '',
-        ),
+        builder: (context, state) =>
+            SampleCreatePage(initialProjectId: (state.extra as String?) ?? ''),
       ),
       GoRoute(
         path: '/vendors/price-lists',
@@ -288,9 +414,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint(
     '[Main] Background message received: '
     '${message.notification?.title ?? message.data['title'] ?? 'Notification'}',
@@ -313,9 +437,7 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   debugPrint('[Main] Firebase background handler registered');
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint('[Main] Firebase initialized');
 
   runApp(
@@ -354,18 +476,24 @@ Future<void> _restoreAuthState() async {
       final user = await AuthStorage.getUser();
       if (user != null) {
         var resolvedUser = AccessControlStore.resolveUserAccessControl(user);
-        final authNotifier = appProviderContainer.read(authSessionProvider.notifier);
-        if (!sameMapState(appProviderContainer.read(authSessionProvider).user, resolvedUser)) {
+        final authNotifier = appProviderContainer.read(
+          authSessionProvider.notifier,
+        );
+        if (!sameMapState(
+          appProviderContainer.read(authSessionProvider).user,
+          resolvedUser,
+        )) {
           authNotifier.sync(resolvedUser);
         }
 
-        final userId =
-            (resolvedUser['user_id'] ?? resolvedUser['id'] ?? '').toString();
+        final userId = (resolvedUser['user_id'] ?? resolvedUser['id'] ?? '')
+            .toString();
         if (userId.isNotEmpty) {
           final accessResult = await ApiClient.getAccessUser(userId);
           resolvedUser = AccessControlStore.resolveUserAccessControl(
             resolvedUser,
-            accessControl: (accessResult['success'] == true &&
+            accessControl:
+                (accessResult['success'] == true &&
                     accessResult['data'] is Map<String, dynamic>)
                 ? Map<String, dynamic>.from(accessResult['data'] as Map)
                 : null,
@@ -379,9 +507,13 @@ Future<void> _restoreAuthState() async {
         // ProjectSelectionPage loads.
         final savedProjectId = await AuthStorage.getSelectedProjectId();
         if (savedProjectId != null && savedProjectId.isNotEmpty) {
-          final projectNotifier = appProviderContainer.read(projectSessionProvider.notifier);
+          final projectNotifier = appProviderContainer.read(
+            projectSessionProvider.notifier,
+          );
           projectNotifier.sync(
-            projects: appProviderContainer.read(projectSessionProvider).projects,
+            projects: appProviderContainer
+                .read(projectSessionProvider)
+                .projects,
             selectedProject: {
               'project_id': savedProjectId,
               'project_name': 'Loading…',
@@ -410,7 +542,9 @@ void _restoreProjectsInBackground(String savedProjectId) {
           final projectMaps = projectList
               .map((e) => e as Map<String, dynamic>)
               .toList();
-          final projectNotifier = appProviderContainer.read(projectSessionProvider.notifier);
+          final projectNotifier = appProviderContainer.read(
+            projectSessionProvider.notifier,
+          );
           final current = appProviderContainer.read(projectSessionProvider);
           if (stateSignature(current.projects) != stateSignature(projectMaps)) {
             projectNotifier.sync(
@@ -427,7 +561,12 @@ void _restoreProjectsInBackground(String savedProjectId) {
             orElse: () => <String, dynamic>{},
           );
           if (savedProject.isNotEmpty &&
-              !sameMapState(appProviderContainer.read(projectSessionProvider).selectedProject, savedProject)) {
+              !sameMapState(
+                appProviderContainer
+                    .read(projectSessionProvider)
+                    .selectedProject,
+                savedProject,
+              )) {
             projectNotifier.sync(
               projects: projectMaps,
               selectedProject: savedProject,

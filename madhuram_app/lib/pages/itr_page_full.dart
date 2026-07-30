@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,14 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
 import '../services/api_client.dart';
-import '../services/file_service.dart';
 import '../models/itr.dart';
 import '../components/ui/components.dart';
 import '../components/layout/main_layout.dart';
 import '../providers/legacy_session_providers.dart';
 import '../utils/app_navigation.dart';
 import '../utils/responsive.dart';
-import '../utils/error_handler.dart';
 
 const String _itrDraftKey = 'itr_manual_entry_draft';
 
@@ -35,10 +32,7 @@ const List<Map<String, String>> _apiInspectionCodeOptions = [
     'label':
         'Conditionally approved. Work may proceed and resubmit incorporating comments',
   },
-  {
-    'value': 'CODE_3',
-    'label': 'Revise and Resubmit. Work may NOT proceed',
-  },
+  {'value': 'CODE_3', 'label': 'Revise and Resubmit. Work may NOT proceed'},
   {
     'value': 'CODE_4',
     'label': 'For information and records only. Work may proceed',
@@ -64,7 +58,8 @@ Map<String, dynamic> _buildItrPayload(
   Map<String, dynamic>? user,
 ) {
   final disciplineListRaw = formData['discipline_list'];
-  final disciplineLabel = (disciplineListRaw is List && disciplineListRaw.isNotEmpty)
+  final disciplineLabel =
+      (disciplineListRaw is List && disciplineListRaw.isNotEmpty)
       ? disciplineListRaw.first.toString()
       : (formData['discipline'] ?? '').toString();
   final selectedDisciplineApi =
@@ -228,7 +223,9 @@ String _yesNoNaToApi(dynamic value) {
 
 /// Installation Test Report page with PO-like shell and dedicated manual entry route.
 class ITRPageFull extends ConsumerStatefulWidget {
-  const ITRPageFull({super.key});
+  final Object? initialArgs;
+
+  const ITRPageFull({super.key, this.initialArgs});
   @override
   ConsumerState<ITRPageFull> createState() => _ITRPageFullState();
 }
@@ -241,14 +238,10 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
   int _currentPage = 1;
   final int _itemsPerPage = 10;
   final _searchController = TextEditingController();
-  String? _statusFilter;
   final Map<String, Map<String, String>> _statusDrafts = {};
   final Map<String, bool> _updatingStatusIds = {};
-
-  // Create card
-  File? _selectedFile;
-  bool _isUploading = false;
-  bool _prefillApplied = false;
+  final GlobalKey<_ITRManualEntryFormState> _manualEntryFormKey =
+      GlobalKey<_ITRManualEntryFormState>();
   String _prefillItrRef = '';
 
   @override
@@ -326,13 +319,14 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       result = result
-          .where((i) =>
-              i.itrRefNo.toLowerCase().contains(query) ||
-              (i.projectName?.toLowerCase().contains(query) ?? false) ||
-              (i.discipline?.toLowerCase().contains(query) ?? false))
+          .where(
+            (i) =>
+                i.itrRefNo.toLowerCase().contains(query) ||
+                (i.projectName?.toLowerCase().contains(query) ?? false) ||
+                (i.discipline?.toLowerCase().contains(query) ?? false),
+          )
           .toList();
     }
-    if (_statusFilter != null) result = result.where((i) => i.status == _statusFilter).toList();
     return result;
   }
 
@@ -341,7 +335,10 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     final end = start + _itemsPerPage;
     final filtered = _filteredITRs;
     if (start >= filtered.length) return [];
-    return filtered.sublist(start, end > filtered.length ? filtered.length : end);
+    return filtered.sublist(
+      start,
+      end > filtered.length ? filtered.length : end,
+    );
   }
 
   int get _totalPages => (_filteredITRs.length / _itemsPerPage).ceil();
@@ -353,219 +350,101 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     final isMobile = responsive.isMobile;
     final project = ref.watch(projectSessionProvider);
     final projectId = project.selectedProjectId;
-    final args = ModalRoute.of(context)?.settings.arguments;
-    final argsMap = args is Map ? Map<String, dynamic>.from(args) : const <String, dynamic>{};
-    final manualOnlyMode = argsMap['manualOnly'] == true;
-
-    if (!_prefillApplied && args is Map && args['challan_number'] != null) {
-      final challanNo = args['challan_number'].toString();
-      _prefillItrRef = challanNo;
-      _prefillApplied = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        showToast(context, 'Prefilled ITR ref from challan $challanNo');
-        context.appPush(
-          '/itr/preview',
-          extra: {'manualOnly': true, 'prefill_itr_ref': challanNo},
-        );
-      });
+    final args =
+        widget.initialArgs ?? ModalRoute.of(context)?.settings.arguments;
+    final argsMap = args is Map
+        ? Map<String, dynamic>.from(args)
+        : const <String, dynamic>{};
+    final manualOnlyMode =
+        argsMap['manualOnly'] == true || argsMap['challan_number'] != null;
+    final prefillItrRef =
+        argsMap['prefill_itr_ref']?.toString() ??
+        argsMap['challan_number']?.toString() ??
+        _prefillItrRef;
+    if (prefillItrRef.isNotEmpty) {
+      _prefillItrRef = prefillItrRef;
     }
 
     return ProtectedRoute(
-      title: manualOnlyMode
-          ? 'Installation Test Report - Manual Entry'
-          : 'Installation Test Report',
+      title: manualOnlyMode ? 'Create ITR' : 'Installation Test Report',
       route: '/itr',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                  manualOnlyMode
-                      ? 'ITR Manual Entry'
-                      : 'Installation Test Report',
-                      style: TextStyle(
-                        fontSize: responsive.value(mobile: 24, tablet: 30, desktop: 32),
-                        fontWeight: FontWeight.w800,
-                        color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                  manualOnlyMode
-                      ? 'Fill the ITR form manually.'
-                      : 'Upload and manage installation test reports.',
-                      style: TextStyle(
-                        fontSize: responsive.value(mobile: 13, tablet: 15, desktop: 16),
-                        color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-                      ),
-                    ),
-                  ],
-                ),
+          if (manualOnlyMode)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: MadButton(
+                text: 'Back to ITR List',
+                icon: LucideIcons.arrowLeft,
+                variant: ButtonVariant.outline,
+                onPressed: () => context.appGo('/itr'),
               ),
-            ],
-          ),
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Installation Test Report',
+                        style: TextStyle(
+                          fontSize: responsive.value(
+                            mobile: 24,
+                            tablet: 30,
+                            desktop: 32,
+                          ),
+                          fontWeight: FontWeight.w800,
+                          color: isDark
+                              ? AppTheme.darkForeground
+                              : AppTheme.lightForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Create and manage installation test reports.',
+                        style: TextStyle(
+                          fontSize: responsive.value(
+                            mobile: 13,
+                            tablet: 15,
+                            desktop: 16,
+                          ),
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                MadButton(
+                  text: 'Create ITR',
+                  icon: LucideIcons.filePenLine,
+                  variant: ButtonVariant.primary,
+                  onPressed: () => context.appPush('/itr/create'),
+                ),
+              ],
+            ),
           const SizedBox(height: 16),
           Expanded(
             child: manualOnlyMode
                 ? _buildManualEntryTab(
                     isDark,
                     projectId,
-                    prefillFromArgs:
-                        argsMap['prefill_itr_ref']?.toString() ??
-                            _prefillItrRef,
+                    prefillFromArgs: prefillItrRef,
                   )
                 : SingleChildScrollView(
-              child: Column(
-                children: [
-                  _buildCreateExtractCard(isDark),
-                  const SizedBox(height: 16),
-                  _buildRecentITRsTab(isDark, isMobile),
-                ],
-              ),
-            ),
+                    child: Column(
+                      children: [_buildRecentITRsTab(isDark, isMobile)],
+                    ),
+                  ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _buildCreateExtractCard(bool isDark) {
-    return MadCard(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Create / Extract ITR',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Upload an ITR file directly from camera, gallery, or files.',
-              style: TextStyle(
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                MadButton(
-                  text: _isUploading ? 'Uploading...' : 'Upload',
-                  icon: LucideIcons.upload,
-                  loading: _isUploading,
-                  onPressed: _isUploading
-                      ? null
-                      : () async {
-                          await _pickFile();
-                          if (_selectedFile != null) {
-                            await _runUpload();
-                          }
-                        },
-                ),
-                MadButton(
-                  text: 'Manual Entry',
-                  icon: LucideIcons.filePenLine,
-                  variant: ButtonVariant.outline,
-                  onPressed: () => context.appPush(
-                    '/itr/preview',
-                    extra: {
-                      'manualOnly': true,
-                      'prefill_itr_ref': _prefillItrRef,
-                    },
-                  ),
-                ),
-              ],
-            ),
-            if (_selectedFile != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                'Selected file: ${_selectedFile!.path.split(RegExp(r'[/\\]')).last}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickFile() async {
-    final file = await FileService.pickFileWithSource(
-      context: context,
-      allowedExtensions: ['pdf', 'xlsx', 'xls', 'csv'],
-    );
-    if (!mounted || file == null) return;
-    setState(() => _selectedFile = file);
-  }
-
-  Future<void> _runUpload() async {
-    if (_selectedFile == null) return;
-    setState(() => _isUploading = true);
-    try {
-      final user = ref.read(authSessionProvider).user;
-      final result = await ApiClient.uploadITRReference(
-        _selectedFile!,
-        userId:
-            user?['id']?.toString() ??
-            user?['user_id']?.toString() ??
-            user?['userId']?.toString(),
-        userName:
-            user?['name']?.toString() ??
-            user?['full_name']?.toString() ??
-            user?['username']?.toString() ??
-            user?['email']?.toString(),
-      );
-      if (!mounted) return;
-      if (result['success'] == true) {
-        final fileName = _selectedFile!.path.split(RegExp(r'[/\\]')).last;
-        final path =
-            (result['data']?['filePath'] ?? result['data']?['path'] ?? '')
-                .toString();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              path.isNotEmpty
-                  ? 'Uploaded "$fileName" successfully.'
-                  : 'Uploaded "$fileName".',
-            ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              (result['error'] ?? 'Failed to upload ITR reference').toString(),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ErrorHandler.getMessage(e))),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isUploading = false);
-      }
-    }
   }
 
   Widget _buildManualEntryTab(
@@ -574,9 +453,12 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     String prefillFromArgs = '',
   }) {
     return _ITRManualEntryForm(
+      key: _manualEntryFormKey,
       projectId: projectId ?? '',
       isDark: isDark,
-      prefillItrRef: prefillFromArgs.isNotEmpty ? prefillFromArgs : _prefillItrRef,
+      prefillItrRef: prefillFromArgs.isNotEmpty
+          ? prefillFromArgs
+          : _prefillItrRef,
       onPreview: _showITRPreview,
       onSubmit: _submitITR,
     );
@@ -602,9 +484,18 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
                   children: [
                     Text(
                       'ITR Preview',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
                     ),
-                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close),
+                    ),
                   ],
                 ),
               ),
@@ -612,7 +503,11 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
-                  child: _buildPreviewContent(data, isDark, Responsive(ctx).isMobile),
+                  child: _buildPreviewContent(
+                    data,
+                    isDark,
+                    Responsive(ctx).isMobile,
+                  ),
                 ),
               ),
               const Divider(height: 1),
@@ -621,7 +516,11 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    MadButton(text: 'Edit', variant: ButtonVariant.outline, onPressed: () => Navigator.pop(ctx)),
+                    MadButton(
+                      text: 'Edit',
+                      variant: ButtonVariant.outline,
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
                     const SizedBox(width: 12),
                     MadButton(
                       text: 'Submit',
@@ -640,15 +539,36 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     );
   }
 
-  Widget _buildPreviewContent(Map<String, dynamic> data, bool isDark, bool isMobile) {
-    final textStyle = TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground);
-    final valueStyle = const TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
+  Widget _buildPreviewContent(
+    Map<String, dynamic> data,
+    bool isDark,
+    bool isMobile,
+  ) {
+    final textStyle = TextStyle(
+      fontSize: 13,
+      color: isDark
+          ? AppTheme.darkMutedForeground
+          : AppTheme.lightMutedForeground,
+    );
+    final valueStyle = const TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w500,
+    );
 
     Widget section(String title, List<Widget> rows) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isDark
+                  ? AppTheme.darkForeground
+                  : AppTheme.lightForeground,
+            ),
+          ),
           const SizedBox(height: 8),
           ...rows,
           const SizedBox(height: 16),
@@ -663,8 +583,18 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(width: isMobile ? 100 : 140, child: Text(label, style: textStyle)),
-            Expanded(child: Text(v, style: valueStyle, overflow: TextOverflow.ellipsis, maxLines: 1)),
+            SizedBox(
+              width: isMobile ? 100 : 140,
+              child: Text(label, style: textStyle),
+            ),
+            Expanded(
+              child: Text(
+                v,
+                style: valueStyle,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
           ],
         ),
       );
@@ -673,44 +603,59 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        section('Header', [
-          row('ITR Reference No', data['itr_ref_no']),
+        section('Project Info and ITR Header', [
+          row('PO ID', data['po_id']),
+          row('MIR ID', data['mir_id']),
+          row('Sample ID', data['sample_id']),
           row('Project Name', data['project_name']),
-          row('Discipline', data['discipline']),
-          row('Client/Employer', data['client_employer']),
-          row('Contractor', data['contractor']),
-        ]),
-        section('Location', [
-          row('Tower/Block', data['tower_block']),
-          row('Floor', data['floor']),
-          row('Grid', data['grid']),
-          row('Room/Area', data['room_area']),
-        ]),
-        section('Contractor Part', [
+          row('Project Code', data['project_code']),
+          row('Client / Employer', data['client_employer']),
           row('PMC Engineer', data['pmc_engineer']),
+          row('Contractor', data['contractor']),
           row('Vendor Code', data['vendor_code']),
           row('Material Code', data['material_code']),
-          row('Description of Works', data['description_of_works']),
+          row('Work Order No.', data['work_order_no']),
+          row('ITR Reference No', data['itr_ref_no']),
+          row('Revision No', data['rev_no']),
+          row(
+            'WIR / ITR Submission Date & Time',
+            data['wir_itr_submission_date_time'],
+          ),
+          row('Inspection Date & Time', data['inspection_date_time']),
+          row('Submitted To', data['submitted_to']),
+          row('Submitted By', data['submitted_by']),
+          row('Discipline', data['discipline']),
         ]),
-        section('Measurement', [
-          row('Previous Quantity', data['previous_quantity']),
-          row('Current Quantity', data['current_quantity']),
-          row('Cumulative Quantity', data['cumulative_quantity']),
+        section('Location, Quantity, and Description of Work', [
+          row('Tower / Block Ref', data['tower_block']),
+          row('Floor / Level', data['floor']),
+          row('Grid Reference', data['grid']),
+          row('Room / Area Ref', data['room_area']),
+          row('Previous Qty', data['previous_quantity']),
+          row('Current Qty', data['current_quantity']),
+          row('Quantity Unit', data['quantity_unit']),
+          row('Description of Works / Activity', data['description_of_works']),
         ]),
-        section('Clearances', [
-          row('MEP Clearance', data['mep_clearance']),
-          row('Surveyor Clearance', data['surveyor_clearance']),
-          row('Interface Clearance', data['interface_clearance']),
+        section('Work Items and Shaft Details', [
+          row('Work Items', (data['work_items'] as List?)?.length ?? 0),
+          row('Shaft Details', (data['shaft_details'] as List?)?.length ?? 0),
         ]),
-        section('Contractor Manager', [
-          row('Ready for Inspection', data['ready_for_inspection'] == true ? 'Yes' : 'No'),
-          row('Contractor Manager Name', data['contractor_manager_name']),
-          row('Date', data['contractor_manager_date']),
+        section('Clearances and Sign-off - Part A', [
+          row('MEP Clearance', data['mep_clearance_name']),
+          row('Surveyor Clearance', data['surveyor_clearance_name']),
+          row('Interface Clearance', data['interface_clearance_name']),
+          row('Contractor Comments', data['contractor_manager_comments']),
+          row('Ready for Inspection Date', data['ready_for_inspection_date']),
+          row('Ready for Inspection Time', data['ready_for_inspection_time']),
+          row('Signed By', data['ready_signed_by']),
         ]),
-        section('Lodha/PMC', [
+        section('Lodha PMC Part', [
           row('Comments', data['comments']),
           row('Result Code', data['result_code']),
           row('Engineer Name', data['engineer_name']),
+          row('Engineer MEP Name', data['engineer_mep_name']),
+          row('Tower Incharge Name', data['tower_incharge_name']),
+          row('QAA Department Name', data['qaa_department_name']),
           row('Date', data['engineer_date']),
         ]),
       ],
@@ -728,18 +673,29 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
       return;
     }
 
-    final payload = _buildItrPayload(formData, projectId, ref.read(authSessionProvider).user);
+    final payload = _buildItrPayload(
+      formData,
+      projectId,
+      ref.read(authSessionProvider).user,
+    );
     final updateId = (formData['itr_id'] ?? '').toString().trim();
     final result = updateId.isEmpty
         ? await ApiClient.createITR(payload)
         : await ApiClient.updateITR(updateId, payload);
     if (!mounted) return;
     if (result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ITR submitted successfully.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ITR submitted successfully.')),
+      );
       _loadITRs();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text((result['message'] ?? result['error'] ?? 'Failed to submit ITR').toString())),
+        SnackBar(
+          content: Text(
+            (result['message'] ?? result['error'] ?? 'Failed to submit ITR')
+                .toString(),
+          ),
+        ),
       );
     }
   }
@@ -829,21 +785,6 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
                     }),
                   ),
                 ),
-                SizedBox(
-                  width: 180,
-                  child: MadSelect<String>(
-                    value: _statusFilter,
-                    placeholder: 'All Status',
-                    clearable: true,
-                    options: _apiStatusOptions
-                        .map((e) => MadSelectOption(value: e, label: e))
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                      _statusFilter = v;
-                      _currentPage = 1;
-                    }),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -885,7 +826,9 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(0.5),
+        color: (isDark ? AppTheme.darkMuted : AppTheme.lightMuted).withOpacity(
+          0.5,
+        ),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -920,29 +863,31 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     final variant = status == 'APPROVED' || status == 'CLOSED'
         ? BadgeVariant.default_
         : status == 'UNDER_INSPECTION' || status == 'SUBMITTED'
-            ? BadgeVariant.outline
-            : status == 'REJECTED'
-                ? BadgeVariant.destructive
-                : BadgeVariant.secondary;
+        ? BadgeVariant.outline
+        : status == 'REJECTED'
+        ? BadgeVariant.destructive
+        : BadgeVariant.secondary;
 
     final metaStyle = TextStyle(
       fontSize: 12,
-      color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+      color: isDark
+          ? AppTheme.darkMutedForeground
+          : AppTheme.lightMutedForeground,
     );
 
     Widget kv(String key, String value) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(key, style: metaStyle),
-            const SizedBox(height: 2),
-            Text(
-              value.isEmpty ? '-' : value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ],
-        );
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(key, style: metaStyle),
+        const SizedBox(height: 2),
+        Text(
+          value.isEmpty ? '-' : value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
 
     final resolvedItrNo = itr.itrRefNo.trim().isNotEmpty
         ? itr.itrRefNo.trim()
@@ -950,8 +895,8 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     final resolvedProject = (itr.projectName ?? '').trim().isNotEmpty
         ? itr.projectName!.trim()
         : (itr.projectId?.trim().isNotEmpty == true
-            ? 'Project ${itr.projectId!.trim()}'
-            : '-');
+              ? 'Project ${itr.projectId!.trim()}'
+              : '-');
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -971,10 +916,7 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'ITR No',
-                      style: metaStyle,
-                    ),
+                    Text('ITR No', style: metaStyle),
                     const SizedBox(height: 2),
                     Text(
                       resolvedItrNo,
@@ -994,12 +936,37 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
               const SizedBox(width: 6),
               MadDropdownMenuButton(
                 items: [
-                  MadMenuItem(label: 'View Details', icon: LucideIcons.eye, onTap: () => _showITRDetails(itr)),
-                  MadMenuItem(label: 'Edit', icon: LucideIcons.pencil, onTap: () => _showEditITRDialog(itr)),
-                  MadMenuItem(label: 'Preview', icon: LucideIcons.fileText, onTap: () {}),
-                  MadMenuItem(label: 'Update Status', icon: LucideIcons.save, onTap: () => _showStatusUpdateDialog(itr)),
-                  MadMenuItem(label: 'Mark Complete', icon: LucideIcons.circleCheck, onTap: () => _markITRComplete(itr)),
-                  MadMenuItem(label: 'Delete', icon: LucideIcons.trash2, destructive: true, onTap: () => _showDeleteITRConfirmation(itr)),
+                  MadMenuItem(
+                    label: 'View Details',
+                    icon: LucideIcons.eye,
+                    onTap: () => _showITRDetails(itr),
+                  ),
+                  MadMenuItem(
+                    label: 'Edit',
+                    icon: LucideIcons.pencil,
+                    onTap: () => _showEditITRDialog(itr),
+                  ),
+                  MadMenuItem(
+                    label: 'Preview',
+                    icon: LucideIcons.fileText,
+                    onTap: () {},
+                  ),
+                  MadMenuItem(
+                    label: 'Update Status',
+                    icon: LucideIcons.save,
+                    onTap: () => _showStatusUpdateDialog(itr),
+                  ),
+                  MadMenuItem(
+                    label: 'Mark Complete',
+                    icon: LucideIcons.circleCheck,
+                    onTap: () => _markITRComplete(itr),
+                  ),
+                  MadMenuItem(
+                    label: 'Delete',
+                    icon: LucideIcons.trash2,
+                    destructive: true,
+                    onTap: () => _showDeleteITRConfirmation(itr),
+                  ),
                 ],
               ),
             ],
@@ -1008,9 +975,7 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(
-                child: kv('Project', resolvedProject),
-              ),
+              Expanded(child: kv('Project', resolvedProject)),
               const SizedBox(width: 10),
               MadButton(
                 text: 'Status Update',
@@ -1029,14 +994,24 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder).withOpacity(0.5))),
+        border: Border(
+          top: BorderSide(
+            color: (isDark ? AppTheme.darkBorder : AppTheme.lightBorder)
+                .withOpacity(0.5),
+          ),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             'Page $_currentPage of $_totalPages',
-            style: TextStyle(fontSize: 13, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
+            ),
           ),
           Row(
             children: [
@@ -1072,17 +1047,31 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
             Icon(
               LucideIcons.clipboardCheck,
               size: 64,
-              color: (isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground).withOpacity(0.3),
+              color:
+                  (isDark
+                          ? AppTheme.darkMutedForeground
+                          : AppTheme.lightMutedForeground)
+                      .withOpacity(0.3),
             ),
             const SizedBox(height: 24),
             Text(
               'No ITRs yet',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Create an installation test report via Upload or Manual Entry',
-              style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+              'Create an installation test report using the Create ITR flow.',
+              style: TextStyle(
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1109,14 +1098,18 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                color: isDark
+                    ? AppTheme.darkForeground
+                    : AppTheme.lightForeground,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               message,
               style: TextStyle(
-                color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground,
+                color: isDark
+                    ? AppTheme.darkMutedForeground
+                    : AppTheme.lightMutedForeground,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1148,13 +1141,28 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder)),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: isDark
+                          ? AppTheme.darkBorder
+                          : AppTheme.lightBorder,
+                    ),
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(itr.itrRefNo, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                    Text(
+                      itr.itrRefNo,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
                   ],
                 ),
               ),
@@ -1165,18 +1173,62 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _itrDetailRow(isDark, 'ITR Reference No', itr.itrRefNo),
-                      _itrDetailRow(isDark, 'Project Name', itr.projectName ?? '-'),
-                      _itrDetailRow(isDark, 'Discipline', itr.discipline ?? '-'),
+                      _itrDetailRow(
+                        isDark,
+                        'Project Name',
+                        itr.projectName ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'Discipline',
+                        itr.discipline ?? '-',
+                      ),
                       _itrDetailRow(isDark, 'Status', itr.status ?? '-'),
-                      _itrDetailRow(isDark, 'Client / Employer', itr.clientEmployer ?? '-'),
-                      _itrDetailRow(isDark, 'Contractor', itr.contractor ?? '-'),
-                      _itrDetailRow(isDark, 'PMC Engineer', itr.pmcEngineer ?? '-'),
-                      _itrDetailRow(isDark, 'Vendor Code', itr.vendorCode ?? '-'),
-                      _itrDetailRow(isDark, 'Material Code', itr.materialCode ?? '-'),
-                      _itrDetailRow(isDark, 'Inspection Date/Time', itr.inspectionDateTime ?? '-'),
-                      _itrDetailRow(isDark, 'WIR/ITR Submission Date', itr.wirItrSubmissionDateTime ?? '-'),
-                      _itrDetailRow(isDark, 'Submitted To', itr.submittedTo ?? '-'),
-                      _itrDetailRow(isDark, 'Submitted By', itr.submittedBy ?? '-'),
+                      _itrDetailRow(
+                        isDark,
+                        'Client / Employer',
+                        itr.clientEmployer ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'Contractor',
+                        itr.contractor ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'PMC Engineer',
+                        itr.pmcEngineer ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'Vendor Code',
+                        itr.vendorCode ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'Material Code',
+                        itr.materialCode ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'Inspection Date/Time',
+                        itr.inspectionDateTime ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'WIR/ITR Submission Date',
+                        itr.wirItrSubmissionDateTime ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'Submitted To',
+                        itr.submittedTo ?? '-',
+                      ),
+                      _itrDetailRow(
+                        isDark,
+                        'Submitted By',
+                        itr.submittedBy ?? '-',
+                      ),
                     ],
                   ),
                 ),
@@ -1194,7 +1246,15 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark
+                  ? AppTheme.darkMutedForeground
+                  : AppTheme.lightMutedForeground,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
@@ -1204,9 +1264,10 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
 
   void _showEditITRDialog(ITR itr) {
     final itrRefController = TextEditingController(text: itr.itrRefNo);
-    final projectNameController = TextEditingController(text: itr.projectName ?? '');
+    final projectNameController = TextEditingController(
+      text: itr.projectName ?? '',
+    );
     String? selectedDiscipline = itr.discipline;
-    String? selectedStatus = itr.status;
 
     MadFormDialog.show(
       context: context,
@@ -1215,9 +1276,17 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          MadInput(controller: itrRefController, labelText: 'ITR Reference No', hintText: 'ITR-XXX'),
+          MadInput(
+            controller: itrRefController,
+            labelText: 'ITR Reference No',
+            hintText: 'ITR-XXX',
+          ),
           const SizedBox(height: 16),
-          MadInput(controller: projectNameController, labelText: 'Project Name', hintText: 'Project name'),
+          MadInput(
+            controller: projectNameController,
+            labelText: 'Project Name',
+            hintText: 'Project name',
+          ),
           const SizedBox(height: 16),
           MadSelect<String>(
             labelText: 'Discipline',
@@ -1227,16 +1296,6 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
                 .map((e) => MadSelectOption(value: e, label: e))
                 .toList(),
             onChanged: (value) => selectedDiscipline = value,
-          ),
-          const SizedBox(height: 16),
-          MadSelect<String>(
-            labelText: 'Status',
-            value: selectedStatus,
-            placeholder: 'Select status',
-            options: _apiStatusOptions
-                .map((e) => MadSelectOption(value: e, label: e))
-                .toList(),
-            onChanged: (value) => selectedStatus = value,
           ),
         ],
       ),
@@ -1255,9 +1314,10 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
           onPressed: () async {
             final data = <String, dynamic>{
               'itr_ref_no': itrRefController.text.trim(),
-              'project_name': projectNameController.text.trim().isEmpty ? null : projectNameController.text.trim(),
+              'project_name': projectNameController.text.trim().isEmpty
+                  ? null
+                  : projectNameController.text.trim(),
               'discipline': selectedDiscipline,
-              'status': selectedStatus ?? itr.status,
             };
             itrRefController.dispose();
             projectNameController.dispose();
@@ -1278,9 +1338,14 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
       builder: (context) => AlertDialog(
         backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
         title: const Text('Delete ITR'),
-        content: Text('Are you sure you want to delete "${itr.itrRefNo}"? This action cannot be undone.'),
+        content: Text(
+          'Are you sure you want to delete "${itr.itrRefNo}"? This action cannot be undone.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
@@ -1288,7 +1353,10 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
               if (!mounted) return;
               if (result['success'] == true) _loadITRs();
             },
-            child: Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            child: Text(
+              'Delete',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ),
         ],
       ),
@@ -1341,7 +1409,7 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
       }
     } catch (e) {
       if (!mounted) return;
-      showToast(context, ErrorHandler.getMessage(e));
+      showToast(context, e.toString());
     } finally {
       if (mounted) {
         setState(() => _updatingStatusIds[key] = false);
@@ -1352,7 +1420,9 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
   void _showStatusUpdateDialog(ITR itr) {
     final key = itr.id;
     if (key.isEmpty) return;
-    final draft = _statusDrafts[key] ??
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final draft =
+        _statusDrafts[key] ??
         {
           'status': itr.status ?? 'DRAFT',
           'inspectionCode': '',
@@ -1368,44 +1438,73 @@ class _ITRPageFullState extends ConsumerState<ITRPageFull> {
       context: context,
       title: 'Update ITR Status',
       maxWidth: 560,
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          MadSelect<String>(
-            labelText: 'Status',
-            value: selectedStatus,
-            options: _apiStatusOptions
-                .map((e) => MadSelectOption(value: e, label: e))
-                .toList(),
-            onChanged: (value) {
-              selectedStatus = value ?? selectedStatus;
-            },
-          ),
-          const SizedBox(height: 16),
-          MadSelect<String>(
-            labelText: 'Inspection Code',
-            value: selectedCode.isEmpty ? null : selectedCode,
-            placeholder: 'Select inspection code',
-            options: _apiInspectionCodeOptions
-                .map(
-                  (e) => MadSelectOption(
-                    value: e['value']!,
-                    label: '${e['value']} - ${e['label']}',
+      content: StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Workflow Status',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isDark
+                        ? AppTheme.darkForeground
+                        : AppTheme.lightForeground,
                   ),
-                )
-                .toList(),
-            onChanged: (value) {
-              selectedCode = value ?? '';
-            },
-          ),
-          const SizedBox(height: 16),
-          MadTextarea(
-            controller: commentsController,
-            labelText: 'PMC Comments',
-            hintText: 'Enter comments',
-            minLines: 2,
-          ),
-        ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _apiStatusOptions.map((status) {
+                  final isSelected = selectedStatus == status;
+                  return MadButton(
+                    text: status,
+                    size: ButtonSize.sm,
+                    variant: isSelected
+                        ? ButtonVariant.primary
+                        : ButtonVariant.outline,
+                    onPressed: () {
+                      setDialogState(() {
+                        selectedStatus = status;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              MadSelect<String>(
+                labelText: 'Inspection Code',
+                value: selectedCode.isEmpty ? null : selectedCode,
+                placeholder: 'Select inspection code',
+                options: _apiInspectionCodeOptions
+                    .map(
+                      (e) => MadSelectOption(
+                        value: e['value']!,
+                        label: '${e['value']} - ${e['label']}',
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setDialogState(() {
+                    selectedCode = value ?? '';
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              MadTextarea(
+                controller: commentsController,
+                labelText: 'PMC Comments',
+                hintText: 'Enter comments',
+                minLines: 2,
+              ),
+            ],
+          );
+        },
       ),
       actions: [
         MadButton(
@@ -1446,6 +1545,7 @@ class _ITRManualEntryForm extends StatefulWidget {
   final void Function(Map<String, dynamic>) onSubmit;
 
   const _ITRManualEntryForm({
+    super.key,
     required this.projectId,
     required this.isDark,
     required this.prefillItrRef,
@@ -1502,7 +1602,6 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
   final _qaaDepartmentSignatureController = TextEditingController();
   final _qaaDepartmentDateController = TextEditingController();
 
-  String _status = 'DRAFT';
   final List<String> _selectedDisciplines = [];
   String? _drawingAttach;
   String? _testCertAttach;
@@ -1528,10 +1627,14 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
   String? _selectedProjectId;
   String? _selectedPoId;
   String? _selectedMirId;
+  String? _selectedSampleId;
   bool _loadingOptions = false;
+  bool _loadingSampleOptions = false;
+  bool _loadingSampleItems = false;
   List<Map<String, dynamic>> _projectOptions = const [];
   List<Map<String, dynamic>> _poOptions = const [];
   List<Map<String, dynamic>> _mirOptions = const [];
+  List<Map<String, dynamic>> _sampleOptions = const [];
   final List<Map<String, String>> _workItems = [];
   final List<Map<String, String>> _shaftDetails = [];
 
@@ -1546,16 +1649,6 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
     MadSelectOption(value: 'Others', label: 'Others'),
     MadSelectOption(value: 'ID', label: 'ID'),
     MadSelectOption(value: 'Surveying', label: 'Surveying'),
-  ];
-
-  static const List<MadSelectOption<String>> _statusOptions = [
-    MadSelectOption(value: 'DRAFT', label: 'DRAFT'),
-    MadSelectOption(value: 'SUBMITTED', label: 'SUBMITTED'),
-    MadSelectOption(value: 'UNDER_INSPECTION', label: 'UNDER_INSPECTION'),
-    MadSelectOption(value: 'APPROVED', label: 'APPROVED'),
-    MadSelectOption(value: 'REJECTED', label: 'REJECTED'),
-    MadSelectOption(value: 'RESUBMITTED', label: 'RESUBMITTED'),
-    MadSelectOption(value: 'CLOSED', label: 'CLOSED'),
   ];
 
   static const List<MadSelectOption<String>> _yesNoNaOptions = [
@@ -1589,6 +1682,7 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
     _loadProjectOptions();
     if (_selectedProjectId != null && _selectedProjectId!.isNotEmpty) {
       _loadPoMirOptions(_selectedProjectId!);
+      _loadSampleOptions(_selectedProjectId!);
     }
     if (widget.prefillItrRef.isNotEmpty) {
       _itrRefController.text = widget.prefillItrRef;
@@ -1600,12 +1694,11 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
     try {
       final res = await ApiClient.getProjects();
       if (!mounted) return;
-      final data =
-          (res['success'] == true && res['data'] is List)
-              ? List<Map<String, dynamic>>.from(
-                  (res['data'] as List).map((e) => Map<String, dynamic>.from(e)),
-                )
-              : <Map<String, dynamic>>[];
+      final data = (res['success'] == true && res['data'] is List)
+          ? List<Map<String, dynamic>>.from(
+              (res['data'] as List).map((e) => Map<String, dynamic>.from(e)),
+            )
+          : <Map<String, dynamic>>[];
       setState(() => _projectOptions = data);
     } catch (_) {
       if (!mounted) return;
@@ -1621,22 +1714,20 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
       final mirRes = await ApiClient.getMirsByProject(projectId);
       if (!mounted) return;
       setState(() {
-        _poOptions =
-            (poRes['success'] == true && poRes['data'] is List)
-                ? List<Map<String, dynamic>>.from(
-                    (poRes['data'] as List).map(
-                      (e) => Map<String, dynamic>.from(e),
-                    ),
-                  )
-                : const [];
-        _mirOptions =
-            (mirRes['success'] == true && mirRes['data'] is List)
-                ? List<Map<String, dynamic>>.from(
-                    (mirRes['data'] as List).map(
-                      (e) => Map<String, dynamic>.from(e),
-                    ),
-                  )
-                : const [];
+        _poOptions = (poRes['success'] == true && poRes['data'] is List)
+            ? List<Map<String, dynamic>>.from(
+                (poRes['data'] as List).map(
+                  (e) => Map<String, dynamic>.from(e),
+                ),
+              )
+            : const [];
+        _mirOptions = (mirRes['success'] == true && mirRes['data'] is List)
+            ? List<Map<String, dynamic>>.from(
+                (mirRes['data'] as List).map(
+                  (e) => Map<String, dynamic>.from(e),
+                ),
+              )
+            : const [];
       });
     } catch (_) {
       if (!mounted) return;
@@ -1647,6 +1738,128 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
     }
   }
 
+  Future<void> _loadSampleOptions(String projectId) async {
+    final trimmed = projectId.trim();
+    if (trimmed.isEmpty) {
+      if (!mounted) return;
+      setState(() => _sampleOptions = const []);
+      return;
+    }
+
+    setState(() => _loadingSampleOptions = true);
+    try {
+      final res = await ApiClient.getSamplesByProject(trimmed);
+      if (!mounted) return;
+      final data = (res['success'] == true && res['data'] is List)
+          ? List<Map<String, dynamic>>.from(
+              (res['data'] as List).map((e) => Map<String, dynamic>.from(e)),
+            )
+          : <Map<String, dynamic>>[];
+      setState(() => _sampleOptions = data);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sampleOptions = const []);
+    } finally {
+      if (mounted) setState(() => _loadingSampleOptions = false);
+    }
+  }
+
+  List<Map<String, String>> _mapSampleItems(dynamic rawItems) {
+    if (rawItems is! List) return const [];
+    return rawItems
+        .whereType<Map>()
+        .map((entry) {
+          final item = Map<String, dynamic>.from(entry);
+          final addFields = item['add_fields'] is List
+              ? List<Map<String, dynamic>>.from(
+                  (item['add_fields'] as List).whereType<Map>().map(
+                    (e) => Map<String, dynamic>.from(e),
+                  ),
+                )
+              : <Map<String, dynamic>>[];
+
+          String fieldValue(String key) {
+            for (final field in addFields) {
+              if (field['key']?.toString().trim() == key) {
+                return field['value']?.toString() ?? '';
+              }
+            }
+            return '';
+          }
+
+          final description =
+              item['description']?.toString().trim().isNotEmpty == true
+              ? item['description'].toString().trim()
+              : (item['item_description']?.toString().trim().isNotEmpty == true
+                    ? item['item_description'].toString().trim()
+                    : (item['item_name']?.toString().trim().isNotEmpty == true
+                          ? item['item_name'].toString().trim()
+                          : fieldValue('description')));
+          return {
+            'item_description': description,
+            'size': item['size']?.toString() ?? '',
+            'quantity': item['quantity']?.toString() ?? '',
+            'unit': item['unit']?.toString() ?? '',
+          };
+        })
+        .where((item) => item['item_description']!.trim().isNotEmpty)
+        .toList();
+  }
+
+  Future<void> _handleSampleChanged(String? value) async {
+    final sampleValue = (value ?? '').trim();
+    if (sampleValue.isEmpty) {
+      setState(() {
+        _selectedSampleId = null;
+        _workItems.clear();
+      });
+      return;
+    }
+
+    setState(() {
+      _selectedSampleId = sampleValue;
+    });
+
+    final localSample = _sampleOptions.cast<Map<String, dynamic>?>().firstWhere(
+      (sample) =>
+          (sample?['sample_id'] ?? sample?['id'] ?? '').toString() ==
+          sampleValue,
+      orElse: () => null,
+    );
+    final localItems = localSample == null
+        ? const <Map<String, String>>[]
+        : _mapSampleItems(localSample['item_description']);
+    if (localItems.isNotEmpty) {
+      setState(() {
+        _workItems
+          ..clear()
+          ..addAll(localItems);
+      });
+      return;
+    }
+
+    setState(() => _loadingSampleItems = true);
+    try {
+      final result = await ApiClient.getSampleById(sampleValue);
+      if (!mounted) return;
+      if (result['success'] == true) {
+        final sample = Map<String, dynamic>.from(
+          (result['data'] as Map?) ?? const {},
+        );
+        final items = _mapSampleItems(sample['item_description']);
+        setState(() {
+          _workItems
+            ..clear()
+            ..addAll(items);
+        });
+      }
+    } catch (_) {
+      // Keep manual rows as-is if sample loading fails.
+    } finally {
+      if (mounted) setState(() => _loadingSampleItems = false);
+    }
+  }
+
   Future<void> _tryLoadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1654,7 +1867,8 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
       if (raw == null || raw.isEmpty) return;
       final decoded = _decodeDraft(raw);
       if (decoded.isEmpty) return;
-      final decodedDisciplinesRaw = decoded['discipline_list']?.toString() ?? '';
+      final decodedDisciplinesRaw =
+          decoded['discipline_list']?.toString() ?? '';
       final decodedDisciplines = decodedDisciplinesRaw
           .split(',')
           .map((e) => e.trim())
@@ -1696,24 +1910,29 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
         _itrRefController.text = decoded['itr_ref_no']?.toString() ?? '';
         _selectedProjectId =
             decoded['project_id']?.toString().isNotEmpty == true
-                ? decoded['project_id'].toString()
-                : _selectedProjectId;
-        _selectedPoId =
-            decoded['po_id']?.toString().isNotEmpty == true
-                ? decoded['po_id'].toString()
-                : null;
-        _selectedMirId =
-            decoded['mir_id']?.toString().isNotEmpty == true
-                ? decoded['mir_id'].toString()
-                : null;
+            ? decoded['project_id'].toString()
+            : _selectedProjectId;
+        _selectedPoId = decoded['po_id']?.toString().isNotEmpty == true
+            ? decoded['po_id'].toString()
+            : null;
+        _selectedMirId = decoded['mir_id']?.toString().isNotEmpty == true
+            ? decoded['mir_id'].toString()
+            : null;
+        _selectedSampleId = decoded['sample_id']?.toString().isNotEmpty == true
+            ? decoded['sample_id'].toString()
+            : null;
         _projectNameController.text = decoded['project_name']?.toString() ?? '';
         _projectCodeController.text = decoded['project_code']?.toString() ?? '';
-        _clientEmployerController.text = decoded['client_employer']?.toString() ?? '';
+        _clientEmployerController.text =
+            decoded['client_employer']?.toString() ?? '';
         _contractorController.text = decoded['contractor']?.toString() ?? '';
-        _workOrderNoController.text = decoded['work_order_no']?.toString() ?? '';
+        _workOrderNoController.text =
+            decoded['work_order_no']?.toString() ?? '';
         _revNoController.text = decoded['rev_no']?.toString() ?? '';
-        _submissionDateTimeController.text = decoded['wir_itr_submission_date_time']?.toString() ?? '';
-        _inspectionDateTimeController.text = decoded['inspection_date_time']?.toString() ?? '';
+        _submissionDateTimeController.text =
+            decoded['wir_itr_submission_date_time']?.toString() ?? '';
+        _inspectionDateTimeController.text =
+            decoded['inspection_date_time']?.toString() ?? '';
         _submittedToController.text = decoded['submitted_to']?.toString() ?? '';
         _submittedByController.text = decoded['submitted_by']?.toString() ?? '';
         _towerBlockController.text = decoded['tower_block']?.toString() ?? '';
@@ -1722,31 +1941,53 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
         _roomAreaController.text = decoded['room_area']?.toString() ?? '';
         _pmcEngineerController.text = decoded['pmc_engineer']?.toString() ?? '';
         _vendorCodeController.text = decoded['vendor_code']?.toString() ?? '';
-        _materialCodeController.text = decoded['material_code']?.toString() ?? '';
-        _descriptionController.text = decoded['description_of_works']?.toString() ?? '';
-        _prevQtyController.text = decoded['previous_quantity']?.toString() ?? '';
-        _currentQtyController.text = decoded['current_quantity']?.toString() ?? '';
-        _cumulativeQtyController.text = decoded['cumulative_quantity']?.toString() ?? '';
-        _quantityUnitController.text = decoded['quantity_unit']?.toString() ?? '';
-        _specificDrawingRefNoController.text = decoded['specific_drawing_ref_no']?.toString() ?? '';
-        _contractorManagerCommentsController.text = decoded['contractor_manager_comments']?.toString() ?? '';
-        _readyInspectionDateController.text = decoded['ready_for_inspection_date']?.toString() ?? '';
-        _readyInspectionTimeController.text = decoded['ready_for_inspection_time']?.toString() ?? '';
-        _readySignedByController.text = decoded['ready_signed_by']?.toString() ?? '';
+        _materialCodeController.text =
+            decoded['material_code']?.toString() ?? '';
+        _descriptionController.text =
+            decoded['description_of_works']?.toString() ?? '';
+        _prevQtyController.text =
+            decoded['previous_quantity']?.toString() ?? '';
+        _currentQtyController.text =
+            decoded['current_quantity']?.toString() ?? '';
+        _cumulativeQtyController.text =
+            decoded['cumulative_quantity']?.toString() ?? '';
+        _quantityUnitController.text =
+            decoded['quantity_unit']?.toString() ?? '';
+        _specificDrawingRefNoController.text =
+            decoded['specific_drawing_ref_no']?.toString() ?? '';
+        _contractorManagerCommentsController.text =
+            decoded['contractor_manager_comments']?.toString() ?? '';
+        _readyInspectionDateController.text =
+            decoded['ready_for_inspection_date']?.toString() ?? '';
+        _readyInspectionTimeController.text =
+            decoded['ready_for_inspection_time']?.toString() ?? '';
+        _readySignedByController.text =
+            decoded['ready_signed_by']?.toString() ?? '';
         _commentsController.text = decoded['comments']?.toString() ?? '';
-        _engineerNameController.text = decoded['engineer_name']?.toString() ?? '';
-        _engineerSignatureController.text = decoded['engineer_signature']?.toString() ?? '';
-        _engineerDateController.text = decoded['engineer_date']?.toString() ?? '';
-        _engineerMepNameController.text = decoded['engineer_mep_name']?.toString() ?? '';
-        _engineerMepSignatureController.text = decoded['engineer_mep_signature']?.toString() ?? '';
-        _engineerMepDateController.text = decoded['engineer_mep_date']?.toString() ?? '';
-        _towerInchargeNameController.text = decoded['tower_incharge_name']?.toString() ?? '';
-        _towerInchargeSignatureController.text = decoded['tower_incharge_signature']?.toString() ?? '';
-        _towerInchargeDateController.text = decoded['tower_incharge_date']?.toString() ?? '';
-        _qaaDepartmentNameController.text = decoded['qaa_department_name']?.toString() ?? '';
-        _qaaDepartmentSignatureController.text = decoded['qaa_department_signature']?.toString() ?? '';
-        _qaaDepartmentDateController.text = decoded['qaa_department_date']?.toString() ?? '';
-        _status = decoded['status']?.toString() ?? 'DRAFT';
+        _engineerNameController.text =
+            decoded['engineer_name']?.toString() ?? '';
+        _engineerSignatureController.text =
+            decoded['engineer_signature']?.toString() ?? '';
+        _engineerDateController.text =
+            decoded['engineer_date']?.toString() ?? '';
+        _engineerMepNameController.text =
+            decoded['engineer_mep_name']?.toString() ?? '';
+        _engineerMepSignatureController.text =
+            decoded['engineer_mep_signature']?.toString() ?? '';
+        _engineerMepDateController.text =
+            decoded['engineer_mep_date']?.toString() ?? '';
+        _towerInchargeNameController.text =
+            decoded['tower_incharge_name']?.toString() ?? '';
+        _towerInchargeSignatureController.text =
+            decoded['tower_incharge_signature']?.toString() ?? '';
+        _towerInchargeDateController.text =
+            decoded['tower_incharge_date']?.toString() ?? '';
+        _qaaDepartmentNameController.text =
+            decoded['qaa_department_name']?.toString() ?? '';
+        _qaaDepartmentSignatureController.text =
+            decoded['qaa_department_signature']?.toString() ?? '';
+        _qaaDepartmentDateController.text =
+            decoded['qaa_department_date']?.toString() ?? '';
         _selectedDisciplines
           ..clear()
           ..addAll(
@@ -1758,24 +1999,41 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
           );
         _drawingAttach = decoded['drawing_attachment']?.toString();
         _testCertAttach = decoded['test_certificates_attachment']?.toString();
-        _methodStatementAttach = decoded['method_statement_attachment']?.toString();
+        _methodStatementAttach = decoded['method_statement_attachment']
+            ?.toString();
         _checklistAttach = decoded['checklist_attachment']?.toString();
-        _jointMeasurementAttach = decoded['joint_measurement_attachment']?.toString();
-        _mepClearanceNameController.text = decoded['mep_clearance_name']?.toString() ?? '';
-        _mepClearanceDateController.text = decoded['mep_clearance_date']?.toString() ?? '';
-        _mepClearanceDesignationController.text = decoded['mep_clearance_designation']?.toString() ?? '';
-        _mepClearanceSignatureController.text = decoded['mep_clearance_signature']?.toString() ?? '';
-        _mepClearanceCommentsController.text = decoded['mep_clearance_comments']?.toString() ?? '';
-        _surveyorClearanceNameController.text = decoded['surveyor_clearance_name']?.toString() ?? '';
-        _surveyorClearanceDateController.text = decoded['surveyor_clearance_date']?.toString() ?? '';
-        _surveyorClearanceDesignationController.text = decoded['surveyor_clearance_designation']?.toString() ?? '';
-        _surveyorClearanceSignatureController.text = decoded['surveyor_clearance_signature']?.toString() ?? '';
-        _surveyorClearanceCommentsController.text = decoded['surveyor_clearance_comments']?.toString() ?? '';
-        _interfaceClearanceNameController.text = decoded['interface_clearance_name']?.toString() ?? '';
-        _interfaceClearanceDateController.text = decoded['interface_clearance_date']?.toString() ?? '';
-        _interfaceClearanceDesignationController.text = decoded['interface_clearance_designation']?.toString() ?? '';
-        _interfaceClearanceSignatureController.text = decoded['interface_clearance_signature']?.toString() ?? '';
-        _interfaceClearanceCommentsController.text = decoded['interface_clearance_comments']?.toString() ?? '';
+        _jointMeasurementAttach = decoded['joint_measurement_attachment']
+            ?.toString();
+        _mepClearanceNameController.text =
+            decoded['mep_clearance_name']?.toString() ?? '';
+        _mepClearanceDateController.text =
+            decoded['mep_clearance_date']?.toString() ?? '';
+        _mepClearanceDesignationController.text =
+            decoded['mep_clearance_designation']?.toString() ?? '';
+        _mepClearanceSignatureController.text =
+            decoded['mep_clearance_signature']?.toString() ?? '';
+        _mepClearanceCommentsController.text =
+            decoded['mep_clearance_comments']?.toString() ?? '';
+        _surveyorClearanceNameController.text =
+            decoded['surveyor_clearance_name']?.toString() ?? '';
+        _surveyorClearanceDateController.text =
+            decoded['surveyor_clearance_date']?.toString() ?? '';
+        _surveyorClearanceDesignationController.text =
+            decoded['surveyor_clearance_designation']?.toString() ?? '';
+        _surveyorClearanceSignatureController.text =
+            decoded['surveyor_clearance_signature']?.toString() ?? '';
+        _surveyorClearanceCommentsController.text =
+            decoded['surveyor_clearance_comments']?.toString() ?? '';
+        _interfaceClearanceNameController.text =
+            decoded['interface_clearance_name']?.toString() ?? '';
+        _interfaceClearanceDateController.text =
+            decoded['interface_clearance_date']?.toString() ?? '';
+        _interfaceClearanceDesignationController.text =
+            decoded['interface_clearance_designation']?.toString() ?? '';
+        _interfaceClearanceSignatureController.text =
+            decoded['interface_clearance_signature']?.toString() ?? '';
+        _interfaceClearanceCommentsController.text =
+            decoded['interface_clearance_comments']?.toString() ?? '';
         _resultCode = decoded['result_code']?.toString();
         _workItems
           ..clear()
@@ -1786,6 +2044,7 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
       });
       if (_selectedProjectId != null && _selectedProjectId!.isNotEmpty) {
         _loadPoMirOptions(_selectedProjectId!);
+        _loadSampleOptions(_selectedProjectId!);
       }
       if (_itrRefController.text.isEmpty && widget.prefillItrRef.isNotEmpty) {
         setState(() {
@@ -1876,11 +2135,13 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
       'project_id': _selectedProjectId ?? widget.projectId,
       'po_id': _selectedPoId ?? '',
       'mir_id': _selectedMirId ?? '',
-      'status': _status,
+      'sample_id': _selectedSampleId ?? '',
+      'status': 'DRAFT',
       'project_name': _projectNameController.text.trim(),
       'project_code': _projectCodeController.text.trim(),
-      'discipline':
-          _selectedDisciplines.isNotEmpty ? _selectedDisciplines.first : '',
+      'discipline': _selectedDisciplines.isNotEmpty
+          ? _selectedDisciplines.first
+          : '',
       'discipline_list': _selectedDisciplines,
       'client_employer': _clientEmployerController.text.trim(),
       'contractor': _contractorController.text.trim(),
@@ -1910,25 +2171,30 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
       'joint_measurement_attachment': _jointMeasurementAttach,
       'mep_clearance_name': _mepClearanceNameController.text.trim(),
       'mep_clearance_date': _mepClearanceDateController.text.trim(),
-      'mep_clearance_designation': _mepClearanceDesignationController.text.trim(),
+      'mep_clearance_designation': _mepClearanceDesignationController.text
+          .trim(),
       'mep_clearance_signature': _mepClearanceSignatureController.text.trim(),
       'mep_clearance_comments': _mepClearanceCommentsController.text.trim(),
       'surveyor_clearance_name': _surveyorClearanceNameController.text.trim(),
       'surveyor_clearance_date': _surveyorClearanceDateController.text.trim(),
-      'surveyor_clearance_designation':
-          _surveyorClearanceDesignationController.text.trim(),
-      'surveyor_clearance_signature':
-          _surveyorClearanceSignatureController.text.trim(),
-      'surveyor_clearance_comments': _surveyorClearanceCommentsController.text.trim(),
+      'surveyor_clearance_designation': _surveyorClearanceDesignationController
+          .text
+          .trim(),
+      'surveyor_clearance_signature': _surveyorClearanceSignatureController.text
+          .trim(),
+      'surveyor_clearance_comments': _surveyorClearanceCommentsController.text
+          .trim(),
       'interface_clearance_name': _interfaceClearanceNameController.text.trim(),
       'interface_clearance_date': _interfaceClearanceDateController.text.trim(),
       'interface_clearance_designation':
           _interfaceClearanceDesignationController.text.trim(),
-      'interface_clearance_signature':
-          _interfaceClearanceSignatureController.text.trim(),
-      'interface_clearance_comments':
-          _interfaceClearanceCommentsController.text.trim(),
-      'contractor_manager_comments': _contractorManagerCommentsController.text.trim(),
+      'interface_clearance_signature': _interfaceClearanceSignatureController
+          .text
+          .trim(),
+      'interface_clearance_comments': _interfaceClearanceCommentsController.text
+          .trim(),
+      'contractor_manager_comments': _contractorManagerCommentsController.text
+          .trim(),
       'ready_for_inspection_date': _readyInspectionDateController.text.trim(),
       'ready_for_inspection_time': _readyInspectionTimeController.text.trim(),
       'ready_signed_by': _readySignedByController.text.trim(),
@@ -1957,6 +2223,8 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
     };
   }
 
+  Map<String, dynamic> collectData() => _collectData();
+
   Future<void> _saveDraft() async {
     final data = _collectData();
     try {
@@ -1969,7 +2237,9 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
           if (v.isNotEmpty) parts.add('${e.key}::$v');
           continue;
         }
-        if (e.value != null && e.value.toString().isNotEmpty) parts.add('${e.key}::${e.value}');
+        if (e.value != null && e.value.toString().isNotEmpty) {
+          parts.add('${e.key}::${e.value}');
+        }
       }
       if (_workItems.isNotEmpty) {
         parts.add('work_items_json::${jsonEncode(_workItems)}');
@@ -1979,10 +2249,14 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
       }
       await prefs.setString(_itrDraftKey, parts.join(';;'));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Draft saved.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Draft saved.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.getMessage(e))));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -2046,7 +2320,10 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
         const SizedBox(height: 8),
         TextFormField(
           initialValue: value,
@@ -2076,80 +2353,178 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Header', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Project Info and ITR Header',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _itrRefController, labelText: 'ITR Reference No', hintText: 'ITR-XXX'),
-                    const SizedBox(height: 16),
-                    MadSelect<String>(labelText: 'Status', value: _status, options: _statusOptions, onChanged: (v) => setState(() => _status = v ?? 'DRAFT')),
+                    MadInput(
+                      controller: _itrRefController,
+                      labelText: 'ITR Reference No',
+                      hintText: 'ITR-XXX',
+                    ),
                     const SizedBox(height: 16),
                     MadSelect<String>(
-                      labelText: 'project_id',
+                      labelText: 'Project ID',
                       value: _selectedProjectId,
-                      placeholder: _loadingOptions ? 'Loading projects...' : 'Select project_id',
-                      options: _projectOptions
-                          .map((item) {
-                            final id = (item['project_id'] ?? item['id']).toString();
-                            final name = (item['project_name'] ?? item['projectName'] ?? 'Project $id').toString();
-                            return MadSelectOption(value: id, label: '$id - $name');
-                          })
-                          .toList(),
+                      placeholder: _loadingOptions
+                          ? 'Loading projects...'
+                          : 'Select project',
+                      options: _projectOptions.map((item) {
+                        final id = (item['project_id'] ?? item['id'])
+                            .toString();
+                        final name =
+                            (item['project_name'] ??
+                                    item['projectName'] ??
+                                    'Project $id')
+                                .toString();
+                        return MadSelectOption(value: id, label: '$id - $name');
+                      }).toList(),
                       onChanged: (value) async {
-                        if (value == null || value == _selectedProjectId) return;
+                        if (value == null || value == _selectedProjectId) {
+                          return;
+                        }
                         setState(() {
                           _selectedProjectId = value;
                           _selectedPoId = null;
                           _selectedMirId = null;
+                          _selectedSampleId = null;
+                          _workItems.clear();
                         });
                         final selected = _projectOptions.firstWhere(
-                          (item) => (item['project_id'] ?? item['id']).toString() == value,
+                          (item) =>
+                              (item['project_id'] ?? item['id']).toString() ==
+                              value,
                           orElse: () => <String, dynamic>{},
                         );
                         if (selected.isNotEmpty) {
-                          _projectNameController.text = (selected['project_name'] ?? selected['projectName'] ?? '').toString();
-                          _projectCodeController.text = (selected['project_code'] ?? selected['projectCode'] ?? '').toString();
+                          _projectNameController.text =
+                              (selected['project_name'] ??
+                                      selected['projectName'] ??
+                                      '')
+                                  .toString();
+                          _projectCodeController.text =
+                              (selected['project_code'] ??
+                                      selected['projectCode'] ??
+                                      '')
+                                  .toString();
                         }
                         await _loadPoMirOptions(value);
+                        await _loadSampleOptions(value);
                       },
                     ),
                     const SizedBox(height: 16),
                     MadSelect<String>(
-                      labelText: 'po_id',
+                      labelText: 'PO ID',
                       value: _selectedPoId,
-                      placeholder: _selectedProjectId == null ? 'Select project first' : 'Select po_id',
-                      options: _poOptions
-                          .map((item) {
-                            final id = (item['po_id'] ?? item['id']).toString();
-                            final label = (item['order_no'] ?? item['indent_no'] ?? item['vendor_name'] ?? 'PO $id').toString();
-                            return MadSelectOption(value: id, label: '$id - $label');
-                          })
-                          .toList(),
-                      onChanged: (value) => setState(() => _selectedPoId = value),
+                      placeholder: _selectedProjectId == null
+                          ? 'Select project first'
+                          : 'Select PO',
+                      options: _poOptions.map((item) {
+                        final id = (item['po_id'] ?? item['id']).toString();
+                        final label =
+                            (item['order_no'] ??
+                                    item['indent_no'] ??
+                                    item['vendor_name'] ??
+                                    'PO $id')
+                                .toString();
+                        return MadSelectOption(
+                          value: id,
+                          label: '$id - $label',
+                        );
+                      }).toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedPoId = value),
                     ),
                     const SizedBox(height: 16),
                     MadSelect<String>(
-                      labelText: 'mir_id',
+                      labelText: 'MIR ID',
                       value: _selectedMirId,
-                      placeholder: _selectedProjectId == null ? 'Select project first' : 'Select mir_id',
-                      options: _mirOptions
-                          .map((item) {
-                            final id = (item['mir_id'] ?? item['id']).toString();
-                            final label = (item['mir_refrence_no'] ?? item['challan_no'] ?? 'MIR $id').toString();
-                            return MadSelectOption(value: id, label: '$id - $label');
-                          })
-                          .toList(),
-                      onChanged: (value) => setState(() => _selectedMirId = value),
+                      placeholder: _selectedProjectId == null
+                          ? 'Select project first'
+                          : 'Select MIR',
+                      options: _mirOptions.map((item) {
+                        final id = (item['mir_id'] ?? item['id']).toString();
+                        final label =
+                            (item['mir_refrence_no'] ??
+                                    item['challan_no'] ??
+                                    'MIR $id')
+                                .toString();
+                        return MadSelectOption(
+                          value: id,
+                          label: '$id - $label',
+                        );
+                      }).toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedMirId = value),
                     ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _projectNameController, labelText: 'Project Name', hintText: 'Enter project name'),
+                    MadSelect<String>(
+                      labelText: 'Sample ID',
+                      value: _selectedSampleId,
+                      placeholder: _loadingSampleOptions
+                          ? 'Loading samples...'
+                          : 'Select sample',
+                      searchable: true,
+                      options: [
+                        ..._sampleOptions.map((item) {
+                          final id = (item['sample_id'] ?? item['id'])
+                              .toString();
+                          final label =
+                              (item['sample_name'] ??
+                                      item['sample_no'] ??
+                                      item['sample_title'] ??
+                                      'Sample $id')
+                                  .toString();
+                          return MadSelectOption(
+                            value: id,
+                            label: '$id - $label',
+                          );
+                        }),
+                      ],
+                      onChanged: (value) async {
+                        await _handleSampleChanged(value);
+                      },
+                    ),
+                    if (_loadingSampleItems) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Loading sample items...',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
-                    MadInput(controller: _projectCodeController, labelText: 'Project Code', hintText: 'Project code'),
+                    MadInput(
+                      controller: _projectNameController,
+                      labelText: 'Project Name',
+                      hintText: 'Enter project name',
+                    ),
+                    const SizedBox(height: 16),
+                    MadInput(
+                      controller: _projectCodeController,
+                      labelText: 'Project Code',
+                      hintText: 'Project code',
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       'Discipline',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2161,7 +2536,8 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                             (option) => MadButton(
                               text: option.label,
                               size: ButtonSize.sm,
-                              variant: _selectedDisciplines.contains(option.value)
+                              variant:
+                                  _selectedDisciplines.contains(option.value)
                                   ? ButtonVariant.primary
                                   : ButtonVariant.outline,
                               onPressed: () => _toggleDiscipline(option.value),
@@ -2170,21 +2546,53 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                           .toList(),
                     ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _clientEmployerController, labelText: 'Client/Employer', hintText: 'Client or employer name'),
+                    MadInput(
+                      controller: _clientEmployerController,
+                      labelText: 'Client/Employer',
+                      hintText: 'Client or employer name',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _contractorController, labelText: 'Contractor', hintText: 'Contractor name'),
+                    MadInput(
+                      controller: _contractorController,
+                      labelText: 'Contractor',
+                      hintText: 'Contractor name',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _workOrderNoController, labelText: 'Work Order No', hintText: 'Work order number'),
+                    MadInput(
+                      controller: _workOrderNoController,
+                      labelText: 'Work Order No',
+                      hintText: 'Work order number',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _revNoController, labelText: 'Revision No', hintText: 'Revision number'),
+                    MadInput(
+                      controller: _revNoController,
+                      labelText: 'Revision No',
+                      hintText: 'Revision number',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _submissionDateTimeController, labelText: 'WIR/ITR Submission Date & Time', hintText: 'YYYY-MM-DD HH:mm'),
+                    MadInput(
+                      controller: _submissionDateTimeController,
+                      labelText: 'WIR/ITR Submission Date & Time',
+                      hintText: 'YYYY-MM-DD HH:mm',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _inspectionDateTimeController, labelText: 'Inspection Date & Time', hintText: 'YYYY-MM-DD HH:mm'),
+                    MadInput(
+                      controller: _inspectionDateTimeController,
+                      labelText: 'Inspection Date & Time',
+                      hintText: 'YYYY-MM-DD HH:mm',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _submittedToController, labelText: 'Submitted To', hintText: 'WIR/ITR submitted to'),
+                    MadInput(
+                      controller: _submittedToController,
+                      labelText: 'Submitted To',
+                      hintText: 'WIR/ITR submitted to',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _submittedByController, labelText: 'Submitted By', hintText: 'WIR/ITR submitted by'),
+                    MadInput(
+                      controller: _submittedByController,
+                      labelText: 'Submitted By',
+                      hintText: 'WIR/ITR submitted by',
+                    ),
                   ],
                 ),
               ),
@@ -2197,9 +2605,22 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('work_items', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                        Expanded(
+                          child: Text(
+                            'Work Items and Shaft Details',
+                            maxLines: 2,
+                            softWrap: true,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
                         MadButton(
                           text: 'Add Item',
                           size: ButtonSize.sm,
@@ -2212,7 +2633,11 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                     if (_workItems.isEmpty)
                       Text(
                         'No work items added.',
-                        style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        style: TextStyle(
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                       ),
                     ...List.generate(_workItems.length, (index) {
                       final item = _workItems[index];
@@ -2220,7 +2645,11 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          border: Border.all(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                          border: Border.all(
+                            color: isDark
+                                ? AppTheme.darkBorder
+                                : AppTheme.lightBorder,
+                          ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
@@ -2228,7 +2657,8 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                             _dynamicField(
                               'Item Description',
                               item['item_description'] ?? '',
-                              (v) => _updateWorkItem(index, 'item_description', v),
+                              (v) =>
+                                  _updateWorkItem(index, 'item_description', v),
                             ),
                             const SizedBox(height: 10),
                             _dynamicField(
@@ -2274,9 +2704,22 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('shaft_details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                        Expanded(
+                          child: Text(
+                            'Shaft Details',
+                            maxLines: 2,
+                            softWrap: true,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? AppTheme.darkForeground
+                                  : AppTheme.lightForeground,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
                         MadButton(
                           text: 'Add Shaft Row',
                           size: ButtonSize.sm,
@@ -2289,7 +2732,11 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                     if (_shaftDetails.isEmpty)
                       Text(
                         'No shaft rows added.',
-                        style: TextStyle(color: isDark ? AppTheme.darkMutedForeground : AppTheme.lightMutedForeground),
+                        style: TextStyle(
+                          color: isDark
+                              ? AppTheme.darkMutedForeground
+                              : AppTheme.lightMutedForeground,
+                        ),
                       ),
                     ...List.generate(_shaftDetails.length, (index) {
                       final item = _shaftDetails[index];
@@ -2297,7 +2744,11 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          border: Border.all(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                          border: Border.all(
+                            color: isDark
+                                ? AppTheme.darkBorder
+                                : AppTheme.lightBorder,
+                          ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
@@ -2323,7 +2774,8 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                             _dynamicField(
                               'Staff Number',
                               item['staff_number'] ?? '',
-                              (v) => _updateShaftDetail(index, 'staff_number', v),
+                              (v) =>
+                                  _updateShaftDetail(index, 'staff_number', v),
                             ),
                             const SizedBox(height: 10),
                             Align(
@@ -2350,15 +2802,40 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Location', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Location, Quantity, and Description of Work',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _towerBlockController, labelText: 'Tower/Block', hintText: 'Tower or block'),
+                    MadInput(
+                      controller: _towerBlockController,
+                      labelText: 'Tower/Block',
+                      hintText: 'Tower or block',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _floorController, labelText: 'Floor', hintText: 'Floor'),
+                    MadInput(
+                      controller: _floorController,
+                      labelText: 'Floor',
+                      hintText: 'Floor',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _gridController, labelText: 'Grid', hintText: 'Grid'),
+                    MadInput(
+                      controller: _gridController,
+                      labelText: 'Grid',
+                      hintText: 'Grid',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _roomAreaController, labelText: 'Room/Area', hintText: 'Room or area'),
+                    MadInput(
+                      controller: _roomAreaController,
+                      labelText: 'Room/Area',
+                      hintText: 'Room or area',
+                    ),
                   ],
                 ),
               ),
@@ -2370,15 +2847,41 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Contractor Part', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Clearances and Sign-off - Part A',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _pmcEngineerController, labelText: 'PMC Engineer', hintText: 'PMC engineer name'),
+                    MadInput(
+                      controller: _pmcEngineerController,
+                      labelText: 'PMC Engineer',
+                      hintText: 'PMC engineer name',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _vendorCodeController, labelText: 'Vendor Code', hintText: 'Vendor code'),
+                    MadInput(
+                      controller: _vendorCodeController,
+                      labelText: 'Vendor Code',
+                      hintText: 'Vendor code',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _materialCodeController, labelText: 'Material Code', hintText: 'Material code'),
+                    MadInput(
+                      controller: _materialCodeController,
+                      labelText: 'Material Code',
+                      hintText: 'Material code',
+                    ),
                     const SizedBox(height: 16),
-                    MadTextarea(controller: _descriptionController, labelText: 'Description of Works', hintText: 'Describe the works...', minLines: 3),
+                    MadTextarea(
+                      controller: _descriptionController,
+                      labelText: 'Description of Works',
+                      hintText: 'Describe the works...',
+                      minLines: 3,
+                    ),
                   ],
                 ),
               ),
@@ -2390,15 +2893,43 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Measurement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Quantity',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _prevQtyController, labelText: 'Previous Quantity', hintText: '0', keyboardType: TextInputType.number),
+                    MadInput(
+                      controller: _prevQtyController,
+                      labelText: 'Previous Quantity',
+                      hintText: '0',
+                      keyboardType: TextInputType.number,
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _currentQtyController, labelText: 'Current Quantity', hintText: '0', keyboardType: TextInputType.number),
+                    MadInput(
+                      controller: _currentQtyController,
+                      labelText: 'Current Quantity',
+                      hintText: '0',
+                      keyboardType: TextInputType.number,
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _cumulativeQtyController, labelText: 'Cumulative Quantity', hintText: '0', keyboardType: TextInputType.number),
+                    MadInput(
+                      controller: _cumulativeQtyController,
+                      labelText: 'Cumulative Quantity',
+                      hintText: '0',
+                      keyboardType: TextInputType.number,
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _quantityUnitController, labelText: 'Quantity Unit', hintText: 'NOS'),
+                    MadInput(
+                      controller: _quantityUnitController,
+                      labelText: 'Quantity Unit',
+                      hintText: 'NOS',
+                    ),
                   ],
                 ),
               ),
@@ -2410,51 +2941,165 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Attachments (Yes/No/NA)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Description and Attachments',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    MadSelect<String>(labelText: 'Drawing', value: _drawingAttach, placeholder: 'Select', options: _yesNoNaOptions, onChanged: (v) => setState(() => _drawingAttach = v)),
+                    MadSelect<String>(
+                      labelText: 'Drawing',
+                      value: _drawingAttach,
+                      placeholder: 'Select',
+                      options: _yesNoNaOptions,
+                      onChanged: (v) => setState(() => _drawingAttach = v),
+                    ),
                     const SizedBox(height: 12),
-                    MadSelect<String>(labelText: 'Test Certificates', value: _testCertAttach, placeholder: 'Select', options: _yesNoNaOptions, onChanged: (v) => setState(() => _testCertAttach = v)),
+                    MadSelect<String>(
+                      labelText: 'Test Certificates',
+                      value: _testCertAttach,
+                      placeholder: 'Select',
+                      options: _yesNoNaOptions,
+                      onChanged: (v) => setState(() => _testCertAttach = v),
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _specificDrawingRefNoController, labelText: 'Specific Drawing Ref No', hintText: 'Drawing reference'),
+                    MadInput(
+                      controller: _specificDrawingRefNoController,
+                      labelText: 'Specific Drawing Ref No',
+                      hintText: 'Drawing reference',
+                    ),
                     const SizedBox(height: 12),
-                    MadSelect<String>(labelText: 'Method Statement', value: _methodStatementAttach, placeholder: 'Select', options: _yesNoNaOptions, onChanged: (v) => setState(() => _methodStatementAttach = v)),
+                    MadSelect<String>(
+                      labelText: 'Method Statement',
+                      value: _methodStatementAttach,
+                      placeholder: 'Select',
+                      options: _yesNoNaOptions,
+                      onChanged: (v) =>
+                          setState(() => _methodStatementAttach = v),
+                    ),
                     const SizedBox(height: 12),
-                    MadSelect<String>(labelText: 'Checklist', value: _checklistAttach, placeholder: 'Select', options: _yesNoNaOptions, onChanged: (v) => setState(() => _checklistAttach = v)),
+                    MadSelect<String>(
+                      labelText: 'Checklist',
+                      value: _checklistAttach,
+                      placeholder: 'Select',
+                      options: _yesNoNaOptions,
+                      onChanged: (v) => setState(() => _checklistAttach = v),
+                    ),
                     const SizedBox(height: 12),
-                    MadSelect<String>(labelText: 'Joint Measurement Sheet', value: _jointMeasurementAttach, placeholder: 'Select', options: _yesNoNaOptions, onChanged: (v) => setState(() => _jointMeasurementAttach = v)),
+                    MadSelect<String>(
+                      labelText: 'Joint Measurement Sheet',
+                      value: _jointMeasurementAttach,
+                      placeholder: 'Select',
+                      options: _yesNoNaOptions,
+                      onChanged: (v) =>
+                          setState(() => _jointMeasurementAttach = v),
+                    ),
                     const SizedBox(height: 20),
-                    Text('Clearances', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Clearances',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _mepClearanceNameController, labelText: 'MEP - Name', hintText: 'Name'),
+                    MadInput(
+                      controller: _mepClearanceNameController,
+                      labelText: 'MEP - Name',
+                      hintText: 'Name',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _mepClearanceDateController, labelText: 'MEP - Date', hintText: 'Date'),
+                    MadInput(
+                      controller: _mepClearanceDateController,
+                      labelText: 'MEP - Date',
+                      hintText: 'Date',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _mepClearanceDesignationController, labelText: 'MEP - Designation', hintText: 'Designation'),
+                    MadInput(
+                      controller: _mepClearanceDesignationController,
+                      labelText: 'MEP - Designation',
+                      hintText: 'Designation',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _mepClearanceSignatureController, labelText: 'MEP - Signature', hintText: 'Signature/url'),
+                    MadInput(
+                      controller: _mepClearanceSignatureController,
+                      labelText: 'MEP - Signature',
+                      hintText: 'Signature/url',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _mepClearanceCommentsController, labelText: 'MEP - Comments', hintText: 'Comments'),
+                    MadInput(
+                      controller: _mepClearanceCommentsController,
+                      labelText: 'MEP - Comments',
+                      hintText: 'Comments',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _surveyorClearanceNameController, labelText: 'Surveyor - Name', hintText: 'Name'),
+                    MadInput(
+                      controller: _surveyorClearanceNameController,
+                      labelText: 'Surveyor - Name',
+                      hintText: 'Name',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _surveyorClearanceDateController, labelText: 'Surveyor - Date', hintText: 'Date'),
+                    MadInput(
+                      controller: _surveyorClearanceDateController,
+                      labelText: 'Surveyor - Date',
+                      hintText: 'Date',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _surveyorClearanceDesignationController, labelText: 'Surveyor - Designation', hintText: 'Designation'),
+                    MadInput(
+                      controller: _surveyorClearanceDesignationController,
+                      labelText: 'Surveyor - Designation',
+                      hintText: 'Designation',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _surveyorClearanceSignatureController, labelText: 'Surveyor - Signature', hintText: 'Signature/url'),
+                    MadInput(
+                      controller: _surveyorClearanceSignatureController,
+                      labelText: 'Surveyor - Signature',
+                      hintText: 'Signature/url',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _surveyorClearanceCommentsController, labelText: 'Surveyor - Comments', hintText: 'Comments'),
+                    MadInput(
+                      controller: _surveyorClearanceCommentsController,
+                      labelText: 'Surveyor - Comments',
+                      hintText: 'Comments',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _interfaceClearanceNameController, labelText: 'Interface - Name', hintText: 'Name'),
+                    MadInput(
+                      controller: _interfaceClearanceNameController,
+                      labelText: 'Interface - Name',
+                      hintText: 'Name',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _interfaceClearanceDateController, labelText: 'Interface - Date', hintText: 'Date'),
+                    MadInput(
+                      controller: _interfaceClearanceDateController,
+                      labelText: 'Interface - Date',
+                      hintText: 'Date',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _interfaceClearanceDesignationController, labelText: 'Interface - Designation', hintText: 'Designation'),
+                    MadInput(
+                      controller: _interfaceClearanceDesignationController,
+                      labelText: 'Interface - Designation',
+                      hintText: 'Designation',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _interfaceClearanceSignatureController, labelText: 'Interface - Signature', hintText: 'Signature/url'),
+                    MadInput(
+                      controller: _interfaceClearanceSignatureController,
+                      labelText: 'Interface - Signature',
+                      hintText: 'Signature/url',
+                    ),
                     const SizedBox(height: 12),
-                    MadInput(controller: _interfaceClearanceCommentsController, labelText: 'Interface - Comments', hintText: 'Comments'),
+                    MadInput(
+                      controller: _interfaceClearanceCommentsController,
+                      labelText: 'Interface - Comments',
+                      hintText: 'Comments',
+                    ),
                   ],
                 ),
               ),
@@ -2466,15 +3111,41 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Contractor Manager Readiness', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Contractor Part',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    MadTextarea(controller: _contractorManagerCommentsController, labelText: 'Contractor Manager / Engineer Comments', hintText: 'Comments...', minLines: 2),
+                    MadTextarea(
+                      controller: _contractorManagerCommentsController,
+                      labelText: 'Contractor Manager / Engineer Comments',
+                      hintText: 'Comments...',
+                      minLines: 2,
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _readyInspectionDateController, labelText: 'Ready for Inspection Date', hintText: 'YYYY-MM-DD'),
+                    MadInput(
+                      controller: _readyInspectionDateController,
+                      labelText: 'Ready for Inspection Date',
+                      hintText: 'YYYY-MM-DD',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _readyInspectionTimeController, labelText: 'Ready for Inspection Time', hintText: 'HH:mm'),
+                    MadInput(
+                      controller: _readyInspectionTimeController,
+                      labelText: 'Ready for Inspection Time',
+                      hintText: 'HH:mm',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _readySignedByController, labelText: 'Signed By', hintText: 'Name'),
+                    MadInput(
+                      controller: _readySignedByController,
+                      labelText: 'Signed By',
+                      hintText: 'Name',
+                    ),
                   ],
                 ),
               ),
@@ -2486,35 +3157,103 @@ class _ITRManualEntryFormState extends State<_ITRManualEntryForm> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Lodha/PMC Part', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? AppTheme.darkForeground : AppTheme.lightForeground)),
+                    Text(
+                      'Lodha PMC Part',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppTheme.darkForeground
+                            : AppTheme.lightForeground,
+                      ),
+                    ),
                     const SizedBox(height: 16),
-                    MadTextarea(controller: _commentsController, labelText: 'Comments', hintText: 'Comments...', minLines: 3),
+                    MadTextarea(
+                      controller: _commentsController,
+                      labelText: 'Comments',
+                      hintText: 'Comments...',
+                      minLines: 3,
+                    ),
                     const SizedBox(height: 16),
-                    MadSelect<String>(labelText: 'Result Code', value: _resultCode, placeholder: 'Select result', options: _resultCodeOptions, onChanged: (v) => setState(() => _resultCode = v)),
+                    MadSelect<String>(
+                      labelText: 'Result Code',
+                      value: _resultCode,
+                      placeholder: 'Select result',
+                      options: _resultCodeOptions,
+                      onChanged: (v) => setState(() => _resultCode = v),
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _engineerNameController, labelText: 'Engineer/Manager Civil - Name', hintText: 'Name'),
+                    MadInput(
+                      controller: _engineerNameController,
+                      labelText: 'Engineer/Manager Civil - Name',
+                      hintText: 'Name',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _engineerSignatureController, labelText: 'Engineer/Manager Civil - Signature', hintText: 'Signature/url'),
+                    MadInput(
+                      controller: _engineerSignatureController,
+                      labelText: 'Engineer/Manager Civil - Signature',
+                      hintText: 'Signature/url',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _engineerDateController, labelText: 'Date', hintText: 'Date'),
+                    MadInput(
+                      controller: _engineerDateController,
+                      labelText: 'Date',
+                      hintText: 'Date',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _engineerMepNameController, labelText: 'Engineer/Manager MEP - Name', hintText: 'Name'),
+                    MadInput(
+                      controller: _engineerMepNameController,
+                      labelText: 'Engineer/Manager MEP - Name',
+                      hintText: 'Name',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _engineerMepSignatureController, labelText: 'Engineer/Manager MEP - Signature', hintText: 'Signature/url'),
+                    MadInput(
+                      controller: _engineerMepSignatureController,
+                      labelText: 'Engineer/Manager MEP - Signature',
+                      hintText: 'Signature/url',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _engineerMepDateController, labelText: 'Engineer/Manager MEP - Date', hintText: 'Date'),
+                    MadInput(
+                      controller: _engineerMepDateController,
+                      labelText: 'Engineer/Manager MEP - Date',
+                      hintText: 'Date',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _towerInchargeNameController, labelText: 'Tower Incharge - Name', hintText: 'Name'),
+                    MadInput(
+                      controller: _towerInchargeNameController,
+                      labelText: 'Tower Incharge - Name',
+                      hintText: 'Name',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _towerInchargeSignatureController, labelText: 'Tower Incharge - Signature', hintText: 'Signature/url'),
+                    MadInput(
+                      controller: _towerInchargeSignatureController,
+                      labelText: 'Tower Incharge - Signature',
+                      hintText: 'Signature/url',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _towerInchargeDateController, labelText: 'Tower Incharge - Date', hintText: 'Date'),
+                    MadInput(
+                      controller: _towerInchargeDateController,
+                      labelText: 'Tower Incharge - Date',
+                      hintText: 'Date',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _qaaDepartmentNameController, labelText: 'QAA Department - Name', hintText: 'Name'),
+                    MadInput(
+                      controller: _qaaDepartmentNameController,
+                      labelText: 'QAA Department - Name',
+                      hintText: 'Name',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _qaaDepartmentSignatureController, labelText: 'QAA Department - Signature', hintText: 'Signature/url'),
+                    MadInput(
+                      controller: _qaaDepartmentSignatureController,
+                      labelText: 'QAA Department - Signature',
+                      hintText: 'Signature/url',
+                    ),
                     const SizedBox(height: 16),
-                    MadInput(controller: _qaaDepartmentDateController, labelText: 'QAA Department - Date', hintText: 'Date'),
+                    MadInput(
+                      controller: _qaaDepartmentDateController,
+                      labelText: 'QAA Department - Date',
+                      hintText: 'Date',
+                    ),
                   ],
                 ),
               ),
